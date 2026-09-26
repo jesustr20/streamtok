@@ -1,0 +1,191 @@
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { WebSocket } from "ws";
+import { ModBridge } from "../src/mod-bridge.js";
+import { StreamTokWsServer } from "../src/ws-server.js";
+import { MappingEngine, type MappingRule } from "../src/mapping.js";
+import type { LiveEvent } from "@streamtok/shared";
+
+function connect(port: number): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://localhost:${port}`);
+    ws.once("open", () => resolve(ws));
+    ws.once("error", reject);
+  });
+}
+
+function once(ws: WebSocket, channel: string): Promise<any> {
+  return new Promise((resolve) => {
+    ws.on("message", function handler(raw) {
+      const msg = JSON.parse(raw.toString());
+      if (msg.channel === channel) {
+        ws.off("message", handler);
+        resolve(msg.payload);
+      }
+    });
+  });
+}
+
+/** Conecta y devuelve tanto el socket como una promesa de "primer mensaje
+ * de este canal", con el listener adjuntado ANTES de esperar "open" —
+ * necesario porque el servidor puede mandar datos en el mismo tick en que
+ * la conexión se abre (ej. el reenvío de catálogo a un cliente que llega
+ * tarde), y adjuntar el listener después de "open" puede perder ese
+ * mensaje si "open" y "message" se emiten sincrónicamente uno tras otro. */
+function connectAndCapture(port: number, channel: string): { ws: WebSocket; firstMessage: Promise<any> } {
+  const ws = new WebSocket(`ws://localhost:${port}`);
+  const firstMessage = once(ws, channel);
+  return { ws, firstMessage };
+}
+
+const fakeCatalog = {
+  mod: "gtav-chaos",
+  version: "0.9.0",
+  actions: [
+    {
+      id: "arena_join",
+      name: "Unirse a la arena",
+      category: "arena" as const,
+      icon: "arena",
+      description: "El viewer entra a la pelea",
+      supportsNameTag: true,
+      params: [],
+    },
+    {
+      id: "vehicle_spawn_random",
+      name: "Aparecer vehículo",
+      category: "vehicle" as const,
+      icon: "vehicle",
+      description: "Aparece un vehículo",
+      supportsNameTag: false,
+      params: [],
+    },
+  ],
+};
+
+describe("ModBridge + MappingEngine (protocolo v0.9.0)", () => {
+  let server: StreamTokWsServer;
+  let modBridge: ModBridge;
+
+  beforeEach(() => {
+    server = new StreamTokWsServer(0);
+    modBridge = new ModBridge(server);
+  });
+
+  afterEach(() => {
+    server.close();
+  });
+
+  async function waitListening(): Promise<number> {
+    // server.actualPort ya puede estar disponible si "listening" se disparó
+    // antes de que este helper corra (evita una carrera con beforeEach).
+    if (server.actualPort) return server.actualPort;
+    return new Promise((resolve) => server.on("listening", (port) => resolve(port)));
+  }
+
+  it("cachea el catálogo del mod-hello y lo reenvía a clientes que se conectan después", async () => {
+    const port = await waitListening();
+    const modWs = await connect(port);
+
+    modWs.send(JSON.stringify({ channel: "mod-hello", payload: fakeCatalog }));
+    await new Promise((r) => setTimeout(r, 50)); // deja que el server procese el hello
+
+    // cliente "UI" se conecta DESPUÉS del mod-hello. El server puede
+    // mandarle el catálogo cacheado en el mismo tick del "open", así que
+    // capturamos el primer mensaje ANTES de esperar la conexión.
+    const { ws: uiWs, firstMessage } = connectAndCapture(port, "mod-hello");
+    const catalog = await firstMessage;
+
+    expect(catalog.mod).toBe("gtav-chaos");
+    expect(modBridge.getCatalog()?.actions).toHaveLength(2);
+
+    modWs.close();
+    uiWs.close();
+  });
+
+  it("una acción arena_* siempre lleva nameTag y respeta coins vía la regla de mapeo", async () => {
+    const port = await waitListening();
+    const modWs = await connect(port);
+    modWs.send(JSON.stringify({ channel: "mod-hello", payload: fakeCatalog }));
+
+    modWs.on("message", (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.channel === "mod-command") {
+        modWs.send(JSON.stringify({ channel: "mod-ack", payload: { id: msg.payload.id, ok: true } }));
+      }
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const rules: MappingRule[] = [
+      {
+        id: "r1",
+        when: { event: "gift", giftId: 5655 },
+        action: "arena_join",
+        params: { character: "default" },
+        passCoinsAsParam: "coins",
+      },
+    ];
+    const mapping = new MappingEngine(modBridge, rules);
+
+    const evt: LiveEvent = {
+      event: "gift",
+      username: "@fan123",
+      nickname: "Fan 123",
+      giftId: 5655,
+      coins: 7,
+      timestamp: Date.now(),
+    };
+
+    const commandPromise = new Promise<any>((resolve) => {
+      modWs.on("message", (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.channel === "mod-command") resolve(msg.payload);
+      });
+    });
+
+    await mapping.handleEvent(evt);
+    const sent = await commandPromise;
+
+    expect(sent.action).toBe("arena_join");
+    expect(sent.nameTag).toBe("Fan 123"); // display name, nunca @username
+    expect(sent.params.coins).toBe(7);
+
+    modWs.close();
+  });
+
+  it("ignora streaks de regalo hasta que repeatEnd es true", async () => {
+    const port = await waitListening();
+    const modWs = await connect(port);
+    modWs.send(JSON.stringify({ channel: "mod-hello", payload: fakeCatalog }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    const rules: MappingRule[] = [
+      { id: "r1", when: { event: "gift", giftId: 5655 }, action: "arena_join", params: {} },
+    ];
+    const mapping = new MappingEngine(modBridge, rules);
+
+    let received = 0;
+    modWs.on("message", (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.channel === "mod-command") received++;
+    });
+
+    await mapping.handleEvent({
+      event: "gift",
+      username: "@fan",
+      giftId: 5655,
+      repeatEnd: false,
+      timestamp: Date.now(),
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(received).toBe(0);
+
+    modWs.close();
+  });
+
+  it("sendCommand devuelve ok:false sin bloquear si no hay mod conectado", async () => {
+    await waitListening();
+    const ack = await modBridge.sendCommand("arena_join", {});
+    expect(ack.ok).toBe(false);
+    expect(ack.error).toMatch(/no conectado/i);
+  });
+});

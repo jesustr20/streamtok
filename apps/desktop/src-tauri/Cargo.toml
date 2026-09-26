@@ -1,0 +1,32 @@
+[package]
+name = "streamtok-desktop"
+version = "0.1.0"
+description = "StreamTok — panel de acciones e integraciones para TikTok LIVE"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros"] }
+futures-util = "0.3"
+zip = "2"
+dirs = "5"
+
+# Solo se usan en Windows, pero se listan sin cfg para que `cargo metadata`
+# no se queje en otras plataformas durante el desarrollo cruzado; el código
+# que las usa está detrás de #[cfg(target_os = "windows")].
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Storage_FileSystem",
+  "Win32_Foundation",
+] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
