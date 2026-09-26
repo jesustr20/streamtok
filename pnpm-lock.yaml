@@ -71,7 +71,7 @@ importers:
         specifier: ^5.0.0
         version: 5.1.16
       tiktok-live-connector:
-        specifier: ^2.0.0
+        specifier: ^2.5.0
         version: 2.5.0
       ws:
         specifier: ^8.18.0

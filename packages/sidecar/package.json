@@ -13,7 +13,7 @@
   "dependencies": {
     "@streamtok/shared": "workspace:*",
     "nanoid": "^5.0.0",
-    "tiktok-live-connector": "^2.0.0",
+    "tiktok-live-connector": "^2.5.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
