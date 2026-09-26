@@ -1,6 +1,7 @@
 import type { LiveEvent } from "@streamtok/shared";
 import { MappingEngine, type MappingRule } from "./mapping.js";
 import { ModBridge } from "./mod-bridge.js";
+import { TikTokLiveSource } from "./tiktok-source.js";
 import { StreamTokWsServer } from "./ws-server.js";
 
 const PORT = 7331;
@@ -62,9 +63,37 @@ server.onChannel("live-event", (payload) => {
   });
 });
 
-// TODO(tiktok-live-connector): conectar acá con WebcastPushConnection cuando
-// el usuario pulse "Conectar al LIVE" desde la UI. Normalizar sus eventos a
-// LiveEvent (ver packages/shared/src/live-event.ts) y llamar
-// mapping.handleEvent(evt) — mismo camino que ya usa el Simulador.
+// TODO(ui): arrancar/parar esta conexión cuando el usuario pulse
+// "Conectar al LIVE" desde la UI (hoy solo arranca en el boot vía env).
+
+// ---------------------------------------------------------------------------
+// Conexión real a TikTok LIVE. Por ahora arranca en el boot leyendo el
+// username de TIKTOK_USERNAME (sin UI, eso es otro issue). Los eventos
+// normalizados alimentan a `mapping.handleEvent` exactamente igual que los
+// que llegan por el canal "live-event" del Simulador. Si el LIVE no está
+// disponible no se cae el proceso: se loguea y se sigue.
+// ---------------------------------------------------------------------------
+const tiktokUsername = process.env.TIKTOK_USERNAME?.trim();
+if (tiktokUsername) {
+  const tiktok = new TikTokLiveSource(tiktokUsername);
+  tiktok.on("log", (entry) => {
+    const tag = `[tiktok:${entry.level}]`;
+    // eslint-disable-next-line no-console
+    console.log(tag, entry.message, entry.details ?? "");
+  });
+  tiktok.on("event", (evt) => {
+    mapping.handleEvent(evt).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("Error procesando live-event (TikTok):", err);
+    });
+  });
+  tiktok.start().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error(`No se pudo conectar al LIVE de TikTok (@${tiktokUsername}):`, err?.message ?? err);
+  });
+} else {
+  // eslint-disable-next-line no-console
+  console.log("TIKTOK_USERNAME no configurado: no se conecta a TikTok LIVE (solo Simulador).");
+}
 
 export { modBridge, server, mapping };
