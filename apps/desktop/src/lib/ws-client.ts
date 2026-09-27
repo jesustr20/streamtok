@@ -1,8 +1,13 @@
-import type { ModAckPayload, ModHelloPayload } from "@streamtok/shared";
+import type {
+  MappingRulesMessage,
+  ModAckPayload,
+  ModHelloPayload,
+} from "@streamtok/shared";
 
 export type SidecarEvent =
   | { channel: "mod-hello"; payload: ModHelloPayload }
   | { channel: "mod-ack"; payload: ModAckPayload }
+  | { channel: "mapping-rules"; payload: MappingRulesMessage }
   | { channel: string; payload: unknown };
 
 type Listener = (evt: SidecarEvent) => void;

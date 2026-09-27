@@ -2,6 +2,7 @@ import type { ModAckPayload, ModHelloPayload } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { ActionsPanel } from "./components/ActionsPanel";
 import { InstallModButton } from "./components/InstallModButton";
+import { MappingRulesPanel } from "./components/MappingRulesPanel";
 import { ModLog } from "./components/ModLog";
 import { SidecarClient } from "./lib/ws-client";
 
@@ -9,12 +10,14 @@ export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
   const [ackLog, setAckLog] = useState<ModAckPayload[]>([]);
   const [modConnected, setModConnected] = useState(false);
+  const [client, setClient] = useState<SidecarClient | null>(null);
 
   useEffect(() => {
-    const client = new SidecarClient();
+    const c = new SidecarClient();
+    setClient(c);
     // El sidecar reenvía "mod-hello"/"mod-ack" tal cual el mod los manda —
     // sin canales aparte inventados para la UI (ver mod-bridge.ts).
-    const off = client.on((evt) => {
+    const off = c.on((evt) => {
       if (evt.channel === "mod-hello") {
         setCatalog(evt.payload as ModHelloPayload);
         setModConnected(true);
@@ -25,7 +28,7 @@ export function App() {
     });
     return () => {
       off();
-      client.destroy();
+      c.destroy();
     };
   }, []);
 
@@ -74,6 +77,8 @@ export function App() {
             Mods · GTA V Chaos Mod
           </h1>
           <ActionsPanel catalog={catalog} />
+          <h2 style={{ margin: "0 0 -8px", fontSize: 14, color: "#C4C5CC" }}>Reglas de mapeo</h2>
+          <MappingRulesPanel client={client} catalog={catalog} />
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
