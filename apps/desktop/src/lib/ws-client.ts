@@ -1,4 +1,6 @@
 import type {
+  ManualCommandRequest,
+  ManualCommandResponse,
   MappingRulesMessage,
   ModAckPayload,
   ModHelloPayload,
@@ -8,6 +10,7 @@ export type SidecarEvent =
   | { channel: "mod-hello"; payload: ModHelloPayload }
   | { channel: "mod-ack"; payload: ModAckPayload }
   | { channel: "mapping-rules"; payload: MappingRulesMessage }
+  | { channel: "manual-command"; payload: ManualCommandResponse }
   | { channel: string; payload: unknown };
 
 type Listener = (evt: SidecarEvent) => void;
@@ -54,6 +57,34 @@ export class SidecarClient {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ channel, payload }));
     }
+  }
+
+  /** Envía un `manual-command` y resuelve con la respuesta (ack o error) del
+   * sidecar. Asume una sola request en vuelo (lo que ActionsPanel garantiza:
+   * solo hay una acción expandida y el botón se deshabilita mientras espera). */
+  sendManualCommand(request: ManualCommandRequest, timeoutMs = 10000): Promise<ManualCommandResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        reject(new Error("Sidecar no conectado."));
+        return;
+      }
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      const off = this.on((evt) => {
+        if (evt.channel !== "manual-command") return;
+        off();
+        if (timer) clearTimeout(timer);
+        resolve(evt.payload as ManualCommandResponse);
+      });
+
+      timer = setTimeout(() => {
+        off();
+        reject(new Error("Sin respuesta del sidecar (timeout)."));
+      }, timeoutMs);
+
+      this.ws.send(JSON.stringify({ channel: "manual-command", payload: request }));
+    });
   }
 
   destroy() {
