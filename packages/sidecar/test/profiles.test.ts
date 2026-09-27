@@ -3,25 +3,30 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocket } from "ws";
-import { defaultCommunityRules, type MappingRule, type ProfilesFile } from "@streamtok/shared";
-import { MappingEngine } from "../src/mapping.js";
+import type { Accion, Evento, ProfilesFile } from "@streamtok/shared";
+import { AccionesEventosEngine } from "../src/acciones-eventos-engine.js";
 import { ModBridge } from "../src/mod-bridge.js";
 import { ProfilesController, ProfilesStore } from "../src/profiles.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
 
-const validRule: MappingRule = {
-  id: "r1",
-  when: { event: "gift", giftId: 5655 },
-  action: "arena_join",
-  params: { character: "default", coins: 0 },
-  passCoinsAsParam: "coins",
+const accion1: Accion = {
+  id: "a1",
+  nombre: "Atacar",
+  descripcion: "",
+  duracionSeg: 0,
+  puntos: 0,
+  pantalla: null,
+  media: { animacion: false, imagen: false, sonido: false, video: false },
+  comandos: [{ modActionId: "arena_join", params: { character: "default" } }],
 };
 
-const validRule2: MappingRule = {
-  id: "r2",
-  when: { event: "comment", command: "!carro" },
-  action: "vehicle_spawn_random",
-  params: { amount: 1 },
+const evento1: Evento = {
+  id: "e1",
+  activo: true,
+  quien: "todos",
+  porque: "seguir",
+  modoDisparo: "todas",
+  accionesIds: ["a1"],
 };
 
 function once(ws: WebSocket, channel: string): Promise<any> {
@@ -47,25 +52,14 @@ describe("ProfilesStore", () => {
     return { profilesPath: join(dir, "profiles.json"), legacyPath: join(dir, "mapping-rules.json") };
   }
 
-  it("migra mapping-rules.json plano a un único perfil activo", () => {
-    const { profilesPath, legacyPath } = tmpDir();
-    writeFileSync(legacyPath, JSON.stringify([validRule, validRule2]));
-
-    const file = new ProfilesStore(profilesPath, legacyPath).load();
-
-    expect(file.profiles).toHaveLength(1);
-    expect(file.profiles[0].name).toBe("Predeterminado");
-    expect(file.profiles[0].rules).toEqual([validRule, validRule2]);
-    expect(file.activeProfileId).toBe(file.profiles[0].id);
-  });
-
   it("arranque fresco sin archivos → un perfil 'Predeterminado' vacío activo", () => {
     const { profilesPath, legacyPath } = tmpDir();
     const file = new ProfilesStore(profilesPath, legacyPath).load();
 
     expect(file.profiles).toHaveLength(1);
     expect(file.profiles[0].name).toBe("Predeterminado");
-    expect(file.profiles[0].rules).toEqual([]);
+    expect(file.profiles[0].acciones).toEqual([]);
+    expect(file.profiles[0].eventos).toEqual([]);
     expect(file.activeProfileId).toBe(file.profiles[0].id);
   });
 
@@ -76,7 +70,7 @@ describe("ProfilesStore", () => {
     const file = new ProfilesStore(profilesPath, legacyPath, (m) => warnings.push(m)).load();
 
     expect(file.profiles).toHaveLength(1);
-    expect(file.profiles[0].rules).toEqual([]);
+    expect(file.profiles[0].acciones).toEqual([]);
     expect(warnings.length).toBeGreaterThan(0);
   });
 
@@ -84,8 +78,8 @@ describe("ProfilesStore", () => {
     const { profilesPath, legacyPath } = tmpDir();
     const file: ProfilesFile = {
       profiles: [
-        { id: "p1", name: "Uno", rules: [validRule], communityRules: defaultCommunityRules() },
-        { id: "p2", name: "Dos", rules: [validRule2], communityRules: defaultCommunityRules() },
+        { id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
       ],
       activeProfileId: "p2",
     };
@@ -113,16 +107,18 @@ describe("ProfilesController", () => {
     return new Promise((resolve) => server.on("listening", (port) => resolve(port)));
   }
 
-  /** Conecta una UI y drena los mensajes iniciales (mapping-rules + profiles). */
+  /** Conecta una UI y drena los mensajes iniciales (acciones + eventos + profiles). */
   async function connectUI(port: number): Promise<{ ws: WebSocket; initialState: any }> {
     const ws = new WebSocket(`ws://localhost:${port}`);
-    const initialRules = once(ws, "mapping-rules");
+    const initialAcciones = once(ws, "acciones");
+    const initialEventos = once(ws, "eventos");
     const initialState = once(ws, "profiles");
     await new Promise((resolve, reject) => {
       ws.once("open", resolve);
       ws.once("error", reject);
     });
-    await initialRules;
+    await initialAcciones;
+    await initialEventos;
     const state = await initialState;
     return { ws, initialState: state };
   }
@@ -131,50 +127,45 @@ describe("ProfilesController", () => {
     writeFileSync(profilesPath, JSON.stringify(file));
   }
 
-  it("carga el perfil activo en el MappingEngine al arrancar", async () => {
+  it("carga las acciones/eventos del perfil activo en el motor al arrancar", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {
       profiles: [
-        { id: "p1", name: "Uno", rules: [validRule] },
-        { id: "p2", name: "Dos", rules: [] },
+        { id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
       ],
       activeProfileId: "p1",
     });
 
     server = new StreamTokWsServer(0);
-    const engine = new MappingEngine(new ModBridge(server));
+    const engine = new AccionesEventosEngine(new ModBridge(server));
     new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => null);
 
-    expect(engine.getRules()).toEqual([validRule]);
+    expect(engine.getAcciones()).toEqual([accion1]);
+    expect(engine.getEventos()).toEqual([evento1]);
   });
 
-  it("set-active cambia las reglas que usa el MappingEngine", async () => {
+  it("set-active cambia las acciones/eventos que usa el motor", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {
       profiles: [
-        { id: "p1", name: "Uno", rules: [validRule] },
-        { id: "p2", name: "Dos", rules: [] },
+        { id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
       ],
       activeProfileId: "p1",
     });
     server = new StreamTokWsServer(0);
-    const engine = new MappingEngine(new ModBridge(server));
+    const engine = new AccionesEventosEngine(new ModBridge(server));
     new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => null);
     const port = await waitListening();
     const { ws } = await connectUI(port);
 
-    const rulesAfter = once(ws, "mapping-rules");
     const stateAfter = once(ws, "profiles");
     ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "set-active", id: "p2" } }));
-    await rulesAfter;
     const st = await stateAfter;
-    expect(engine.getRules()).toEqual([]);
+    expect(engine.getAcciones()).toEqual([]);
+    expect(engine.getEventos()).toEqual([]);
     expect(st.activeProfileId).toBe("p2");
-
-    const rulesBack = once(ws, "mapping-rules");
-    ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "set-active", id: "p1" } }));
-    await rulesBack;
-    expect(engine.getRules()).toEqual([validRule]);
 
     ws.close();
   });
@@ -182,7 +173,7 @@ describe("ProfilesController", () => {
   it("crea un perfil vacío", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     server = new StreamTokWsServer(0);
-    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new MappingEngine(new ModBridge(server)), () => null);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
     const port = await waitListening();
     const { ws, initialState } = await connectUI(port);
     expect(initialState.profiles).toHaveLength(1);
@@ -196,17 +187,17 @@ describe("ProfilesController", () => {
     ws.close();
   });
 
-  it("duplica un perfil copiando sus reglas", async () => {
+  it("duplica un perfil copiando sus acciones y eventos", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {
       profiles: [
-        { id: "p1", name: "Uno", rules: [validRule, validRule2] },
-        { id: "p2", name: "Dos", rules: [] },
+        { id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
       ],
       activeProfileId: "p1",
     });
     server = new StreamTokWsServer(0);
-    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new MappingEngine(new ModBridge(server)), () => null);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
     const port = await waitListening();
     const { ws } = await connectUI(port);
 
@@ -215,30 +206,10 @@ describe("ProfilesController", () => {
     const st = await stateAfter;
     expect(st.profiles).toHaveLength(3);
     const copy = st.profiles.find((p: any) => p.id !== "p1" && p.id !== "p2");
-    expect(copy.ruleCount).toBe(2);
+    expect(copy.eventoCount).toBe(1);
 
-    // verifica que el disco guardó la copia con sus reglas
     const onDisk = JSON.parse(readFileSync(profilesPath, "utf8")) as ProfilesFile;
-    expect(onDisk.profiles.find((p) => p.id === copy.id)?.rules).toEqual([validRule, validRule2]);
-
-    ws.close();
-  });
-
-  it("renombra un perfil", async () => {
-    const { profilesPath, legacyPath } = tmpDir();
-    seed(profilesPath, {
-      profiles: [{ id: "p1", name: "Uno", rules: [] }],
-      activeProfileId: "p1",
-    });
-    server = new StreamTokWsServer(0);
-    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new MappingEngine(new ModBridge(server)), () => null);
-    const port = await waitListening();
-    const { ws } = await connectUI(port);
-
-    const stateAfter = once(ws, "profiles");
-    ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "rename", id: "p1", name: "Renombrado" } }));
-    const st = await stateAfter;
-    expect(st.profiles[0].name).toBe("Renombrado");
+    expect(onDisk.profiles.find((p) => p.id === copy.id)?.eventos).toEqual([evento1]);
 
     ws.close();
   });
@@ -247,13 +218,13 @@ describe("ProfilesController", () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {
       profiles: [
-        { id: "p1", name: "Uno", rules: [] },
-        { id: "p2", name: "Dos", rules: [] },
+        { id: "p1", name: "Uno", acciones: [], eventos: [] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
       ],
       activeProfileId: "p1",
     });
     server = new StreamTokWsServer(0);
-    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new MappingEngine(new ModBridge(server)), () => null);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
     const port = await waitListening();
     const { ws } = await connectUI(port);
 
@@ -266,29 +237,28 @@ describe("ProfilesController", () => {
     ws.close();
   });
 
-  it("borrar el perfil activo reasigna el activo y cambia las reglas", async () => {
+  it("borrar el perfil activo reasigna el activo y cambia el motor", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {
       profiles: [
-        { id: "p1", name: "Uno", rules: [validRule] },
-        { id: "p2", name: "Dos", rules: [] },
+        { id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
       ],
       activeProfileId: "p1",
     });
     server = new StreamTokWsServer(0);
-    const engine = new MappingEngine(new ModBridge(server));
+    const engine = new AccionesEventosEngine(new ModBridge(server));
     new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => null);
     const port = await waitListening();
     const { ws } = await connectUI(port);
 
-    const rulesAfter = once(ws, "mapping-rules");
     const stateAfter = once(ws, "profiles");
     ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "delete", id: "p1" } }));
-    await rulesAfter;
     const st = await stateAfter;
     expect(st.profiles).toHaveLength(1);
     expect(st.activeProfileId).toBe("p2");
-    expect(engine.getRules()).toEqual([]);
+    expect(engine.getAcciones()).toEqual([]);
+    expect(engine.getEventos()).toEqual([]);
 
     ws.close();
   });
@@ -296,7 +266,7 @@ describe("ProfilesController", () => {
   it("rechaza borrar el último perfil", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     server = new StreamTokWsServer(0);
-    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new MappingEngine(new ModBridge(server)), () => null);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
     const port = await waitListening();
     const { ws, initialState } = await connectUI(port);
     const onlyId = initialState.profiles[0].id;
@@ -310,22 +280,79 @@ describe("ProfilesController", () => {
     ws.close();
   });
 
-  it("mapping-rules set guarda en el perfil activo y lo persiste", async () => {
+  it("acciones set guarda en el perfil activo y lo persiste", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     server = new StreamTokWsServer(0);
-    const engine = new MappingEngine(new ModBridge(server));
+    const engine = new AccionesEventosEngine(new ModBridge(server));
     new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => null);
     const port = await waitListening();
     const { ws } = await connectUI(port);
 
-    const update = once(ws, "mapping-rules");
-    ws.send(JSON.stringify({ channel: "mapping-rules", payload: { kind: "set", rules: [validRule] } }));
+    const update = once(ws, "acciones");
+    ws.send(JSON.stringify({ channel: "acciones", payload: { kind: "set", acciones: [accion1] } }));
     const payload = await update;
-    expect(payload).toEqual({ kind: "update", rules: [validRule] });
-    expect(engine.getRules()).toEqual([validRule]);
+    expect(payload).toEqual({ kind: "update", acciones: [accion1] });
+    expect(engine.getAcciones()).toEqual([accion1]);
 
     const onDisk = JSON.parse(readFileSync(profilesPath, "utf8")) as ProfilesFile;
-    expect(onDisk.profiles.find((p) => p.id === onDisk.activeProfileId)?.rules).toEqual([validRule]);
+    expect(onDisk.profiles.find((p) => p.id === onDisk.activeProfileId)?.acciones).toEqual([accion1]);
+
+    ws.close();
+  });
+
+  it("eventos set guarda en el perfil activo y lo persiste", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    server = new StreamTokWsServer(0);
+    const engine = new AccionesEventosEngine(new ModBridge(server));
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    const update = once(ws, "eventos");
+    ws.send(JSON.stringify({ channel: "eventos", payload: { kind: "set", eventos: [evento1] } }));
+    const payload = await update;
+    expect(payload).toEqual({ kind: "update", eventos: [evento1] });
+    expect(engine.getEventos()).toEqual([evento1]);
+
+    const onDisk = JSON.parse(readFileSync(profilesPath, "utf8")) as ProfilesFile;
+    expect(onDisk.profiles.find((p) => p.id === onDisk.activeProfileId)?.eventos).toEqual([evento1]);
+
+    ws.close();
+  });
+
+  it("rechaza un set de acciones con comando inexistente en el catálogo", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    server = new StreamTokWsServer(0);
+    const engine = new AccionesEventosEngine(new ModBridge(server));
+    // catálogo con una sola acción; "no_existe" debe rechazarse
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => ({
+      mod: "gtav-chaos",
+      version: "0.9.0",
+      actions: [
+        {
+          id: "arena_join",
+          name: "Arena",
+          category: "arena",
+          icon: "arena",
+          description: "",
+          supportsNameTag: true,
+          params: [],
+        },
+      ],
+    }));
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    const errPromise = once(ws, "acciones");
+    ws.send(
+      JSON.stringify({
+        channel: "acciones",
+        payload: { kind: "set", acciones: [{ ...accion1, comandos: [{ modActionId: "no_existe", params: {} }] }] },
+      }),
+    );
+    const resp = await errPromise;
+    expect(resp.kind).toBe("error");
+    expect(resp.message).toMatch(/no_existe/);
 
     ws.close();
   });

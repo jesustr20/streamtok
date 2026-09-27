@@ -1,10 +1,8 @@
 import type { ModAckPayload, ModHelloPayload } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { ActionsPanel } from "./components/ActionsPanel";
-import { CommunityRulesPanel } from "./components/CommunityRulesPanel";
 import { EventQueuePanel } from "./components/EventQueuePanel";
 import { InstallModButton } from "./components/InstallModButton";
-import { MappingRulesPanel } from "./components/MappingRulesPanel";
 import { ModLog } from "./components/ModLog";
 import { ProfilesPanel } from "./components/ProfilesPanel";
 import { SidecarClient } from "./lib/ws-client";
@@ -81,10 +79,9 @@ export function App() {
           </h1>
           <ActionsPanel catalog={catalog} client={client} />
           <ProfilesPanel client={client} />
-          <h2 style={{ margin: "0 0 -8px", fontSize: 14, color: "#C4C5CC" }}>Reglas de mapeo</h2>
-          <MappingRulesPanel client={client} catalog={catalog} />
-          <h2 style={{ margin: "0 0 -8px", fontSize: 14, color: "#C4C5CC" }}>Reglas de comunidad</h2>
-          <CommunityRulesPanel client={client} catalog={catalog} />
+          {/* TODO(issue futuro): paneles de Acciones y Eventos (ADR 0004).
+              Los paneles viejos de reglas de mapeo / reglas de comunidad se
+              retiraron junto con sus canales. */}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>

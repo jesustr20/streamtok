@@ -1,5 +1,4 @@
 import type {
-  CommunityRuleKind,
   EventLogEntry,
   EventLogReason,
   LiveEventTypeT,
@@ -7,10 +6,10 @@ import type {
 
 /**
  * Cola de eventos (issue #17). Funciones/estructuras puras reutilizables para
- * armar las entradas y acotar el buffer. La emisión vive en `MappingEngine`
- * (mapping.ts) y la persistencia del buffer + canal WS en `ProfilesController`
- * (profiles.ts). No hay persistencia en disco: es in-memory y se pierde al
- * reiniciar el sidecar.
+ * armar las entradas y acotar el buffer. La emisión vive en
+ * `AccionesEventosEngine` (acciones-eventos-engine.ts) y la persistencia del
+ * buffer + canal WS en `ProfilesController` (profiles.ts). No hay persistencia
+ * en disco: es in-memory y se pierde al reiniciar el sidecar.
  */
 
 /** Tamaño máximo de la cola (entradas más viejas se descartan). */
@@ -25,14 +24,6 @@ export const EVENT_LABELS: Record<LiveEventTypeT, string> = {
   share: "compartir",
   join: "entrada al live",
   subscribe: "suscripción",
-};
-
-/** Etiquetas cortas para los slots de comunidad (mensajes del log). */
-export const COMMUNITY_LABELS: Record<CommunityRuleKind, string> = {
-  follow: "seguir",
-  share: "compartir",
-  superfan: "superfan",
-  like: "likes",
 };
 
 /**

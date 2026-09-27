@@ -69,9 +69,9 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
 | Canal | Qué hace |
 |---|---|
 | `manual-command` | Botón "Probar acción" — ejecuta una acción del catálogo a mano |
-| `mapping-rules` | Reglas evento→acción (Regalos y Eventos), scoped al perfil activo |
 | `profiles` | Perfiles de configuración por mod (crear/duplicar/renombrar/borrar/activar) |
-| `community-rules` | Las 4 reglas fijas de comunidad (Seguir/Compartir/SuperFan/Likes) |
+| `acciones` | Acciones (qué pasa) del perfil activo — ADR 0004 |
+| `eventos` | Eventos (qué lo dispara) del perfil activo — ADR 0004 |
 | `event-log` | Log en vivo (no persistente) de qué disparó o descartó el motor y por qué |
 
 ## Qué ya funciona
@@ -79,21 +79,18 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
 - **Conexión real a TikTok LIVE** (`tiktok-live-connector`), normalizando
   gift/like/follow/share/comment/subscribe a `LiveEvent`, con manejo de
   rachas de regalos (aplica el efecto solo al cerrar la racha)
-- **Motor de mapeo evento→acción** (`MappingEngine`, `packages/sidecar/src/mapping.ts`)
-  que evalúa mapping-rules y community-rules, fuerza `nameTag`+`coins` donde
-  el contrato lo exige, y emite un log de cada decisión (disparado o
-  descartado, con el motivo real: sin regla, mod no conectado, cola llena,
-  timeout de ack, regalo en racha, umbral de likes no alcanzado)
-- **Wizard de 3 pasos** para crear/editar reglas de mapeo (evento → acción
-  del catálogo del mod → parámetros tipados), reemplazando el editor de JSON
-  crudo inicial
+- **Motor genérico de Acciones y Eventos** (ADR 0004,
+  `packages/sidecar/src/acciones-eventos-engine.ts`) que evalúa los Eventos
+  activos del perfil activo contra cada `LiveEvent`, dispara las Acciones
+  referenciadas (con `modoDisparo` todas/unaAlAzar y umbral "cada N likes"),
+  fuerza `nameTag`+`coins` donde el contrato lo exige, y emite un log de cada
+  decisión (disparado o descartado, con el motivo real: sin evento, mod no
+  conectado, cola llena, timeout de ack, regalo en racha, umbral de likes no
+  alcanzado, acción borrada)
+- **Migración sin pérdida** desde instalaciones anteriores (`MappingRule` y
+  `CommunityRule` → Acciones/Eventos), idempotente y cubierta por tests
 - **Perfiles de configuración por mod** — varios perfiles nombrados, cada
-  uno con sus propias reglas, solo uno activo a la vez; migración automática
-  y sin pérdida de datos desde instalaciones anteriores a esta feature
-- **Reglas de Comunidad** — 4 slots fijos (Seguir, Compartir, SuperFan,
-  Likes) siempre presentes, cada uno con su acción asignada y un
-  habilitado/deshabilitado; Likes con un umbral configurable ("cada N
-  likes")
+  uno con sus propias acciones/eventos, solo uno activo a la vez
 - **Panel "Eventos y Cola"** — log en vivo (in-memory, últimas 50 entradas,
   no persistente) de lo que el motor decidió por cada evento
 - **Editor de parámetros tipado** (`ParamEditor`) — enum→select, bool→switch,
@@ -118,9 +115,12 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
   instalados) — hoy la app asume un solo mod activo
 - **Overlay server** — servir una URL local para pegar como fuente en OBS /
   TikTok LIVE Studio
-- **Motor de Acciones y Eventos generales** (alertas, TTS, animaciones,
-  webhooks, RCON, OBS, keystrokes) — el subsistema más grande pendiente,
-  deliberadamente dejado para el final
+- **UI de Acciones y Eventos**: el motor genérico (ADR 0004) ya existe, pero
+  la UI nueva para crear/editar Acciones y Eventos es un issue futuro (se
+  retiraron los paneles viejos de reglas de mapeo/comunidad)
+- **Acciones generales** (alertas, TTS, animaciones, webhooks, RCON, OBS,
+  keystrokes) — los `comandos` hoy solo despachan comandos del mod de GTA V;
+  el resto de tipos de acción queda para el final
 - Sin pasada de diseño visual dedicada — v1 es de uso personal; si hay
   clientes de pago más adelante, se rediseña el frontend reusando el mismo
   backend/sidecar como módulo
@@ -135,6 +135,10 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
   pasa a operar implícitamente sobre el perfil activo
 - [`0003`](docs/adr/0003-reglas-comunidad.md) — Reglas de Comunidad como
   concepto propio (no reutiliza `MappingRule`), scoped al perfil activo
+  (superseded por 0004)
+- [`0004`](docs/adr/0004-motor-generico-acciones-eventos.md) — motor genérico
+  de Acciones y Eventos que reemplaza a `MappingRule` y `CommunityRule`, con
+  migración sin pérdida de datos
 
 ## Desarrollo
 

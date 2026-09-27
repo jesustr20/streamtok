@@ -1,22 +1,20 @@
 import { z } from "zod";
-import { CommunityRulesSchema } from "./community-rule.js";
-import { MappingRuleSchema } from "./mapping-rule.js";
+import { AccionSchema } from "./action.js";
+import { EventoSchema } from "./event.js";
 
 /**
- * Perfiles de configuración de reglas de mapeo (ADR 0002). Concepto UI↔sidecar:
- * un mod puede tener varios perfiles nombrados, cada uno con su propio
- * `MappingRule[]`, y solo uno activo a la vez. NO forma parte del protocolo del
- * mod (mod-protocol.ts).
+ * Perfiles de configuración (ADR 0002, ADR 0004). Concepto UI↔sidecar:
+ * un mod puede tener varios perfiles nombrados, cada uno con sus propias
+ * Acciones y Eventos, y solo uno activo a la vez. NO forma parte del protocolo
+ * del mod (mod-protocol.ts).
  */
 
 /** Un perfil completo (como se persiste en profiles.json). */
 export const ProfileSchema = z.object({
   id: z.string(),
   name: z.string(),
-  rules: z.array(MappingRuleSchema),
-  // Opcional en disco: los perfiles anteriores a ADR 0003 no lo tienen y el
-  // sidecar los completa con `defaultCommunityRules()` al cargar.
-  communityRules: CommunityRulesSchema.optional(),
+  acciones: z.array(AccionSchema),
+  eventos: z.array(EventoSchema),
 });
 export type Profile = z.infer<typeof ProfileSchema>;
 
@@ -27,19 +25,19 @@ export const ProfilesFileSchema = z.object({
 });
 export type ProfilesFile = z.infer<typeof ProfilesFileSchema>;
 
-/** Metadato de perfil que viaja por WS (las reglas no se duplican: van por
- * el canal `mapping-rules`). */
+/** Metadato de perfil que viaja por WS (las acciones/eventos no se duplican:
+ * van por los canales `acciones`/`eventos`). */
 export const ProfileSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
-  ruleCount: z.number(),
+  eventoCount: z.number(),
 });
 export type ProfileSummary = z.infer<typeof ProfileSummarySchema>;
 
 /**
  * Canal WS `profiles` (UI ↔ sidecar). Requests del cliente:
  *  - `create {name}`     crear perfil vacío.
- *  - `duplicate {id}`    duplicar perfil (copia profunda de sus reglas).
+ *  - `duplicate {id}`    duplicar perfil (copia profunda de sus acciones/eventos).
  *  - `rename {id,name}`  renombrar.
  *  - `delete {id}`       borrar (se rechaza si es el último).
  *  - `set-active {id}`   marcar activo.

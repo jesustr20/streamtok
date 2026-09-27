@@ -1,13 +1,10 @@
 import { z } from "zod";
 
 /**
- * Reglas de comunidad (ADR 0003). Concepto UI↔sidecar, NO en mod-protocol.ts.
- * A diferencia de las reglas de mapeo (lista abierta que el usuario crea/borra),
- * estas son exactamente 4 filas fijas que siempre existen y solo se configuran:
- *   - Seguir (follow)   → LiveEvent "follow"
- *   - Compartir (share) → LiveEvent "share"
- *   - SuperFan (superfan) → LiveEvent "subscribe"
- *   - Likes (like)      → LiveEvent "like"
+ * Reglas de comunidad (ADR 0003). **Legacy** — ADR 0003 fue reemplazada por el
+ * motor genérico de Acciones/Eventos (ADR 0004): los 4 slots de comunidad son
+ * ahora Eventos normales (`seguir`/`compartir`/`suscribirse`/`likes`). Los
+ * schemas se conservan únicamente para la migración de datos viejos.
  */
 
 /** Orden canónico de las 4 filas (para UI y migración). */
@@ -50,16 +47,3 @@ export function defaultCommunityRules(): CommunityRules {
     like: { ...defaultCommunityRule(), everyNLikes: 1 },
   };
 }
-
-/**
- * Canal WS `community-rules` (UI ↔ sidecar). Mismo patrón que `mapping-rules`:
- *  - `set`     UI → sidecar: el objeto completo a guardar (perfil activo).
- *  - `update`  sidecar → UI: el objeto vigente (broadcast y a clientes tardíos).
- *  - `error`   sidecar → UI: rechazo de un `set` inválido.
- */
-export const CommunityRulesMessageSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("set"), rules: CommunityRulesSchema }),
-  z.object({ kind: z.literal("update"), rules: CommunityRulesSchema }),
-  z.object({ kind: z.literal("error"), message: z.string() }),
-]);
-export type CommunityRulesMessage = z.infer<typeof CommunityRulesMessageSchema>;

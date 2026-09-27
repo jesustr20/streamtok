@@ -22,8 +22,9 @@ type TiktokConnectionHandle = {
 /**
  * Conecta con el LIVE de TikTok vía tiktok-live-connector y normaliza sus
  * eventos (chat, gift, like, follow, share, member, subscribe) a `LiveEvent`
- * (packages/shared/src/live-event.ts). Esto es upstream de MappingEngine:
- * no inventa canales WS ni toca el protocolo del mod.
+ * (packages/shared/src/live-event.ts). Esto es upstream del motor de Acciones
+ * y Eventos (acciones-eventos-engine.ts): no inventa canales WS ni toca el
+ * protocolo del mod.
  */
 
 /** Nombres de evento tal cual los emite tiktok-live-connector (v2.5.0). */
@@ -50,7 +51,7 @@ function asRecord(value: unknown): RawRecord {
 
 /**
  * Extrae identidad del viewer. `username` es el `@handle` (displayId de
- * TikTok) y `nickname` el display name real — que es lo que MappingEngine usa
+ * TikTok) y `nickname` el display name real — que es lo que el motor usa
  * como `nameTag`. Si no hay handle, devuelve `username: null` (evento sin
  * remitente identificable → se descarta).
  */
@@ -84,7 +85,7 @@ function mapGift(raw: RawRecord): LiveEvent | null {
 
   // Streaks de regalo: tiktok-live-connector emite eventos intermedios
   // (repeatEnd: 0) y un evento final (repeatEnd: 1). Solo el final dispara
-  // handleEvent — mismo convenio que MappingEngine con `repeatEnd`.
+  // handleEvent — mismo convenio que el motor con `repeatEnd`.
   const repeatEnd = raw.repeatEnd === 1 || raw.repeatEnd === true;
   const giftType = raw.gift?.type;
   if (giftType === 1 && !repeatEnd) return null;

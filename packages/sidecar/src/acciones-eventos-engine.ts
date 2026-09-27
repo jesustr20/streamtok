@@ -1,0 +1,284 @@
+import { EventEmitter } from "node:events";
+import { nanoid } from "nanoid";
+import type {
+  Accion,
+  Evento,
+  EventoPorque,
+  EventLogEntry,
+  LiveEvent,
+  ModAckPayload,
+} from "@streamtok/shared";
+import { isArenaAction } from "@streamtok/shared";
+import { EVENT_LABELS, reasonForCommandError } from "./event-log.js";
+import type { ModBridge } from "./mod-bridge.js";
+
+export type { Accion, Evento } from "@streamtok/shared";
+
+/**
+ * Motor genérico de Acciones y Eventos (ADR 0004). Reemplaza a `MappingEngine`
+ * y a las reglas de comunidad: evalúa todos los Eventos activos del perfil
+ * activo contra cada `LiveEvent`, y dispara las Acciones referenciadas.
+ *
+ * Emite `"event-log"` (EventLogEntry) por cada decisión que toma (Evento/Acción
+ * disparados, o descarte y por qué) — ver issue #17.
+ */
+
+/** Etiquetas cortas en español para cada `porque` (mensajes del log). */
+export const PORQUE_LABELS: Record<EventoPorque, string> = {
+  unirse: "unirse",
+  primeraActividad: "primera actividad",
+  compartir: "compartir",
+  seguir: "seguir",
+  suscribirse: "suscribirse",
+  likes: "likes",
+  chat: "chat",
+  comando: "comando",
+  regaloValorMinimo: "regalo",
+  regaloEspecifico: "regalo",
+  emoteSuscriptor: "emote suscriptor",
+  stickerFanClub: "sticker fan club",
+  compraTiktokShop: "compra TikTok Shop",
+};
+
+function normalizeHandle(value: string): string {
+  const trimmed = value.trim();
+  return (trimmed.startsWith("@") ? trimmed.slice(1) : trimmed).toLowerCase();
+}
+
+function quienMatches(ev: Evento, live: LiveEvent): boolean {
+  switch (ev.quien) {
+    case "todos":
+      return true;
+    case "usuarioEspecifico":
+      if (!ev.usuarioEspecifico) return false;
+      return normalizeHandle(live.username) === normalizeHandle(ev.usuarioEspecifico);
+    case "seguidor":
+    case "suscriptor":
+    case "moderador":
+    case "donanteTop":
+      // Sin metadata de viewer en LiveEvent (fuera de alcance); no coinciden aún.
+      return false;
+  }
+}
+
+function porqueMatches(ev: Evento, live: LiveEvent): boolean {
+  switch (ev.porque) {
+    case "unirse":
+      return live.event === "join";
+    case "primeraActividad":
+      return false; // sin dato equivalente en LiveEvent
+    case "compartir":
+      return live.event === "share";
+    case "seguir":
+      return live.event === "follow";
+    case "suscribirse":
+      return live.event === "subscribe";
+    case "likes":
+      return live.event === "like";
+    case "chat":
+      return live.event === "comment";
+    case "comando": {
+      if (live.event !== "comment") return false;
+      const command = (ev.comando ?? "").trim().toLowerCase();
+      if (!command) return false;
+      return live.text?.trim().toLowerCase().startsWith(command) ?? false;
+    }
+    case "regaloValorMinimo": {
+      if (live.event !== "gift") return false;
+      const min = ev.valorMinimoMonedas ?? 1;
+      return (live.coins ?? 0) >= min;
+    }
+    case "regaloEspecifico": {
+      if (live.event !== "gift") return false;
+      if (ev.giftId && String(live.giftId ?? "") === ev.giftId) return true;
+      if (ev.giftName && live.giftName === ev.giftName) return true;
+      return false;
+    }
+    case "emoteSuscriptor":
+      return false; // sin dato equivalente en LiveEvent
+    case "stickerFanClub":
+      return false; // sin dato equivalente en LiveEvent
+    case "compraTiktokShop":
+      return false; // sin dato equivalente en LiveEvent
+  }
+}
+
+function matchesEvento(ev: Evento, live: LiveEvent): boolean {
+  return quienMatches(ev, live) && porqueMatches(ev, live);
+}
+
+function sanitizeCommandParams(
+  params: Record<string, unknown>,
+): Record<string, number | string | boolean> {
+  const out: Record<string, number | string | boolean> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+export class AccionesEventosEngine extends EventEmitter {
+  private acciones: Accion[] = [];
+  private eventos: Evento[] = [];
+  /** Likes acumulados por Evento (para "cada N likes"). */
+  private likeCounts = new Map<string, number>();
+
+  constructor(private modBridge: ModBridge) {
+    super();
+  }
+
+  setAcciones(acciones: Accion[]) {
+    this.acciones = acciones;
+  }
+
+  getAcciones(): Accion[] {
+    return this.acciones;
+  }
+
+  setEventos(eventos: Evento[]) {
+    this.eventos = eventos;
+    this.likeCounts.clear();
+  }
+
+  getEventos(): Evento[] {
+    return this.eventos;
+  }
+
+  /** Se llama por cada LiveEvent normalizado que llega del sidecar de TikTok. */
+  async handleEvent(evt: LiveEvent) {
+    // Streaks de regalo: solo actuar cuando termina el combo.
+    if (evt.event === "gift" && evt.repeatEnd === false) {
+      this.emitEntry({
+        status: "discarded",
+        event: evt.event,
+        reason: "gift-in-progress",
+        message: "regalo en combo (se ignora hasta el fin del streak)",
+      });
+      return;
+    }
+
+    let matched = false;
+
+    for (const evento of this.eventos) {
+      if (!evento.activo) continue;
+      if (!matchesEvento(evento, evt)) continue;
+      matched = true;
+
+      // Umbral de likes ("cada N likes"): acumular y solo disparar al alcanzarlo.
+      if (evento.porque === "likes" && evt.event === "like") {
+        const n = evento.cantidadMinimaLikes ?? 15;
+        const count = (this.likeCounts.get(evento.id) ?? 0) + 1;
+        this.likeCounts.set(evento.id, count);
+        if (count % n !== 0) {
+          this.emitEntry({
+            status: "discarded",
+            event: "like",
+            reason: "like-threshold",
+            eventoId: evento.id,
+            message: `like acumulado (${count % n}/${n})`,
+          });
+          continue;
+        }
+      }
+
+      await this.fireEvento(evento, evt);
+    }
+
+    if (!matched) {
+      this.emitEntry({
+        status: "discarded",
+        event: evt.event,
+        reason: "no-match",
+        message: `sin evento que coincida con ${EVENT_LABELS[evt.event]}`,
+      });
+    }
+  }
+
+  private async fireEvento(evento: Evento, evt: LiveEvent) {
+    const ids =
+      evento.modoDisparo === "unaAlAzar" && evento.accionesIds.length > 0
+        ? [pickRandom(evento.accionesIds)]
+        : evento.accionesIds;
+
+    for (const accionId of ids) {
+      const accion = this.acciones.find((a) => a.id === accionId);
+      if (!accion) {
+        this.emitEntry({
+          status: "discarded",
+          event: evt.event,
+          reason: "accion-no-encontrada",
+          eventoId: evento.id,
+          message: `acción "${accionId}" no encontrada (¿fue borrada?)`,
+        });
+        continue;
+      }
+      await this.executeAccion(evento, accion, evt);
+    }
+  }
+
+  private async executeAccion(evento: Evento, accion: Accion, evt: LiveEvent) {
+    for (const comando of accion.comandos) {
+      const ack = await this.dispatchCommand(comando.modActionId, comando.params, evt);
+      this.emitCommandOutcome(ack, evt, {
+        modActionId: comando.modActionId,
+        accionId: accion.id,
+        eventoId: evento.id,
+        porque: evento.porque,
+      });
+    }
+  }
+
+  private async dispatchCommand(
+    modActionId: string,
+    params: Record<string, unknown>,
+    evt: LiveEvent,
+  ): Promise<ModAckPayload> {
+    const nameTag = evt.nickname ?? evt.username;
+    const isArena = isArenaAction(modActionId);
+
+    // Contrato: en arena_* la app DEBE mandar nameTag (y coins vía params).
+    const opts: { nameTag?: string; notify?: string } = {};
+    if (isArena || this.modBridge.getAction(modActionId)?.supportsNameTag) {
+      opts.nameTag = nameTag;
+    }
+
+    return this.modBridge.sendCommand(modActionId, sanitizeCommandParams(params), opts);
+  }
+
+  private emitCommandOutcome(
+    ack: ModAckPayload,
+    evt: LiveEvent,
+    ctx: { modActionId: string; accionId: string; eventoId: string; porque: EventoPorque },
+  ) {
+    if (ack.ok) {
+      this.emitEntry({
+        status: "fired",
+        event: evt.event,
+        action: ctx.modActionId,
+        accionId: ctx.accionId,
+        eventoId: ctx.eventoId,
+        message: `${PORQUE_LABELS[ctx.porque]} → ${ctx.modActionId}`,
+      });
+    } else {
+      this.emitEntry({
+        status: "discarded",
+        event: evt.event,
+        action: ctx.modActionId,
+        accionId: ctx.accionId,
+        eventoId: ctx.eventoId,
+        reason: reasonForCommandError(ack.error),
+        message: `no se pudo enviar ${ctx.modActionId}: ${ack.error ?? "sin detalle"}`,
+      });
+    }
+  }
+
+  private emitEntry(entry: Omit<EventLogEntry, "id" | "at">) {
+    this.emit("event-log", { id: nanoid(), at: Date.now(), ...entry } satisfies EventLogEntry);
+  }
+}

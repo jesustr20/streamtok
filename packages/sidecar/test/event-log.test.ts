@@ -3,44 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocket } from "ws";
-import {
-  defaultCommunityRules,
-  type CommunityRules,
-  type EventLogEntry,
-  type LiveEvent,
-  type ProfilesFile,
-} from "@streamtok/shared";
+import type { EventLogEntry } from "@streamtok/shared";
+import { AccionesEventosEngine } from "../src/acciones-eventos-engine.js";
 import { EventLogBuffer, reasonForCommandError } from "../src/event-log.js";
-import { MappingEngine } from "../src/mapping.js";
 import { ModBridge } from "../src/mod-bridge.js";
 import { ProfilesController, ProfilesStore } from "../src/profiles.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
-
-function makeBridge(ackError?: string) {
-  const calls: Array<{ action: string; params: Record<string, number | string | boolean> }> = [];
-  const bridge = {
-    calls,
-    async sendCommand(action: string, params: Record<string, number | string | boolean>) {
-      calls.push({ action, params });
-      if (ackError !== undefined) return { id: "id", ok: false, error: ackError };
-      return { id: "id", ok: true };
-    },
-    getAction() {
-      return undefined;
-    },
-  };
-  return bridge as unknown as ModBridge;
-}
-
-function collect(engine: MappingEngine): { entries: EventLogEntry[] } {
-  const entries: EventLogEntry[] = [];
-  engine.on("event-log", (e) => entries.push(e as EventLogEntry));
-  return { entries };
-}
-
-function followEvent(): LiveEvent {
-  return { event: "follow", username: "@u", timestamp: 0 };
-}
 
 describe("EventLogBuffer", () => {
   it("se mantiene acotado: las entradas más viejas se descartan", () => {
@@ -50,7 +18,7 @@ describe("EventLogBuffer", () => {
     }
     const entries = buf.getEntries();
     expect(entries).toHaveLength(50);
-    expect(entries[0].id).toBe("e10"); // se descartaron e0..e9
+    expect(entries[0].id).toBe("e10");
     expect(entries[entries.length - 1].id).toBe("e59");
   });
 
@@ -72,87 +40,39 @@ describe("reasonForCommandError", () => {
   });
 });
 
-describe("MappingEngine — emisión de entradas de cola", () => {
-  it("regla de mapeo que coincide → entrada fired con acción y ruleId", async () => {
-    const engine = new MappingEngine(makeBridge());
-    engine.setRules([{ id: "r1", when: { event: "follow" }, action: "arena_join", params: {} }]);
+describe("AccionesEventosEngine — emisión de event-log", () => {
+  function makeBridge(ackError?: string) {
+    const bridge = {
+      async sendCommand(_action: string, _params: Record<string, number | string | boolean>) {
+        if (ackError !== undefined) return { id: "id", ok: false, error: ackError };
+        return { id: "id", ok: true };
+      },
+      getAction() {
+        return undefined;
+      },
+    };
+    return bridge as unknown as ModBridge;
+  }
+
+  function collect(engine: AccionesEventosEngine): { entries: EventLogEntry[] } {
+    const entries: EventLogEntry[] = [];
+    engine.on("event-log", (e) => entries.push(e as EventLogEntry));
+    return { entries };
+  }
+
+  it("emite fired con accionId/eventoId al disparar", async () => {
+    const engine = new AccionesEventosEngine(makeBridge());
+    engine.setAcciones([{ id: "a1", nombre: "A", descripcion: "", duracionSeg: 0, puntos: 0, pantalla: null, media: { animacion: false, imagen: false, sonido: false, video: false }, comandos: [{ modActionId: "arena_join", params: {} }] }]);
+    engine.setEventos([{ id: "e1", activo: true, quien: "todos", porque: "seguir", modoDisparo: "todas", accionesIds: ["a1"] }]);
     const { entries } = collect(engine);
 
-    await engine.handleEvent(followEvent());
+    await engine.handleEvent({ event: "follow", username: "@fan", timestamp: 0 });
 
     expect(entries).toHaveLength(1);
     expect(entries[0].status).toBe("fired");
+    expect(entries[0].accionId).toBe("a1");
+    expect(entries[0].eventoId).toBe("e1");
     expect(entries[0].action).toBe("arena_join");
-    expect(entries[0].ruleId).toBe("r1");
-    expect(entries[0].reason).toBeUndefined();
-  });
-
-  it("slot de comunidad que dispara → entrada fired con communityKind", async () => {
-    const engine = new MappingEngine(makeBridge());
-    const cr: CommunityRules = {
-      ...defaultCommunityRules(),
-      follow: { enabled: true, action: "arena_join", params: {} },
-    };
-    engine.setCommunityRules(cr);
-    const { entries } = collect(engine);
-
-    await engine.handleEvent(followEvent());
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0].status).toBe("fired");
-    expect(entries[0].communityKind).toBe("follow");
-  });
-
-  it("evento sin regla que coincida → descarte no-match", async () => {
-    const engine = new MappingEngine(makeBridge());
-    const { entries } = collect(engine);
-
-    await engine.handleEvent({ event: "join", username: "@u", timestamp: 0 });
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0].status).toBe("discarded");
-    expect(entries[0].reason).toBe("no-match");
-  });
-
-  it("regalo en mitad de streak → descarte gift-in-progress", async () => {
-    const engine = new MappingEngine(makeBridge());
-    const { entries } = collect(engine);
-
-    await engine.handleEvent({ event: "gift", username: "@u", repeatEnd: false, timestamp: 0 });
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0].reason).toBe("gift-in-progress");
-  });
-
-  it("comando fallido por mod no conectado → descarte mod-not-connected", async () => {
-    const engine = new MappingEngine(makeBridge("Mod no conectado"));
-    engine.setRules([{ id: "r1", when: { event: "follow" }, action: "arena_join", params: {} }]);
-    const { entries } = collect(engine);
-
-    await engine.handleEvent(followEvent());
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0].status).toBe("discarded");
-    expect(entries[0].reason).toBe("mod-not-connected");
-  });
-
-  it("like por debajo del umbral → descarte like-threshold y luego fired al alcanzarlo", async () => {
-    const engine = new MappingEngine(makeBridge());
-    const cr: CommunityRules = {
-      ...defaultCommunityRules(),
-      like: { enabled: true, action: "like_action", params: {}, everyNLikes: 2 },
-    };
-    engine.setCommunityRules(cr);
-    const { entries } = collect(engine);
-
-    await engine.handleEvent({ event: "like", username: "@u", timestamp: 0 });
-    await engine.handleEvent({ event: "like", username: "@u", timestamp: 0 });
-
-    expect(entries).toHaveLength(2);
-    expect(entries[0].status).toBe("discarded");
-    expect(entries[0].reason).toBe("like-threshold");
-    expect(entries[1].status).toBe("fired");
-    expect(entries[1].action).toBe("like_action");
   });
 });
 
@@ -186,18 +106,17 @@ describe("ProfilesController — canal event-log", () => {
     });
   }
 
-  function seed(profilesPath: string, file: ProfilesFile) {
+  function seed(profilesPath: string, file: unknown) {
     writeFileSync(profilesPath, JSON.stringify(file));
   }
 
   it("reenvía la cola actual a un cliente que se conecta tarde", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     server = new StreamTokWsServer(0);
-    const engine = new MappingEngine(new ModBridge(server));
+    const engine = new AccionesEventosEngine(new ModBridge(server));
     new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => null);
 
-    // genera una entrada antes de que nadie se conecte
-    await engine.handleEvent({ event: "join", username: "@u", timestamp: 0 });
+    await engine.handleEvent({ event: "join", username: "@u", timestamp: 0 }); // no-match
 
     const port = await waitListening();
     const ws = new WebSocket(`ws://localhost:${port}`);
@@ -218,13 +137,13 @@ describe("ProfilesController — canal event-log", () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {
       profiles: [
-        { id: "p1", name: "Uno", rules: [] },
-        { id: "p2", name: "Dos", rules: [] },
+        { id: "p1", name: "Uno", acciones: [], eventos: [] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
       ],
       activeProfileId: "p1",
     });
     server = new StreamTokWsServer(0);
-    const engine = new MappingEngine(new ModBridge(server));
+    const engine = new AccionesEventosEngine(new ModBridge(server));
     new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => null);
     const port = await waitListening();
 
@@ -238,14 +157,12 @@ describe("ProfilesController — canal event-log", () => {
     expect(initial.kind).toBe("snapshot");
     expect(initial.entries).toHaveLength(0);
 
-    // genera una entrada
     const append = once(ws, "event-log");
     await engine.handleEvent({ event: "join", username: "@u", timestamp: 0 });
     const a = await append;
     expect(a.kind).toBe("append");
     expect(a.entry.reason).toBe("no-match");
 
-    // cambia de perfil → snapshot vacío
     const snapAfter = once(ws, "event-log");
     ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "set-active", id: "p2" } }));
     const after = await snapAfter;

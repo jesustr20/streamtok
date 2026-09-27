@@ -73,7 +73,7 @@ export function ProfilesPanel({ client }: { client: SidecarClient | null }) {
         >
           {profiles.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} ({p.ruleCount} {p.ruleCount === 1 ? "regla" : "reglas"})
+              {p.name} ({p.eventoCount} {p.eventoCount === 1 ? "evento" : "eventos"})
             </option>
           ))}
         </select>
@@ -127,7 +127,7 @@ export function ProfilesPanel({ client }: { client: SidecarClient | null }) {
                     <span style={{ marginLeft: 6, fontSize: 10, color: "#34D399" }}>activo</span>
                   )}
                   <span style={{ marginLeft: 6, fontSize: 10.5, color: "#5B5D66" }}>
-                    {p.ruleCount} {p.ruleCount === 1 ? "regla" : "reglas"}
+                    {p.eventoCount} {p.eventoCount === 1 ? "evento" : "eventos"}
                   </span>
                 </span>
                 <span style={{ display: "flex", gap: 8 }}>
