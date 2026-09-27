@@ -1,5 +1,10 @@
 import type { LiveEvent } from "@streamtok/shared";
-import { MappingEngine, type MappingRule } from "./mapping.js";
+import { MappingEngine } from "./mapping.js";
+import {
+  MappingRulesController,
+  MappingRulesStore,
+  defaultRulesFilePath,
+} from "./mapping-rules.js";
 import { ModBridge } from "./mod-bridge.js";
 import { TikTokLiveSource } from "./tiktok-source.js";
 import { StreamTokWsServer } from "./ws-server.js";
@@ -27,27 +32,24 @@ server.on("listening", (port) => {
 });
 
 // ---------------------------------------------------------------------------
-// Reglas de mapeo evento→acción. TODO: cargar/guardar desde la config que
-// arma la UI (Acciones y Eventos); acá van unas de ejemplo para poder probar
-// el flujo end-to-end con el simulador antes de tener la UI conectada.
+// Reglas de mapeo evento→acción. Se cargan/persisten desde un JSON en app-data
+// (ver ADR 0001 y mapping-rules.ts). La UI las edita por el canal WS
+// "mapping-rules"; acá solo se arma el motor y el controlador que lo alimenta.
 // ---------------------------------------------------------------------------
-const initialRules: MappingRule[] = [
-  {
-    id: "rule-arena-join-rose",
-    when: { event: "gift", giftId: 5655 }, // Rose
-    action: "arena_join",
-    params: { character: "default" },
-    passCoinsAsParam: "coins",
-  },
-  {
-    id: "rule-vehicle-comment",
-    when: { event: "comment", command: "!carro" },
-    action: "vehicle_spawn_random",
-    params: { amount: 1 },
-  },
-];
+const mapping = new MappingEngine(modBridge);
 
-const mapping = new MappingEngine(modBridge, initialRules);
+const rulesStore = new MappingRulesStore(defaultRulesFilePath());
+const rulesController = new MappingRulesController(
+  server,
+  rulesStore,
+  mapping,
+  () => modBridge.getCatalog(),
+);
+rulesController.on("log", (entry) => {
+  const tag = `[rules:${entry.level}]`;
+  // eslint-disable-next-line no-console
+  console.log(tag, entry.message, entry.details ?? "");
+});
 
 // ---------------------------------------------------------------------------
 // Fuente de LiveEvents. En producción esto viene de tiktok-live-connector
