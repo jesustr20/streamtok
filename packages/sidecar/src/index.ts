@@ -1,12 +1,12 @@
 import type { LiveEvent } from "@streamtok/shared";
 import { MappingEngine } from "./mapping.js";
-import {
-  MappingRulesController,
-  MappingRulesStore,
-  defaultRulesFilePath,
-} from "./mapping-rules.js";
 import { ModBridge } from "./mod-bridge.js";
 import { registerManualCommand } from "./manual-command.js";
+import {
+  ProfilesController,
+  ProfilesStore,
+  defaultProfilesFilePath,
+} from "./profiles.js";
 import { TikTokLiveSource } from "./tiktok-source.js";
 import { StreamTokWsServer } from "./ws-server.js";
 
@@ -33,21 +33,22 @@ server.on("listening", (port) => {
 });
 
 // ---------------------------------------------------------------------------
-// Reglas de mapeo evento→acción. Se cargan/persisten desde un JSON en app-data
-// (ver ADR 0001 y mapping-rules.ts). La UI las edita por el canal WS
-// "mapping-rules"; acá solo se arma el motor y el controlador que lo alimenta.
+// Perfiles de configuración + reglas de mapeo (ver ADR 0002 y profiles.ts).
+// El sidecar carga los perfiles (migrando el mapping-rules.json plano si hace
+// falta) y deja el MappingEngine corriendo las reglas del perfil activo. La UI
+// gestiona perfiles por el canal "profiles" y edita reglas por "mapping-rules".
 // ---------------------------------------------------------------------------
 const mapping = new MappingEngine(modBridge);
 
-const rulesStore = new MappingRulesStore(defaultRulesFilePath());
-const rulesController = new MappingRulesController(
+const profilesStore = new ProfilesStore(defaultProfilesFilePath());
+const profilesController = new ProfilesController(
   server,
-  rulesStore,
+  profilesStore,
   mapping,
   () => modBridge.getCatalog(),
 );
-rulesController.on("log", (entry) => {
-  const tag = `[rules:${entry.level}]`;
+profilesController.on("log", (entry) => {
+  const tag = `[profiles:${entry.level}]`;
   // eslint-disable-next-line no-console
   console.log(tag, entry.message, entry.details ?? "");
 });

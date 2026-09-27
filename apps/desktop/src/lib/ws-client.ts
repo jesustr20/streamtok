@@ -4,6 +4,7 @@ import type {
   MappingRulesMessage,
   ModAckPayload,
   ModHelloPayload,
+  ProfilesMessage,
 } from "@streamtok/shared";
 
 export type SidecarEvent =
@@ -11,6 +12,7 @@ export type SidecarEvent =
   | { channel: "mod-ack"; payload: ModAckPayload }
   | { channel: "mapping-rules"; payload: MappingRulesMessage }
   | { channel: "manual-command"; payload: ManualCommandResponse }
+  | { channel: "profiles"; payload: ProfilesMessage }
   | { channel: string; payload: unknown };
 
 type Listener = (evt: SidecarEvent) => void;

@@ -4,6 +4,7 @@ import { ActionsPanel } from "./components/ActionsPanel";
 import { InstallModButton } from "./components/InstallModButton";
 import { MappingRulesPanel } from "./components/MappingRulesPanel";
 import { ModLog } from "./components/ModLog";
+import { ProfilesPanel } from "./components/ProfilesPanel";
 import { SidecarClient } from "./lib/ws-client";
 
 export function App() {
@@ -77,6 +78,7 @@ export function App() {
             Mods · GTA V Chaos Mod
           </h1>
           <ActionsPanel catalog={catalog} client={client} />
+          <ProfilesPanel client={client} />
           <h2 style={{ margin: "0 0 -8px", fontSize: 14, color: "#C4C5CC" }}>Reglas de mapeo</h2>
           <MappingRulesPanel client={client} catalog={catalog} />
         </div>
