@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocket } from "ws";
-import type { MappingRule, ProfilesFile } from "@streamtok/shared";
+import { defaultCommunityRules, type MappingRule, type ProfilesFile } from "@streamtok/shared";
 import { MappingEngine } from "../src/mapping.js";
 import { ModBridge } from "../src/mod-bridge.js";
 import { ProfilesController, ProfilesStore } from "../src/profiles.js";
@@ -84,8 +84,8 @@ describe("ProfilesStore", () => {
     const { profilesPath, legacyPath } = tmpDir();
     const file: ProfilesFile = {
       profiles: [
-        { id: "p1", name: "Uno", rules: [validRule] },
-        { id: "p2", name: "Dos", rules: [validRule2] },
+        { id: "p1", name: "Uno", rules: [validRule], communityRules: defaultCommunityRules() },
+        { id: "p2", name: "Dos", rules: [validRule2], communityRules: defaultCommunityRules() },
       ],
       activeProfileId: "p2",
     };

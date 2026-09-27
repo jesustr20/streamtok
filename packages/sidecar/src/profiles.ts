@@ -5,10 +5,13 @@ import { dirname, join } from "node:path";
 import { nanoid } from "nanoid";
 import type { WebSocket } from "ws";
 import {
+  CommunityRulesMessageSchema,
+  defaultCommunityRules,
   MappingRulesMessageSchema,
   MappingRuleSchema,
   ProfilesFileSchema,
   ProfilesMessageSchema,
+  type CommunityRules,
   type ModHelloPayload,
   type MappingRule,
   type Profile,
@@ -16,6 +19,10 @@ import {
   type ProfilesFile,
 } from "@streamtok/shared";
 import { appDataDir, validateRules } from "./mapping-rules.js";
+import {
+  normalizeCommunityRules,
+  validateCommunityRules,
+} from "./community-rules.js";
 import type { MappingEngine } from "./mapping.js";
 import type { StreamTokWsServer } from "./ws-server.js";
 
@@ -37,12 +44,22 @@ export function legacyRulesFilePath(): string {
 }
 
 function newProfile(name: string, rules: MappingRule[] = []): Profile {
-  return { id: nanoid(), name, rules };
+  return { id: nanoid(), name, rules, communityRules: defaultCommunityRules() };
 }
 
 /** Copia profunda de reglas (para "duplicar perfil"). */
 function deepCopyRules(rules: MappingRule[]): MappingRule[] {
   return rules.map((r) => ({ ...r, when: { ...r.when }, params: { ...r.params } }));
+}
+
+/** Copia profunda de reglas de comunidad (para "duplicar perfil"). */
+function deepCopyCommunityRules(cr: CommunityRules): CommunityRules {
+  return {
+    follow: { ...cr.follow, params: { ...cr.follow.params } },
+    share: { ...cr.share, params: { ...cr.share.params } },
+    superfan: { ...cr.superfan, params: { ...cr.superfan.params } },
+    like: { ...cr.like, params: { ...cr.like.params } },
+  };
 }
 
 export class ProfilesStore {
@@ -60,7 +77,7 @@ export class ProfilesStore {
    */
   load(): ProfilesFile {
     const existing = this.readProfilesFile();
-    if (existing) return existing;
+    if (existing) return this.migrateCommunityRules(existing);
 
     const legacy = this.readLegacyRules();
     if (legacy) {
@@ -71,6 +88,20 @@ export class ProfilesStore {
 
     const profile = newProfile(DEFAULT_PROFILE_NAME);
     return { profiles: [profile], activeProfileId: profile.id };
+  }
+
+  /** Asegura que todo perfil tenga sus 4 slots de reglas de comunidad (ADR 0003):
+   * los perfiles anteriores a esta feature no traen el campo. */
+  private migrateCommunityRules(file: ProfilesFile): ProfilesFile {
+    return {
+      ...file,
+      profiles: file.profiles.map((p) => ({
+        ...p,
+        communityRules: p.communityRules
+          ? normalizeCommunityRules(p.communityRules)
+          : defaultCommunityRules(),
+      })),
+    };
   }
 
   async save(file: ProfilesFile): Promise<void> {
@@ -146,6 +177,7 @@ export class ProfilesController extends EventEmitter {
       this.file.activeProfileId = this.file.profiles[0].id;
     }
     this.engine.setRules(this.activeProfile().rules);
+    this.engine.setCommunityRules(this.activeCommunityRules());
     this.emit("log", {
       level: "info",
       message: `Cargados ${this.file.profiles.length} perfiles (activo: "${this.activeProfile().name}")`,
@@ -161,9 +193,13 @@ export class ProfilesController extends EventEmitter {
 
     this.server.onChannel("mapping-rules", (payload, socket) => this.handleRules(payload, socket));
     this.server.onChannel("profiles", (payload, socket) => this.handleProfiles(payload, socket));
+    this.server.onChannel("community-rules", (payload, socket) =>
+      this.handleCommunityRules(payload, socket),
+    );
 
     this.server.on("client-connected", (socket) => {
       this.sendRulesTo(socket);
+      this.sendCommunityRulesTo(socket);
       this.sendStateTo(socket);
     });
   }
@@ -174,6 +210,14 @@ export class ProfilesController extends EventEmitter {
 
   private activeProfile(): Profile {
     return this.file.profiles.find((p) => p.id === this.file.activeProfileId) ?? this.file.profiles[0];
+  }
+
+  private communityRulesOf(profile: Profile): CommunityRules {
+    return profile.communityRules ?? defaultCommunityRules();
+  }
+
+  private activeCommunityRules(): CommunityRules {
+    return this.communityRulesOf(this.activeProfile());
   }
 
   private summaries(): ProfileSummary[] {
@@ -204,12 +248,23 @@ export class ProfilesController extends EventEmitter {
     this.server.broadcast("mapping-rules", { kind: "update", rules: this.engine.getRules() });
   }
 
+  private sendCommunityRulesTo(socket: WebSocket) {
+    this.server.sendTo(socket, "community-rules", { kind: "update", rules: this.activeCommunityRules() });
+  }
+
+  private broadcastCommunityRules() {
+    this.server.broadcast("community-rules", { kind: "update", rules: this.activeCommunityRules() });
+  }
+
   /** Persiste y hace broadcast. En error avisa y (si hay socket) responde. */
   private commit(socket: WebSocket | null, rulesChanged = false): void {
     this.store
       .save(this.file)
       .then(() => {
-        if (rulesChanged) this.broadcastRules();
+        if (rulesChanged) {
+          this.broadcastRules();
+          this.broadcastCommunityRules();
+        }
         this.broadcastState();
       })
       .catch((err) => {
@@ -246,6 +301,42 @@ export class ProfilesController extends EventEmitter {
       .catch((err) => {
         this.emit("log", { level: "error", message: "No se pudo guardar las reglas", details: err });
         this.server.sendTo(socket, "mapping-rules", {
+          kind: "error",
+          message: `No se pudo guardar: ${(err as Error).message ?? err}`,
+        });
+      });
+  }
+
+  // --- canal community-rules (opera sobre el perfil activo) ---
+
+  private handleCommunityRules(payload: unknown, socket: WebSocket) {
+    const parsed = CommunityRulesMessageSchema.safeParse(payload);
+    if (!parsed.success || parsed.data.kind !== "set") return;
+
+    const result = validateCommunityRules(parsed.data.rules, this.getCatalog());
+    if (!result.ok) {
+      this.emit("log", {
+        level: "warn",
+        message: `Reglas de comunidad rechazadas (${result.errors.length} errores)`,
+      });
+      this.server.sendTo(socket, "community-rules", { kind: "error", message: result.errors.join(" ") });
+      return;
+    }
+
+    const active = this.activeProfile();
+    active.communityRules = result.rules;
+    this.engine.setCommunityRules(result.rules);
+
+    this.store
+      .save(this.file)
+      .then(() => {
+        this.broadcastCommunityRules();
+        this.broadcastState();
+        this.emit("log", { level: "info", message: `Guardadas reglas de comunidad en "${active.name}"` });
+      })
+      .catch((err) => {
+        this.emit("log", { level: "error", message: "No se pudo guardar las reglas de comunidad", details: err });
+        this.server.sendTo(socket, "community-rules", {
           kind: "error",
           message: `No se pudo guardar: ${(err as Error).message ?? err}`,
         });
@@ -299,7 +390,9 @@ export class ProfilesController extends EventEmitter {
       this.server.sendTo(socket, "profiles", { kind: "error", message: "Perfil no encontrado." });
       return;
     }
-    this.file.profiles.push(newProfile(`${source.name} (copia)`, deepCopyRules(source.rules)));
+    const copy = newProfile(`${source.name} (copia)`, deepCopyRules(source.rules));
+    copy.communityRules = deepCopyCommunityRules(this.communityRulesOf(source));
+    this.file.profiles.push(copy);
     this.commit(socket);
   }
 
@@ -334,6 +427,7 @@ export class ProfilesController extends EventEmitter {
     if (wasActive) {
       this.file.activeProfileId = this.file.profiles[0].id;
       this.engine.setRules(this.file.profiles[0].rules);
+      this.engine.setCommunityRules(this.communityRulesOf(this.file.profiles[0]));
       rulesChanged = true;
     }
     this.commit(socket, rulesChanged);
@@ -348,6 +442,7 @@ export class ProfilesController extends EventEmitter {
     if (this.file.activeProfileId === id) return;
     this.file.activeProfileId = id;
     this.engine.setRules(profile.rules);
+    this.engine.setCommunityRules(this.communityRulesOf(profile));
     this.commit(socket, true);
   }
 }
