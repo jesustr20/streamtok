@@ -19,6 +19,20 @@ export function defaultParamValues(params: ModActionParam[]): ParamValues {
   return out;
 }
 
+/** Descarta valores no serializables (p. ej. un int vacío = NaN → null en
+ * JSON) para que el objeto calce con `MappingRuleSchema`/`ModCommandPayloadSchema`. */
+export function sanitizeParamValues(values: ParamValues): Record<string, number | string | boolean> {
+  const out: Record<string, number | string | boolean> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) out[key] = value;
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "8px 10px",
@@ -139,11 +153,16 @@ function ParamField({
 export function ParamEditor({
   params,
   onChange,
+  initialValues,
 }: {
   params: ModActionParam[];
   onChange?: (values: ParamValues) => void;
+  initialValues?: ParamValues;
 }) {
-  const [values, setValues] = useState<ParamValues>(() => defaultParamValues(params));
+  const [values, setValues] = useState<ParamValues>(() => ({
+    ...defaultParamValues(params),
+    ...initialValues,
+  }));
 
   function setParam(name: string, value: number | string | boolean) {
     const next = { ...values, [name]: value };
