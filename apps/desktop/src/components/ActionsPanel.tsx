@@ -1,23 +1,14 @@
 import { useState } from "react";
 import type { ModAckPayload, ModAction, ModHelloPayload } from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
-import { defaultParamValues, ParamEditor, type ParamValues } from "./ParamEditor";
+import {
+  defaultParamValues,
+  ParamEditor,
+  sanitizeParamValues,
+  type ParamValues,
+} from "./ParamEditor";
 
 type TestResult = { ack: ModAckPayload } | { error: string } | null;
-
-/** Descarta valores no serializables (p. ej. un int vacío = NaN → null en JSON)
- * para que el request siempre calce con `ManualCommandRequestSchema`. */
-function sanitizeParams(values: ParamValues): Record<string, number | string | boolean> {
-  const out: Record<string, number | string | boolean> = {};
-  for (const [key, value] of Object.entries(values)) {
-    if (typeof value === "number") {
-      if (Number.isFinite(value)) out[key] = value;
-    } else {
-      out[key] = value;
-    }
-  }
-  return out;
-}
 
 /** Agrupa el catálogo del mod-hello por `category`, tal como pide el punto
  * 2 del contrato ("UI de acciones agrupadas por category"). Cada acción se
@@ -69,7 +60,7 @@ export function ActionsPanel({
     try {
       const resp = await client.sendManualCommand({
         action: action.id,
-        params: sanitizeParams(paramValues),
+        params: sanitizeParamValues(paramValues),
       });
       if (resp.kind === "ack") setResult({ ack: resp.ack });
       else setResult({ error: resp.message });
