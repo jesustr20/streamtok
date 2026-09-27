@@ -1,4 +1,16 @@
+# StreamTok
 
+App de escritorio (Tauri v2 + React) que conecta el LIVE de TikTok del
+streamer y traduce sus interacciones (regalos, likes, follows, comentarios,
+suscripciones) en acciones dentro de un mod de un juego externo — GTA V
+primero — vía WebSocket. Monorepo pnpm + Turborepo.
+```
+packages/shared/ esquemas Zod — fuente de verdad de todos los contratos
+packages/sidecar/ servidor WS Node (:7331) — habla el protocolo del mod,
+conecta con TikTok LIVE, y hace el mapeo evento→acción
+apps/desktop/ Tauri v2 + React — la UI, el instalador del mod
+docs/adr/ Architecture Decision Records (decisiones de diseño)
+```
 ## Stack
 
 - **Monorepo**: pnpm workspaces + Turborepo (`turbo.json`)
