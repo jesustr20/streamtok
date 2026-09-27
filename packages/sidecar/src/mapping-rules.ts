@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   MappingRuleSchema,
+  type ModAction,
   type ModActionParam,
   type ModHelloPayload,
   type MappingRule,
@@ -17,11 +18,11 @@ export type ValidationResult =
   | { ok: true; rules: MappingRule[] }
   | { ok: false; errors: string[] };
 
-function formatZodError(err: { issues: Array<{ path: (string | number)[]; message: string }> }): string {
+export function formatZodError(err: { issues: Array<{ path: (string | number)[]; message: string }> }): string {
   const issues = err.issues
     .slice(0, 5)
     .map((i) => `${i.path.join(".") || "raíz"}: ${i.message}`);
-  return `Formato de reglas inválido: ${issues.join("; ")}`;
+  return `Formato inválido: ${issues.join("; ")}`;
 }
 
 function paramValueMatches(param: ModActionParam, value: unknown): boolean {
@@ -37,6 +38,35 @@ function paramValueMatches(param: ModActionParam, value: unknown): boolean {
       }
       return true;
   }
+}
+
+/**
+ * Valida los `params` de una acción contra su definición en el catálogo.
+ * Devuelve los errores (sin prefijo de "regla") para que el llamador los
+ * contextualice (regla de mapeo vs. regla de comunidad). Reusada por
+ * `validateRules` y `validateCommunityRules`.
+ */
+export function validateActionParams(
+  action: ModAction,
+  params: Record<string, number | string | boolean>,
+): string[] {
+  const errors: string[] = [];
+  const paramsByName = new Map(action.params.map((p) => [p.name, p]));
+  for (const [key, value] of Object.entries(params)) {
+    const param = paramsByName.get(key);
+    if (!param) {
+      errors.push(
+        `usa el parámetro "${key}", que la acción "${action.id}" no define.`,
+      );
+      continue;
+    }
+    if (!paramValueMatches(param, value)) {
+      errors.push(
+        `da al parámetro "${key}" un valor incompatible con su tipo (${param.type}).`,
+      );
+    }
+  }
+  return errors;
 }
 
 /**
@@ -70,19 +100,8 @@ export function validateRules(
     }
 
     const paramsByName = new Map(action.params.map((p) => [p.name, p]));
-    for (const [key, value] of Object.entries(rule.params)) {
-      const param = paramsByName.get(key);
-      if (!param) {
-        errors.push(
-          `La regla "${rule.id}" usa el parámetro "${key}", que la acción "${action.id}" no define.`,
-        );
-        continue;
-      }
-      if (!paramValueMatches(param, value)) {
-        errors.push(
-          `La regla "${rule.id}" da al parámetro "${key}" un valor incompatible con su tipo (${param.type}).`,
-        );
-      }
+    for (const err of validateActionParams(action, rule.params)) {
+      errors.push(`La regla "${rule.id}" ${err}`);
     }
 
     if (rule.passCoinsAsParam && !paramsByName.has(rule.passCoinsAsParam)) {

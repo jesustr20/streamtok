@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CommunityRulesSchema } from "./community-rule.js";
 import { MappingRuleSchema } from "./mapping-rule.js";
 
 /**
@@ -13,6 +14,9 @@ export const ProfileSchema = z.object({
   id: z.string(),
   name: z.string(),
   rules: z.array(MappingRuleSchema),
+  // Opcional en disco: los perfiles anteriores a ADR 0003 no lo tienen y el
+  // sidecar los completa con `defaultCommunityRules()` al cargar.
+  communityRules: CommunityRulesSchema.optional(),
 });
 export type Profile = z.infer<typeof ProfileSchema>;
 

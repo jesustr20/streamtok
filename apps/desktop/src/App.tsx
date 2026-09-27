@@ -1,6 +1,7 @@
 import type { ModAckPayload, ModHelloPayload } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { ActionsPanel } from "./components/ActionsPanel";
+import { CommunityRulesPanel } from "./components/CommunityRulesPanel";
 import { InstallModButton } from "./components/InstallModButton";
 import { MappingRulesPanel } from "./components/MappingRulesPanel";
 import { ModLog } from "./components/ModLog";
@@ -81,6 +82,8 @@ export function App() {
           <ProfilesPanel client={client} />
           <h2 style={{ margin: "0 0 -8px", fontSize: 14, color: "#C4C5CC" }}>Reglas de mapeo</h2>
           <MappingRulesPanel client={client} catalog={catalog} />
+          <h2 style={{ margin: "0 0 -8px", fontSize: 14, color: "#C4C5CC" }}>Reglas de comunidad</h2>
+          <CommunityRulesPanel client={client} catalog={catalog} />
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>

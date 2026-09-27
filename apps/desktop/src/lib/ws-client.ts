@@ -1,4 +1,5 @@
 import type {
+  CommunityRulesMessage,
   ManualCommandRequest,
   ManualCommandResponse,
   MappingRulesMessage,
@@ -11,6 +12,7 @@ export type SidecarEvent =
   | { channel: "mod-hello"; payload: ModHelloPayload }
   | { channel: "mod-ack"; payload: ModAckPayload }
   | { channel: "mapping-rules"; payload: MappingRulesMessage }
+  | { channel: "community-rules"; payload: CommunityRulesMessage }
   | { channel: "manual-command"; payload: ManualCommandResponse }
   | { channel: "profiles"; payload: ProfilesMessage }
   | { channel: string; payload: unknown };
