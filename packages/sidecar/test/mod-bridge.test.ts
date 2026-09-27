@@ -2,8 +2,6 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { WebSocket } from "ws";
 import { ModBridge } from "../src/mod-bridge.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
-import { MappingEngine, type MappingRule } from "../src/mapping.js";
-import type { LiveEvent } from "@streamtok/shared";
 
 function connect(port: number): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
@@ -62,7 +60,7 @@ const fakeCatalog = {
   ],
 };
 
-describe("ModBridge + MappingEngine (protocolo v0.9.0)", () => {
+describe("ModBridge (protocolo v0.9.0)", () => {
   let server: StreamTokWsServer;
   let modBridge: ModBridge;
 
@@ -100,86 +98,6 @@ describe("ModBridge + MappingEngine (protocolo v0.9.0)", () => {
 
     modWs.close();
     uiWs.close();
-  });
-
-  it("una acción arena_* siempre lleva nameTag y respeta coins vía la regla de mapeo", async () => {
-    const port = await waitListening();
-    const modWs = await connect(port);
-    modWs.send(JSON.stringify({ channel: "mod-hello", payload: fakeCatalog }));
-
-    modWs.on("message", (raw) => {
-      const msg = JSON.parse(raw.toString());
-      if (msg.channel === "mod-command") {
-        modWs.send(JSON.stringify({ channel: "mod-ack", payload: { id: msg.payload.id, ok: true } }));
-      }
-    });
-    await new Promise((r) => setTimeout(r, 50));
-
-    const rules: MappingRule[] = [
-      {
-        id: "r1",
-        when: { event: "gift", giftId: 5655 },
-        action: "arena_join",
-        params: { character: "default" },
-        passCoinsAsParam: "coins",
-      },
-    ];
-    const mapping = new MappingEngine(modBridge, rules);
-
-    const evt: LiveEvent = {
-      event: "gift",
-      username: "@fan123",
-      nickname: "Fan 123",
-      giftId: 5655,
-      coins: 7,
-      timestamp: Date.now(),
-    };
-
-    const commandPromise = new Promise<any>((resolve) => {
-      modWs.on("message", (raw) => {
-        const msg = JSON.parse(raw.toString());
-        if (msg.channel === "mod-command") resolve(msg.payload);
-      });
-    });
-
-    await mapping.handleEvent(evt);
-    const sent = await commandPromise;
-
-    expect(sent.action).toBe("arena_join");
-    expect(sent.nameTag).toBe("Fan 123"); // display name, nunca @username
-    expect(sent.params.coins).toBe(7);
-
-    modWs.close();
-  });
-
-  it("ignora streaks de regalo hasta que repeatEnd es true", async () => {
-    const port = await waitListening();
-    const modWs = await connect(port);
-    modWs.send(JSON.stringify({ channel: "mod-hello", payload: fakeCatalog }));
-    await new Promise((r) => setTimeout(r, 50));
-
-    const rules: MappingRule[] = [
-      { id: "r1", when: { event: "gift", giftId: 5655 }, action: "arena_join", params: {} },
-    ];
-    const mapping = new MappingEngine(modBridge, rules);
-
-    let received = 0;
-    modWs.on("message", (raw) => {
-      const msg = JSON.parse(raw.toString());
-      if (msg.channel === "mod-command") received++;
-    });
-
-    await mapping.handleEvent({
-      event: "gift",
-      username: "@fan",
-      giftId: 5655,
-      repeatEnd: false,
-      timestamp: Date.now(),
-    });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(received).toBe(0);
-
-    modWs.close();
   });
 
   it("sendCommand devuelve ok:false sin bloquear si no hay mod conectado", async () => {

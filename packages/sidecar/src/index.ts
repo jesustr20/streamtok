@@ -1,5 +1,5 @@
 import type { LiveEvent } from "@streamtok/shared";
-import { MappingEngine } from "./mapping.js";
+import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { ModBridge } from "./mod-bridge.js";
 import { registerManualCommand } from "./manual-command.js";
 import {
@@ -33,18 +33,19 @@ server.on("listening", (port) => {
 });
 
 // ---------------------------------------------------------------------------
-// Perfiles de configuración + reglas de mapeo (ver ADR 0002 y profiles.ts).
-// El sidecar carga los perfiles (migrando el mapping-rules.json plano si hace
-// falta) y deja el MappingEngine corriendo las reglas del perfil activo. La UI
-// gestiona perfiles por el canal "profiles" y edita reglas por "mapping-rules".
+// Motor genérico de Acciones y Eventos + perfiles (ADR 0004 / ADR 0002). El
+// sidecar carga los perfiles (migrando mapping-rules/community-rules viejos si
+// hace falta) y deja el motor corriendo las acciones/eventos del perfil activo.
+// La UI gestiona perfiles por "profiles" y edita acciones/eventos por
+// "acciones"/"eventos".
 // ---------------------------------------------------------------------------
-const mapping = new MappingEngine(modBridge);
+const engine = new AccionesEventosEngine(modBridge);
 
 const profilesStore = new ProfilesStore(defaultProfilesFilePath());
 const profilesController = new ProfilesController(
   server,
   profilesStore,
-  mapping,
+  engine,
   () => modBridge.getCatalog(),
 );
 profilesController.on("log", (entry) => {
@@ -68,7 +69,7 @@ registerManualCommand(server, modBridge);
 // ---------------------------------------------------------------------------
 server.onChannel("live-event", (payload) => {
   const evt = payload as LiveEvent;
-  mapping.handleEvent(evt).catch((err) => {
+  engine.handleEvent(evt).catch((err) => {
     // eslint-disable-next-line no-console
     console.error("Error procesando live-event:", err);
   });
@@ -80,7 +81,7 @@ server.onChannel("live-event", (payload) => {
 // ---------------------------------------------------------------------------
 // Conexión real a TikTok LIVE. Por ahora arranca en el boot leyendo el
 // username de TIKTOK_USERNAME (sin UI, eso es otro issue). Los eventos
-// normalizados alimentan a `mapping.handleEvent` exactamente igual que los
+// normalizados alimentan a `engine.handleEvent` exactamente igual que los
 // que llegan por el canal "live-event" del Simulador. Si el LIVE no está
 // disponible no se cae el proceso: se loguea y se sigue.
 // ---------------------------------------------------------------------------
@@ -93,7 +94,7 @@ if (tiktokUsername) {
     console.log(tag, entry.message, entry.details ?? "");
   });
   tiktok.on("event", (evt) => {
-    mapping.handleEvent(evt).catch((err) => {
+    engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
     });
@@ -107,4 +108,4 @@ if (tiktokUsername) {
   console.log("TIKTOK_USERNAME no configurado: no se conecta a TikTok LIVE (solo Simulador).");
 }
 
-export { modBridge, server, mapping };
+export { modBridge, server, engine };

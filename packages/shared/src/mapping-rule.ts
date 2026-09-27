@@ -2,9 +2,9 @@ import { z } from "zod";
 import { LiveEventType } from "./live-event.js";
 
 /**
- * Regla de mapeo evento de TikTok → acción del mod. Contrato entre la UI del
- * desktop y el sidecar (que la persiste y la evalúa en `MappingEngine`).
- * El `MappingRule` de runtime del sidecar (mapping.ts) es este mismo tipo.
+ * Regla de mapeo evento de TikTok → acción del mod (ADR 0001). **Legacy**:
+ * reemplazada por el motor genérico de Acciones/Eventos (ADR 0004). El schema
+ * se conserva únicamente para la migración de datos viejos.
  */
 export const MappingRuleSchema = z.object({
   id: z.string(),
@@ -23,19 +23,3 @@ export const MappingRuleSchema = z.object({
   passCoinsAsParam: z.string().optional(),
 });
 export type MappingRule = z.infer<typeof MappingRuleSchema>;
-
-/**
- * Canal WS `mapping-rules` (UI ↔ sidecar). Separado del protocolo del mod
- * (mod-hello/mod-command/mod-ack), que está reservado al mod.
- *
- *  - `set`     UI → sidecar: la lista completa de reglas a guardar.
- *  - `update`  sidecar → UI: la lista vigente (tras un set válido, o reenviada
- *              a clientes que se conectan tarde).
- *  - `error`   sidecar → UI: rechazo de un `set` inválido.
- */
-export const MappingRulesMessageSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("set"), rules: z.array(MappingRuleSchema) }),
-  z.object({ kind: z.literal("update"), rules: z.array(MappingRuleSchema) }),
-  z.object({ kind: z.literal("error"), message: z.string() }),
-]);
-export type MappingRulesMessage = z.infer<typeof MappingRulesMessageSchema>;

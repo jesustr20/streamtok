@@ -1,6 +1,6 @@
 # 0003. Reglas de comunidad
 
-- Estado: accepted
+- Estado: superseded by 0004
 - Fecha: 2026-09-27
 - Issue: #15
 

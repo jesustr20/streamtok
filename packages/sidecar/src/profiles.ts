@@ -5,34 +5,31 @@ import { dirname, join } from "node:path";
 import { nanoid } from "nanoid";
 import type { WebSocket } from "ws";
 import {
-  CommunityRulesMessageSchema,
-  defaultCommunityRules,
-  MappingRulesMessageSchema,
+  AccionesMessageSchema,
+  EventosMessageSchema,
   MappingRuleSchema,
-  ProfilesFileSchema,
   ProfilesMessageSchema,
-  type CommunityRules,
+  type Accion,
+  type Evento,
   type EventLogEntry,
-  type ModHelloPayload,
   type MappingRule,
+  type ModHelloPayload,
   type Profile,
   type ProfileSummary,
   type ProfilesFile,
 } from "@streamtok/shared";
-import { appDataDir, validateRules } from "./mapping-rules.js";
-import {
-  normalizeCommunityRules,
-  validateCommunityRules,
-} from "./community-rules.js";
+import { validateAcciones, validateEventos } from "./acciones-eventos.js";
+import type { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventLogBuffer } from "./event-log.js";
-import type { MappingEngine } from "./mapping.js";
+import { migrateLegacyRules, migrateProfilesFile } from "./migration.js";
+import { appDataDir } from "./mapping-rules.js";
 import type { StreamTokWsServer } from "./ws-server.js";
 
 /**
- * Perfiles de configuración de reglas (ADR 0002). El sidecar es dueño de
- * `profiles.json` y de las reglas en runtime (MappingEngine). La UI gestiona
- * perfiles por el canal `profiles` y edita las reglas del perfil activo por
- * `mapping-rules` (que ahora opera implícitamente sobre el perfil activo).
+ * Perfiles de configuración (ADR 0002) + Acciones/Eventos (ADR 0004). El
+ * sidecar es dueño de `profiles.json` y del motor en runtime. La UI gestiona
+ * perfiles por `profiles`, y edita acciones/eventos del perfil activo por
+ * `acciones`/`eventos`.
  */
 
 const DEFAULT_PROFILE_NAME = "Predeterminado";
@@ -45,23 +42,22 @@ export function legacyRulesFilePath(): string {
   return join(appDataDir(), "mapping-rules.json");
 }
 
-function newProfile(name: string, rules: MappingRule[] = []): Profile {
-  return { id: nanoid(), name, rules, communityRules: defaultCommunityRules() };
+function newProfile(name: string): Profile {
+  return { id: nanoid(), name, acciones: [], eventos: [] };
 }
 
-/** Copia profunda de reglas (para "duplicar perfil"). */
-function deepCopyRules(rules: MappingRule[]): MappingRule[] {
-  return rules.map((r) => ({ ...r, when: { ...r.when }, params: { ...r.params } }));
+/** Copia profunda de acciones (para "duplicar perfil"). */
+function deepCopyAcciones(acciones: Accion[]): Accion[] {
+  return acciones.map((a) => ({
+    ...a,
+    media: { ...a.media },
+    comandos: a.comandos.map((c) => ({ ...c, params: { ...c.params } })),
+  }));
 }
 
-/** Copia profunda de reglas de comunidad (para "duplicar perfil"). */
-function deepCopyCommunityRules(cr: CommunityRules): CommunityRules {
-  return {
-    follow: { ...cr.follow, params: { ...cr.follow.params } },
-    share: { ...cr.share, params: { ...cr.share.params } },
-    superfan: { ...cr.superfan, params: { ...cr.superfan.params } },
-    like: { ...cr.like, params: { ...cr.like.params } },
-  };
+/** Copia profunda de eventos (para "duplicar perfil"). */
+function deepCopyEventos(eventos: Evento[]): Evento[] {
+  return eventos.map((e) => ({ ...e, accionesIds: [...e.accionesIds] }));
 }
 
 export class ProfilesStore {
@@ -72,18 +68,22 @@ export class ProfilesStore {
   ) {}
 
   /**
-   * Carga los perfiles. Si `profiles.json` no existe, migra el
-   * `mapping-rules.json` plano (si lo hay) a un único perfil activo; si no hay
-   * nada, arranca con un perfil "Predeterminado" vacío. Nunca lanza ni pierde
-   * reglas: ante corruptos avisa y vuelve al default.
+   * Carga los perfiles. Migra desde `profiles.json` (forma vieja) o desde el
+   * `mapping-rules.json` plano a Acciones/Eventos (ADR 0004), sin pérdida de
+   * datos. Idempotente: si ya está en la forma nueva, no duplica.
    */
   load(): ProfilesFile {
-    const existing = this.readProfilesFile();
-    if (existing) return this.migrateCommunityRules(existing);
+    const raw = this.readRawJson(this.filePath);
+    if (raw !== null) {
+      const migrated = migrateProfilesFile(raw);
+      if (migrated) return migrated;
+      this.onWarn?.("profiles.json con formato inválido o desconocido; se ignora.");
+    }
 
     const legacy = this.readLegacyRules();
     if (legacy) {
-      const profile = newProfile(DEFAULT_PROFILE_NAME, legacy);
+      const { acciones, eventos } = migrateLegacyRules(legacy);
+      const profile: Profile = { id: nanoid(), name: DEFAULT_PROFILE_NAME, acciones, eventos };
       this.onWarn?.("mapping-rules.json (plano) migrado a un perfil 'Predeterminado'.");
       return { profiles: [profile], activeProfileId: profile.id };
     }
@@ -92,73 +92,39 @@ export class ProfilesStore {
     return { profiles: [profile], activeProfileId: profile.id };
   }
 
-  /** Asegura que todo perfil tenga sus 4 slots de reglas de comunidad (ADR 0003):
-   * los perfiles anteriores a esta feature no traen el campo. */
-  private migrateCommunityRules(file: ProfilesFile): ProfilesFile {
-    return {
-      ...file,
-      profiles: file.profiles.map((p) => ({
-        ...p,
-        communityRules: p.communityRules
-          ? normalizeCommunityRules(p.communityRules)
-          : defaultCommunityRules(),
-      })),
-    };
-  }
-
   async save(file: ProfilesFile): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     await writeFile(this.filePath, JSON.stringify(file, null, 2), "utf8");
   }
 
-  private readProfilesFile(): ProfilesFile | null {
+  private readRawJson(path: string): unknown | null {
     let raw: string;
     try {
-      raw = readFileSync(this.filePath, "utf8");
+      raw = readFileSync(path, "utf8");
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-        this.onWarn?.(`No se pudo leer ${this.filePath}: ${(err as Error).message}`);
+        this.onWarn?.(`No se pudo leer ${path}: ${(err as Error).message}`);
       }
       return null;
     }
     if (raw.trim() === "") return null;
     try {
-      const data: unknown = JSON.parse(raw);
-      const parsed = ProfilesFileSchema.safeParse(data);
-      if (!parsed.success) {
-        this.onWarn?.(`Perfiles con formato inválido en ${this.filePath}; se ignoran.`);
-        return null;
-      }
-      return parsed.data;
+      return JSON.parse(raw);
     } catch (err) {
-      this.onWarn?.(`JSON corrupto en ${this.filePath}; se ignora: ${(err as Error).message}`);
+      this.onWarn?.(`JSON corrupto en ${path}; se ignora: ${(err as Error).message}`);
       return null;
     }
   }
 
   private readLegacyRules(): MappingRule[] | null {
-    let raw: string;
-    try {
-      raw = readFileSync(this.legacyPath, "utf8");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-        this.onWarn?.(`No se pudo leer ${this.legacyPath}: ${(err as Error).message}`);
-      }
+    const raw = this.readRawJson(this.legacyPath);
+    if (raw === null) return null;
+    const parsed = MappingRuleSchema.array().safeParse(raw);
+    if (!parsed.success) {
+      this.onWarn?.("mapping-rules.json con formato inválido; se ignora.");
       return null;
     }
-    if (raw.trim() === "") return null;
-    try {
-      const data: unknown = JSON.parse(raw);
-      const parsed = MappingRuleSchema.array().safeParse(data);
-      if (!parsed.success) {
-        this.onWarn?.(`mapping-rules.json con formato inválido; se ignora.`);
-        return null;
-      }
-      return parsed.data;
-    } catch (err) {
-      this.onWarn?.(`JSON corrupto en ${this.legacyPath}; se ignora: ${(err as Error).message}`);
-      return null;
-    }
+    return parsed.data;
   }
 }
 
@@ -171,7 +137,7 @@ export class ProfilesController extends EventEmitter {
   constructor(
     private server: StreamTokWsServer,
     private store: ProfilesStore,
-    private engine: MappingEngine,
+    private engine: AccionesEventosEngine,
     private getCatalog: () => ModHelloPayload | null,
   ) {
     super();
@@ -181,8 +147,8 @@ export class ProfilesController extends EventEmitter {
     if (!this.file.profiles.some((p) => p.id === this.file.activeProfileId)) {
       this.file.activeProfileId = this.file.profiles[0].id;
     }
-    this.engine.setRules(this.activeProfile().rules);
-    this.engine.setCommunityRules(this.activeCommunityRules());
+    this.engine.setAcciones(this.activeProfile().acciones);
+    this.engine.setEventos(this.activeProfile().eventos);
     this.emit("log", {
       level: "info",
       message: `Cargados ${this.file.profiles.length} perfiles (activo: "${this.activeProfile().name}")`,
@@ -196,17 +162,15 @@ export class ProfilesController extends EventEmitter {
       });
     });
 
-    this.server.onChannel("mapping-rules", (payload, socket) => this.handleRules(payload, socket));
     this.server.onChannel("profiles", (payload, socket) => this.handleProfiles(payload, socket));
-    this.server.onChannel("community-rules", (payload, socket) =>
-      this.handleCommunityRules(payload, socket),
-    );
+    this.server.onChannel("acciones", (payload, socket) => this.handleAcciones(payload, socket));
+    this.server.onChannel("eventos", (payload, socket) => this.handleEventos(payload, socket));
 
     this.engine.on("event-log", (entry: EventLogEntry) => this.pushEventEntry(entry));
 
     this.server.on("client-connected", (socket) => {
-      this.sendRulesTo(socket);
-      this.sendCommunityRulesTo(socket);
+      this.sendAccionesTo(socket);
+      this.sendEventosTo(socket);
       this.sendStateTo(socket);
       this.sendEventLogTo(socket);
     });
@@ -220,16 +184,8 @@ export class ProfilesController extends EventEmitter {
     return this.file.profiles.find((p) => p.id === this.file.activeProfileId) ?? this.file.profiles[0];
   }
 
-  private communityRulesOf(profile: Profile): CommunityRules {
-    return profile.communityRules ?? defaultCommunityRules();
-  }
-
-  private activeCommunityRules(): CommunityRules {
-    return this.communityRulesOf(this.activeProfile());
-  }
-
   private summaries(): ProfileSummary[] {
-    return this.file.profiles.map((p) => ({ id: p.id, name: p.name, ruleCount: p.rules.length }));
+    return this.file.profiles.map((p) => ({ id: p.id, name: p.name, eventoCount: p.eventos.length }));
   }
 
   private sendStateTo(socket: WebSocket) {
@@ -248,20 +204,20 @@ export class ProfilesController extends EventEmitter {
     });
   }
 
-  private sendRulesTo(socket: WebSocket) {
-    this.server.sendTo(socket, "mapping-rules", { kind: "update", rules: this.engine.getRules() });
+  private sendAccionesTo(socket: WebSocket) {
+    this.server.sendTo(socket, "acciones", { kind: "update", acciones: this.engine.getAcciones() });
   }
 
-  private broadcastRules() {
-    this.server.broadcast("mapping-rules", { kind: "update", rules: this.engine.getRules() });
+  private broadcastAcciones() {
+    this.server.broadcast("acciones", { kind: "update", acciones: this.engine.getAcciones() });
   }
 
-  private sendCommunityRulesTo(socket: WebSocket) {
-    this.server.sendTo(socket, "community-rules", { kind: "update", rules: this.activeCommunityRules() });
+  private sendEventosTo(socket: WebSocket) {
+    this.server.sendTo(socket, "eventos", { kind: "update", eventos: this.engine.getEventos() });
   }
 
-  private broadcastCommunityRules() {
-    this.server.broadcast("community-rules", { kind: "update", rules: this.activeCommunityRules() });
+  private broadcastEventos() {
+    this.server.broadcast("eventos", { kind: "update", eventos: this.engine.getEventos() });
   }
 
   private sendEventLogTo(socket: WebSocket) {
@@ -280,13 +236,13 @@ export class ProfilesController extends EventEmitter {
   }
 
   /** Persiste y hace broadcast. En error avisa y (si hay socket) responde. */
-  private commit(socket: WebSocket | null, rulesChanged = false): void {
+  private commit(socket: WebSocket | null, profileChanged = false): void {
     this.store
       .save(this.file)
       .then(() => {
-        if (rulesChanged) {
-          this.broadcastRules();
-          this.broadcastCommunityRules();
+        if (profileChanged) {
+          this.broadcastAcciones();
+          this.broadcastEventos();
         }
         this.broadcastState();
       })
@@ -297,69 +253,66 @@ export class ProfilesController extends EventEmitter {
       });
   }
 
-  // --- canal mapping-rules (opera sobre el perfil activo) ---
+  // --- canal acciones (opera sobre el perfil activo) ---
 
-  private handleRules(payload: unknown, socket: WebSocket) {
-    const parsed = MappingRulesMessageSchema.safeParse(payload);
+  private handleAcciones(payload: unknown, socket: WebSocket) {
+    const parsed = AccionesMessageSchema.safeParse(payload);
     if (!parsed.success || parsed.data.kind !== "set") return;
 
-    const result = validateRules(parsed.data.rules, this.getCatalog());
+    const result = validateAcciones(parsed.data.acciones, this.getCatalog());
     if (!result.ok) {
-      this.emit("log", { level: "warn", message: `Reglas rechazadas (${result.errors.length} errores)` });
-      this.server.sendTo(socket, "mapping-rules", { kind: "error", message: result.errors.join(" ") });
+      this.emit("log", { level: "warn", message: `Acciones rechazadas (${result.errors.length} errores)` });
+      this.server.sendTo(socket, "acciones", { kind: "error", message: result.errors.join(" ") });
       return;
     }
 
     const active = this.activeProfile();
-    active.rules = result.rules;
-    this.engine.setRules(result.rules);
+    active.acciones = result.acciones;
+    this.engine.setAcciones(result.acciones);
 
     this.store
       .save(this.file)
       .then(() => {
-        this.broadcastRules();
+        this.broadcastAcciones();
         this.broadcastState();
-        this.emit("log", { level: "info", message: `Guardadas ${result.rules.length} reglas en "${active.name}"` });
+        this.emit("log", { level: "info", message: `Guardadas ${result.acciones.length} acciones en "${active.name}"` });
       })
       .catch((err) => {
-        this.emit("log", { level: "error", message: "No se pudo guardar las reglas", details: err });
-        this.server.sendTo(socket, "mapping-rules", {
+        this.emit("log", { level: "error", message: "No se pudo guardar las acciones", details: err });
+        this.server.sendTo(socket, "acciones", {
           kind: "error",
           message: `No se pudo guardar: ${(err as Error).message ?? err}`,
         });
       });
   }
 
-  // --- canal community-rules (opera sobre el perfil activo) ---
+  // --- canal eventos (opera sobre el perfil activo) ---
 
-  private handleCommunityRules(payload: unknown, socket: WebSocket) {
-    const parsed = CommunityRulesMessageSchema.safeParse(payload);
+  private handleEventos(payload: unknown, socket: WebSocket) {
+    const parsed = EventosMessageSchema.safeParse(payload);
     if (!parsed.success || parsed.data.kind !== "set") return;
 
-    const result = validateCommunityRules(parsed.data.rules, this.getCatalog());
+    const result = validateEventos(parsed.data.eventos);
     if (!result.ok) {
-      this.emit("log", {
-        level: "warn",
-        message: `Reglas de comunidad rechazadas (${result.errors.length} errores)`,
-      });
-      this.server.sendTo(socket, "community-rules", { kind: "error", message: result.errors.join(" ") });
+      this.emit("log", { level: "warn", message: `Eventos rechazados (${result.errors.length} errores)` });
+      this.server.sendTo(socket, "eventos", { kind: "error", message: result.errors.join(" ") });
       return;
     }
 
     const active = this.activeProfile();
-    active.communityRules = result.rules;
-    this.engine.setCommunityRules(result.rules);
+    active.eventos = result.eventos;
+    this.engine.setEventos(result.eventos);
 
     this.store
       .save(this.file)
       .then(() => {
-        this.broadcastCommunityRules();
+        this.broadcastEventos();
         this.broadcastState();
-        this.emit("log", { level: "info", message: `Guardadas reglas de comunidad en "${active.name}"` });
+        this.emit("log", { level: "info", message: `Guardados ${result.eventos.length} eventos en "${active.name}"` });
       })
       .catch((err) => {
-        this.emit("log", { level: "error", message: "No se pudo guardar las reglas de comunidad", details: err });
-        this.server.sendTo(socket, "community-rules", {
+        this.emit("log", { level: "error", message: "No se pudo guardar los eventos", details: err });
+        this.server.sendTo(socket, "eventos", {
           kind: "error",
           message: `No se pudo guardar: ${(err as Error).message ?? err}`,
         });
@@ -413,8 +366,12 @@ export class ProfilesController extends EventEmitter {
       this.server.sendTo(socket, "profiles", { kind: "error", message: "Perfil no encontrado." });
       return;
     }
-    const copy = newProfile(`${source.name} (copia)`, deepCopyRules(source.rules));
-    copy.communityRules = deepCopyCommunityRules(this.communityRulesOf(source));
+    const copy: Profile = {
+      id: nanoid(),
+      name: `${source.name} (copia)`,
+      acciones: deepCopyAcciones(source.acciones),
+      eventos: deepCopyEventos(source.eventos),
+    };
     this.file.profiles.push(copy);
     this.commit(socket);
   }
@@ -446,15 +403,15 @@ export class ProfilesController extends EventEmitter {
     }
     const wasActive = this.file.activeProfileId === id;
     this.file.profiles.splice(index, 1);
-    let rulesChanged = false;
+    let profileChanged = false;
     if (wasActive) {
       this.file.activeProfileId = this.file.profiles[0].id;
-      this.engine.setRules(this.file.profiles[0].rules);
-      this.engine.setCommunityRules(this.communityRulesOf(this.file.profiles[0]));
+      this.engine.setAcciones(this.file.profiles[0].acciones);
+      this.engine.setEventos(this.file.profiles[0].eventos);
       this.resetEventLog();
-      rulesChanged = true;
+      profileChanged = true;
     }
-    this.commit(socket, rulesChanged);
+    this.commit(socket, profileChanged);
   }
 
   private setActive(id: string, socket: WebSocket) {
@@ -465,8 +422,8 @@ export class ProfilesController extends EventEmitter {
     }
     if (this.file.activeProfileId === id) return;
     this.file.activeProfileId = id;
-    this.engine.setRules(profile.rules);
-    this.engine.setCommunityRules(this.communityRulesOf(profile));
+    this.engine.setAcciones(profile.acciones);
+    this.engine.setEventos(profile.eventos);
     this.resetEventLog();
     this.commit(socket, true);
   }

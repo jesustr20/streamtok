@@ -1,12 +1,11 @@
 import { z } from "zod";
-import { CommunityRuleKindSchema } from "./community-rule.js";
 import { LiveEventType } from "./live-event.js";
 
 /**
  * Cola de eventos ("Eventos y Cola", issue #17). Concepto UI↔sidecar, NO en
  * mod-protocol.ts. Es un log in-memory, acotado y sin persistencia: el sidecar
  * emite una entrada por cada "decisión" que toma al evaluar un LiveEvent
- * (regla de mapeo/regla de comunidad disparada, o descarte y por qué).
+ * (Evento/Acción disparados, o descarte y por qué).
  */
 
 /**
@@ -17,14 +16,15 @@ export const EventLogStatusSchema = z.enum(["fired", "discarded"]);
 export type EventLogStatus = z.infer<typeof EventLogStatusSchema>;
 
 /**
- * Motivos de descarte. Todos corresponden a lógica real del `MappingEngine`:
- *  - gift-in-progress  evento gift en mitad de un streak (repeatEnd false)
- *  - no-match          ninguna regla/slot coincidió
- *  - like-threshold    like por debajo del umbral "cada N likes"
- *  - mod-not-connected sendCommand devolvió "Mod no conectado"
- *  - queue-full        sendCommand devolvió cola llena (límite de 300)
- *  - ack-timeout       sendCommand expiró esperando mod-ack
- *  - command-error     sendCommand falló con otro error del ack
+ * Motivos de descarte. Todos corresponden a lógica real del motor:
+ *  - gift-in-progress       evento gift en mitad de un streak (repeatEnd false)
+ *  - no-match               ningún Evento coincidió
+ *  - like-threshold         like por debajo del umbral "cada N likes"
+ *  - mod-not-connected      sendCommand devolvió "Mod no conectado"
+ *  - queue-full             sendCommand devolvió cola llena (límite de 300)
+ *  - ack-timeout            sendCommand expiró esperando mod-ack
+ *  - command-error          sendCommand falló con otro error del ack
+ *  - accion-no-encontrada   un Evento referencia una Acción que no existe
  */
 export const EventLogReasonSchema = z.enum([
   "gift-in-progress",
@@ -34,6 +34,7 @@ export const EventLogReasonSchema = z.enum([
   "queue-full",
   "ack-timeout",
   "command-error",
+  "accion-no-encontrada",
 ]);
 export type EventLogReason = z.infer<typeof EventLogReasonSchema>;
 
@@ -46,12 +47,12 @@ export const EventLogEntrySchema = z.object({
   event: LiveEventType,
   /** descripción corta en español para mostrar tal cual. */
   message: z.string(),
-  /** id de acción del mod (si se intentó disparar). */
+  /** id del comando del mod que se intentó disparar. */
   action: z.string().optional(),
-  /** id de la regla de mapeo que coincidió (si aplica). */
-  ruleId: z.string().optional(),
-  /** slot de comunidad que coincidió (si aplica). */
-  communityKind: CommunityRuleKindSchema.optional(),
+  /** id de la Acción disparada (si aplica). */
+  accionId: z.string().optional(),
+  /** id del Evento que coincidió (si aplica). */
+  eventoId: z.string().optional(),
   /** motivo, presente solo cuando status === "discarded". */
   reason: EventLogReasonSchema.optional(),
 });

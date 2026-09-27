@@ -1,9 +1,9 @@
 import type {
-  CommunityRulesMessage,
+  AccionesMessage,
   EventLogMessage,
+  EventosMessage,
   ManualCommandRequest,
   ManualCommandResponse,
-  MappingRulesMessage,
   ModAckPayload,
   ModHelloPayload,
   ProfilesMessage,
@@ -12,8 +12,8 @@ import type {
 export type SidecarEvent =
   | { channel: "mod-hello"; payload: ModHelloPayload }
   | { channel: "mod-ack"; payload: ModAckPayload }
-  | { channel: "mapping-rules"; payload: MappingRulesMessage }
-  | { channel: "community-rules"; payload: CommunityRulesMessage }
+  | { channel: "acciones"; payload: AccionesMessage }
+  | { channel: "eventos"; payload: EventosMessage }
   | { channel: "event-log"; payload: EventLogMessage }
   | { channel: "manual-command"; payload: ManualCommandResponse }
   | { channel: "profiles"; payload: ProfilesMessage }
