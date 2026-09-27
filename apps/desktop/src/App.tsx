@@ -2,6 +2,7 @@ import type { ModAckPayload, ModHelloPayload } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { ActionsPanel } from "./components/ActionsPanel";
 import { CommunityRulesPanel } from "./components/CommunityRulesPanel";
+import { EventQueuePanel } from "./components/EventQueuePanel";
 import { InstallModButton } from "./components/InstallModButton";
 import { MappingRulesPanel } from "./components/MappingRulesPanel";
 import { ModLog } from "./components/ModLog";
@@ -94,6 +95,10 @@ export function App() {
           <div>
             <h2 style={{ margin: "0 0 10px", fontSize: 14, color: "#C4C5CC" }}>Log de mod-ack</h2>
             <ModLog entries={ackLog} />
+          </div>
+          <div>
+            <h2 style={{ margin: "0 0 10px", fontSize: 14, color: "#C4C5CC" }}>Eventos y Cola</h2>
+            <EventQueuePanel client={client} />
           </div>
         </div>
       </div>

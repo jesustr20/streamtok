@@ -12,6 +12,7 @@ import {
   ProfilesFileSchema,
   ProfilesMessageSchema,
   type CommunityRules,
+  type EventLogEntry,
   type ModHelloPayload,
   type MappingRule,
   type Profile,
@@ -23,6 +24,7 @@ import {
   normalizeCommunityRules,
   validateCommunityRules,
 } from "./community-rules.js";
+import { EventLogBuffer } from "./event-log.js";
 import type { MappingEngine } from "./mapping.js";
 import type { StreamTokWsServer } from "./ws-server.js";
 
@@ -162,6 +164,9 @@ export class ProfilesStore {
 
 export class ProfilesController extends EventEmitter {
   private file: ProfilesFile;
+  /** Cola de eventos in-memory (issue #17), acotada y sin persistencia. Se
+   * resetea al cambiar de perfil activo (un solo buffer, no uno por perfil). */
+  private eventLog = new EventLogBuffer();
 
   constructor(
     private server: StreamTokWsServer,
@@ -197,10 +202,13 @@ export class ProfilesController extends EventEmitter {
       this.handleCommunityRules(payload, socket),
     );
 
+    this.engine.on("event-log", (entry: EventLogEntry) => this.pushEventEntry(entry));
+
     this.server.on("client-connected", (socket) => {
       this.sendRulesTo(socket);
       this.sendCommunityRulesTo(socket);
       this.sendStateTo(socket);
+      this.sendEventLogTo(socket);
     });
   }
 
@@ -254,6 +262,21 @@ export class ProfilesController extends EventEmitter {
 
   private broadcastCommunityRules() {
     this.server.broadcast("community-rules", { kind: "update", rules: this.activeCommunityRules() });
+  }
+
+  private sendEventLogTo(socket: WebSocket) {
+    this.server.sendTo(socket, "event-log", { kind: "snapshot", entries: this.eventLog.getEntries() });
+  }
+
+  private pushEventEntry(entry: EventLogEntry) {
+    this.eventLog.append(entry);
+    this.server.broadcast("event-log", { kind: "append", entry });
+  }
+
+  /** Vacía la cola (al cambiar de perfil activo) y avisa a los clientes. */
+  private resetEventLog() {
+    this.eventLog.reset();
+    this.server.broadcast("event-log", { kind: "snapshot", entries: [] });
   }
 
   /** Persiste y hace broadcast. En error avisa y (si hay socket) responde. */
@@ -428,6 +451,7 @@ export class ProfilesController extends EventEmitter {
       this.file.activeProfileId = this.file.profiles[0].id;
       this.engine.setRules(this.file.profiles[0].rules);
       this.engine.setCommunityRules(this.communityRulesOf(this.file.profiles[0]));
+      this.resetEventLog();
       rulesChanged = true;
     }
     this.commit(socket, rulesChanged);
@@ -443,6 +467,7 @@ export class ProfilesController extends EventEmitter {
     this.file.activeProfileId = id;
     this.engine.setRules(profile.rules);
     this.engine.setCommunityRules(this.communityRulesOf(profile));
+    this.resetEventLog();
     this.commit(socket, true);
   }
 }

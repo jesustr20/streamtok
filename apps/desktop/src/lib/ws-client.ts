@@ -1,5 +1,6 @@
 import type {
   CommunityRulesMessage,
+  EventLogMessage,
   ManualCommandRequest,
   ManualCommandResponse,
   MappingRulesMessage,
@@ -13,6 +14,7 @@ export type SidecarEvent =
   | { channel: "mod-ack"; payload: ModAckPayload }
   | { channel: "mapping-rules"; payload: MappingRulesMessage }
   | { channel: "community-rules"; payload: CommunityRulesMessage }
+  | { channel: "event-log"; payload: EventLogMessage }
   | { channel: "manual-command"; payload: ManualCommandResponse }
   | { channel: "profiles"; payload: ProfilesMessage }
   | { channel: string; payload: unknown };
