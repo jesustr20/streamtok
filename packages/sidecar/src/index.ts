@@ -6,6 +6,7 @@ import {
   defaultRulesFilePath,
 } from "./mapping-rules.js";
 import { ModBridge } from "./mod-bridge.js";
+import { registerManualCommand } from "./manual-command.js";
 import { TikTokLiveSource } from "./tiktok-source.js";
 import { StreamTokWsServer } from "./ws-server.js";
 
@@ -50,6 +51,13 @@ rulesController.on("log", (entry) => {
   // eslint-disable-next-line no-console
   console.log(tag, entry.message, entry.details ?? "");
 });
+
+// ---------------------------------------------------------------------------
+// Canal "manual-command" (UI → sidecar): dispara un mod-command puntual (botón
+// "Probar acción" de la UI) reusando ModBridge.sendCommand. No toca el
+// protocolo del mod.
+// ---------------------------------------------------------------------------
+registerManualCommand(server, modBridge);
 
 // ---------------------------------------------------------------------------
 // Fuente de LiveEvents. En producción esto viene de tiktok-live-connector

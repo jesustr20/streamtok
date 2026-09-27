@@ -76,7 +76,7 @@ export function App() {
           <h1 style={{ margin: 0, fontSize: 20, fontFamily: "'Space Grotesk', sans-serif" }}>
             Mods · GTA V Chaos Mod
           </h1>
-          <ActionsPanel catalog={catalog} />
+          <ActionsPanel catalog={catalog} client={client} />
           <h2 style={{ margin: "0 0 -8px", fontSize: 14, color: "#C4C5CC" }}>Reglas de mapeo</h2>
           <MappingRulesPanel client={client} catalog={catalog} />
         </div>

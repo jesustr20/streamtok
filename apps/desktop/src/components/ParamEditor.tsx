@@ -13,6 +13,12 @@ import type { ModActionParam } from "@streamtok/shared";
  */
 export type ParamValues = Record<string, number | string | boolean>;
 
+export function defaultParamValues(params: ModActionParam[]): ParamValues {
+  const out: ParamValues = {};
+  for (const p of params) out[p.name] = p.default;
+  return out;
+}
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "8px 10px",
@@ -40,12 +46,6 @@ const presetStyle: React.CSSProperties = {
   fontSize: 11.5,
   cursor: "pointer",
 };
-
-function initValues(params: ModActionParam[]): ParamValues {
-  const out: ParamValues = {};
-  for (const p of params) out[p.name] = p.default;
-  return out;
-}
 
 function ParamField({
   param,
@@ -143,7 +143,7 @@ export function ParamEditor({
   params: ModActionParam[];
   onChange?: (values: ParamValues) => void;
 }) {
-  const [values, setValues] = useState<ParamValues>(() => initValues(params));
+  const [values, setValues] = useState<ParamValues>(() => defaultParamValues(params));
 
   function setParam(name: string, value: number | string | boolean) {
     const next = { ...values, [name]: value };
