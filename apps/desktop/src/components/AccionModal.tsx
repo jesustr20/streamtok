@@ -48,9 +48,10 @@ function emptyMedia(): AccionMedia {
 
 /**
  * Modal "Nueva Acción" / "Editar Acción" (ModNuevaAccion.dc.html). La lista de
- * comandos reutiliza `ParamEditor` real; el resto ("¿Qué deseas realizar?",
- * el bloque de ejemplo y "Configuraciones adicionales") es estructura visual
- * sin backend de acciones generales todavía.
+ * comandos reutiliza `ParamEditor` real y "¿Repetir con combo de regalos?" se
+ * guarda en la Accion; el resto ("¿Qué deseas realizar?" —que además controla
+ * el bloque de ejemplo—, el bloque "Comando General" y "Configuraciones
+ * adicionales") es estructura visual sin backend de acciones generales todavía.
  */
 export function AccionModal({
   catalog,
@@ -71,9 +72,15 @@ export function AccionModal({
       params: toParamValues(c.params),
     })) ?? [],
   );
+  const [generales, setGenerales] = useState<Record<string, boolean>>({});
+  const [repetirConCombo, setRepetirConCombo] = useState(initial?.repetirConComboDeRegalos ?? false);
   const [error, setError] = useState<string | null>(null);
 
   const actions = catalog?.actions ?? [];
+
+  function toggleGeneral(label: string) {
+    setGenerales((prev) => ({ ...prev, [label]: !prev[label] }));
+  }
 
   function addComando() {
     setComandos((prev) => [...prev, { key: newId(), modActionId: "", params: {} }]);
@@ -115,6 +122,7 @@ export function AccionModal({
       pantalla: initial?.pantalla ?? null,
       media: initial?.media ?? emptyMedia(),
       comandos: validComandos,
+      repetirConComboDeRegalos: repetirConCombo,
     });
   }
 
@@ -161,30 +169,49 @@ export function AccionModal({
           >
             » ¿Qué deseas realizar?
           </div>
-          {GENERALES.map((g) => (
-            <div
-              key={g}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 14px",
-                borderTop: "1px solid #1E2027",
-              }}
-            >
-              <div
+          {GENERALES.map((g) => {
+            const checked = generales[g] === true;
+            return (
+              <button
+                key={g}
+                type="button"
+                onClick={() => toggleGeneral(g)}
                 style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: 4,
-                  border: "1px solid #2A2C33",
-                  flexShrink: 0,
-                  boxSizing: "border-box",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 14px",
+                  border: "none",
+                  borderTop: "1px solid #1E2027",
+                  background: "none",
+                  width: "100%",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  color: "#F4F4F5",
                 }}
-              />
-              <span style={{ fontSize: 12.5 }}>{g}</span>
-            </div>
-          ))}
+              >
+                <div
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 4,
+                    border: `1px solid ${checked ? ACCENT : "#2A2C33"}`,
+                    background: checked ? ACCENT : "transparent",
+                    flexShrink: 0,
+                    boxSizing: "border-box",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {checked && (
+                    <span style={{ fontSize: 9, color: "#FFFFFF", lineHeight: 1 }}>✓</span>
+                  )}
+                </div>
+                <span style={{ fontSize: 12.5 }}>{g}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Commands */}
@@ -293,7 +320,8 @@ export function AccionModal({
           </button>
         </div>
 
-        {/* Comando general de ejemplo */}
+        {/* Comando general de ejemplo: solo si "Simular Keystrokes" está marcado */}
+        {generales["Simular Keystrokes"] && (
         <div
           style={{
             padding: 14,
@@ -330,6 +358,7 @@ export function AccionModal({
           </div>
           <span style={{ fontSize: 11, color: "#5B7CFA", fontWeight: 600 }}>↗ Expandir Editor</span>
         </div>
+        )}
 
         {/* Configuraciones adicionales */}
         <div
@@ -379,24 +408,46 @@ export function AccionModal({
               0 seg
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setRepetirConCombo((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              textAlign: "left",
+              color: "#F4F4F5",
+            }}
+          >
             <div
               style={{
                 width: 16,
                 height: 16,
                 borderRadius: 4,
-                background: ACCENT,
+                border: `1px solid ${repetirConCombo ? ACCENT : "#2A2C33"}`,
+                background: repetirConCombo ? ACCENT : "transparent",
                 flexShrink: 0,
                 marginTop: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
-            />
+            >
+              {repetirConCombo && (
+                <span style={{ fontSize: 9, color: "#FFFFFF", lineHeight: 1 }}>✓</span>
+              )}
+            </div>
             <div>
               <div style={{ fontSize: 12, fontWeight: 600 }}>¿Repetir con combo de regalos?</div>
               <div style={{ fontSize: 10.5, color: "#5B5D66" }}>
                 Se ejecuta por cada regalo enviado, no solo una vez.
               </div>
             </div>
-          </div>
+          </button>
           <p style={{ margin: 0, fontSize: 10.5, color: "#5B5D66", lineHeight: 1.5 }}>
             Recuerda: para que esta acción sea visible en tu stream, la pantalla elegida arriba debe
             estar pegada como fuente "Link" en TikTok LIVE Studio u OBS.

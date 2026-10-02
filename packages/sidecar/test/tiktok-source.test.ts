@@ -30,18 +30,25 @@ describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", 
     });
   });
 
-  it("descarta eventos intermedios de un streak de regalo y emite el final", () => {
+  it("normaliza el repeatEnd del streak de regalo (intermedio: false, final: true)", () => {
     const base = {
       user: { displayId: "fan", nickname: "Fan" },
       giftId: "5655",
       gift: { name: "Rose", diamondCount: 1, type: 1 },
     };
 
-    // evento intermedio (repeatEnd: 0): no debe producir LiveEvent
+    // evento intermedio (repeatEnd: 0): pasa con repeatEnd: false
     const intermedio = mapTiktokEvent("gift", { ...base, repeatCount: 2, repeatEnd: 0 });
-    expect(intermedio).toBeNull();
+    expect(intermedio).toMatchObject({
+      event: "gift",
+      username: "@fan",
+      giftId: 5655,
+      giftName: "Rose",
+      coins: 2,
+      repeatEnd: false,
+    });
 
-    // evento final (repeatEnd: 1): sí produce LiveEvent con coins totales
+    // evento final (repeatEnd: 1): repeatEnd: true con coins totales
     const final = mapTiktokEvent("gift", { ...base, repeatCount: 3, repeatEnd: 1 });
     expect(final).toMatchObject({
       event: "gift",

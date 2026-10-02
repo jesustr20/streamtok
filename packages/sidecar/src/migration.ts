@@ -35,6 +35,7 @@ function makeAccion(
     pantalla: null,
     media: { animacion: false, imagen: false, sonido: false, video: false },
     comandos: [{ modActionId, params }],
+    repetirConComboDeRegalos: false,
   };
 }
 

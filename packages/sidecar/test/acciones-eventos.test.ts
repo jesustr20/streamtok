@@ -40,6 +40,7 @@ function accion(overrides: Partial<Accion> = {}): Accion {
     pantalla: null,
     media: { animacion: false, imagen: false, sonido: false, video: false },
     comandos: [{ modActionId: "arena_join", params: { character: "default" } }],
+    repetirConComboDeRegalos: false,
     ...overrides,
   };
 }

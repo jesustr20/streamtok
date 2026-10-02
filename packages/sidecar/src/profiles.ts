@@ -343,6 +343,11 @@ export class ProfilesController extends EventEmitter {
       case "set-active":
         this.setActive(parsed.data.id, socket);
         break;
+      case "get-state":
+        // Snapshot bajo demanda: una UI que se monta después de la conexión
+        // inicial pide el estado actual (no lo recibió en `client-connected`).
+        this.sendStateTo(socket);
+        break;
       default:
         // "state"/"error" los emite el sidecar; se ignoran entrantes.
         break;

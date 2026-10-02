@@ -57,7 +57,9 @@ export function Sidebar({ view, onNavigate }: { view: ViewId; onNavigate: (v: Vi
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {NAV_ITEMS.map((item) => {
           const active =
-            item.enabled && (view === item.id || (view === "juego-detalle" && item.id === "juegos"));
+            item.enabled &&
+            (view === item.id ||
+              ((view === "juego-detalle" || view === "gestionar-perfiles") && item.id === "juegos"));
           return (
             <button
               key={item.id}

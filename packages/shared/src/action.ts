@@ -41,6 +41,9 @@ export const AccionSchema = z.object({
   media: AccionMediaSchema,
   /** lista de comandos del mod a ejecutar. */
   comandos: z.array(AccionComandoSchema),
+  /** si es true, un Evento de regalo la dispara en CADA regalo del combo
+   * (incluyendo los intermedios con repeatEnd: false), no solo al final. */
+  repetirConComboDeRegalos: z.boolean().optional().default(false),
 });
 export type Accion = z.infer<typeof AccionSchema>;
 
