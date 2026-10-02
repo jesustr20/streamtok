@@ -8,6 +8,7 @@ import type {
 } from "@streamtok/shared";
 import {
   MODO_DISPARO_LABELS,
+  PORQUE_LABELS,
   PORQUE_OPTIONS,
   PROXIMAMENTE_PORQUE,
   QUIEN_OPTIONS,
@@ -146,29 +147,47 @@ export function EventoModal({
 
   const esProximamente = PROXIMAMENTE_PORQUE.has(porque);
 
+  const hasCampos =
+    porque === "unirse" ||
+    porque === "primeraActividad" ||
+    porque === "likes" ||
+    porque === "comando" ||
+    porque === "regaloValorMinimo" ||
+    porque === "regaloEspecifico" ||
+    porque === "emoteSuscriptor" ||
+    porque === "stickerFanClub" ||
+    porque === "compraTiktokShop";
+
   return (
     <div style={overlayStyle}>
       <div style={cardStyle}>
-        <div style={headerStyle}>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>
-            {initial ? "Editar Evento" : "Nuevo Evento"}
-          </span>
+        <span style={eyebrowStyle}>MODAL · ABIERTO DESDE GTA V CHAOS MOD</span>
+        <div style={titleRowStyle}>
+          <h2 style={titleStyle}>{initial ? "Editar Evento" : "Nuevo Evento"}</h2>
           <button type="button" onClick={onClose} style={closeButtonStyle}>
             ✕
           </button>
         </div>
 
         <div style={bodyStyle}>
-          <label style={labelStyle}>
-            ¿Quién?
-            <select style={inputStyle} value={quien} onChange={(e) => setQuien(e.target.value as EventoQuien)}>
+          <div>
+            <span style={questionLabelStyle}>¿Quién puede desencadenar el evento?</span>
+            <div style={radioListStyle}>
               {QUIEN_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setQuien(o.value)}
+                  style={radioRowStyle}
+                >
+                  <span style={radioOuterStyle(quien === o.value)}>
+                    <span style={radioInnerStyle(quien === o.value)} />
+                  </span>
+                  <span style={{ fontSize: 13, color: "#F4F4F5" }}>{o.label}</span>
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
 
           {quien === "usuarioEspecifico" && (
             <label style={labelStyle}>
@@ -181,6 +200,34 @@ export function EventoModal({
               />
             </label>
           )}
+
+          <div>
+            <span style={questionLabelStyle}>¿Por qué se desencadenará el evento?</span>
+            <div style={radioListStyle}>
+              {PORQUE_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setPorque(o.value)}
+                  style={radioRowStyle}
+                >
+                  <span style={radioOuterStyle(porque === o.value)}>
+                    <span style={radioInnerStyle(porque === o.value)} />
+                  </span>
+                  <span style={{ fontSize: 13, color: "#F4F4F5" }}>
+                    {o.label}
+                    {PROXIMAMENTE_PORQUE.has(o.value) ? " (próximamente)" : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p style={{ margin: "8px 0 0", fontSize: 10.5, color: "#5B5D66" }}>
+              El campo de abajo cambia según lo elegido acá (ej. "regalo específico" pide el
+              regalo, "valor mínimo" pide un número).
+            </p>
+          </div>
+
+          {esProximamente && <div style={proximamenteNoteStyle}>{PROXIMAMENTE_NOTE}</div>}
 
           {quien === "donanteTop" && (
             <label style={labelStyle}>
@@ -197,66 +244,14 @@ export function EventoModal({
             </label>
           )}
 
-          <label style={labelStyle}>
-            ¿Por qué?
-            <select style={inputStyle} value={porque} onChange={(e) => setPorque(e.target.value as EventoPorque)}>
-              {PORQUE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                  {PROXIMAMENTE_PORQUE.has(o.value) ? " (próximamente)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {esProximamente && (
-            <div style={proximamenteNoteStyle}>{PROXIMAMENTE_NOTE}</div>
-          )}
-
-          {(porque === "unirse" || porque === "primeraActividad") && (
-            <label style={labelStyle}>
-              Nivel de equipo requerido
-              <input
-                type="number"
-                style={inputStyle}
-                value={Number.isFinite(nivelEquipoRequerido) ? nivelEquipoRequerido : ""}
-                min={0}
-                onChange={(e) =>
-                  setNivelEquipoRequerido(e.target.value === "" ? NaN : Number(e.target.value))
-                }
-              />
-            </label>
-          )}
-
-          {porque === "likes" && (
-            <label style={labelStyle}>
-              Cantidad mínima de likes
-              <input
-                type="number"
-                style={inputStyle}
-                value={Number.isFinite(cantidadMinimaLikes) ? cantidadMinimaLikes : ""}
-                min={1}
-                onChange={(e) =>
-                  setCantidadMinimaLikes(e.target.value === "" ? NaN : Number(e.target.value))
-                }
-              />
-            </label>
-          )}
-
-          {porque === "comando" && (
-            <>
-              <label style={labelStyle}>
-                Comando
-                <input
-                  style={inputStyle}
-                  value={comando}
-                  placeholder="!drop o /drop"
-                  onChange={(e) => setComando(e.target.value)}
-                />
-              </label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {hasCampos && (
+            <div style={conditionalBlockStyle}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: "#5B7CFA", letterSpacing: "0.04em" }}>
+                CAMPOS DE ESTE TRIGGER — {PORQUE_LABELS[porque].toUpperCase()}
+              </span>
+              {(porque === "unirse" || porque === "primeraActividad") && (
                 <label style={labelStyle}>
-                  Nivel de equipo
+                  Nivel de equipo requerido
                   <input
                     type="number"
                     style={inputStyle}
@@ -267,97 +262,140 @@ export function EventoModal({
                     }
                   />
                 </label>
+              )}
+
+              {porque === "likes" && (
                 <label style={labelStyle}>
-                  Nivel de puntos
+                  Cantidad mínima de likes
                   <input
                     type="number"
                     style={inputStyle}
-                    value={Number.isFinite(nivelPuntosRequerido) ? nivelPuntosRequerido : ""}
-                    min={0}
+                    value={Number.isFinite(cantidadMinimaLikes) ? cantidadMinimaLikes : ""}
+                    min={1}
                     onChange={(e) =>
-                      setNivelPuntosRequerido(e.target.value === "" ? NaN : Number(e.target.value))
+                      setCantidadMinimaLikes(e.target.value === "" ? NaN : Number(e.target.value))
                     }
                   />
                 </label>
-              </div>
-            </>
-          )}
+              )}
 
-          {porque === "regaloValorMinimo" && (
-            <label style={labelStyle}>
-              Valor mínimo en monedas
-              <input
-                type="number"
-                style={inputStyle}
-                value={Number.isFinite(valorMinimoMonedas) ? valorMinimoMonedas : ""}
-                min={1}
-                onChange={(e) =>
-                  setValorMinimoMonedas(e.target.value === "" ? NaN : Number(e.target.value))
-                }
-              />
-            </label>
-          )}
+              {porque === "comando" && (
+                <>
+                  <label style={labelStyle}>
+                    Comando
+                    <input
+                      style={inputStyle}
+                      value={comando}
+                      placeholder="!drop o /drop"
+                      onChange={(e) => setComando(e.target.value)}
+                    />
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <label style={labelStyle}>
+                      Nivel de equipo
+                      <input
+                        type="number"
+                        style={inputStyle}
+                        value={Number.isFinite(nivelEquipoRequerido) ? nivelEquipoRequerido : ""}
+                        min={0}
+                        onChange={(e) =>
+                          setNivelEquipoRequerido(e.target.value === "" ? NaN : Number(e.target.value))
+                        }
+                      />
+                    </label>
+                    <label style={labelStyle}>
+                      Nivel de puntos
+                      <input
+                        type="number"
+                        style={inputStyle}
+                        value={Number.isFinite(nivelPuntosRequerido) ? nivelPuntosRequerido : ""}
+                        min={0}
+                        onChange={(e) =>
+                          setNivelPuntosRequerido(e.target.value === "" ? NaN : Number(e.target.value))
+                        }
+                      />
+                    </label>
+                  </div>
+                </>
+              )}
 
-          {porque === "regaloEspecifico" && (
-            <label style={labelStyle}>
-              Regalo
-              <input
-                style={inputStyle}
-                value={giftName}
-                placeholder="Nombre exacto del regalo"
-                onChange={(e) => setGiftName(e.target.value)}
-              />
-              <span style={noteStyle}>
-                Catálogo real de regalos pendiente — por ahora escribe el nombre exacto del regalo.
-              </span>
-            </label>
-          )}
+              {porque === "regaloValorMinimo" && (
+                <label style={labelStyle}>
+                  Valor mínimo en monedas
+                  <input
+                    type="number"
+                    style={inputStyle}
+                    value={Number.isFinite(valorMinimoMonedas) ? valorMinimoMonedas : ""}
+                    min={1}
+                    onChange={(e) =>
+                      setValorMinimoMonedas(e.target.value === "" ? NaN : Number(e.target.value))
+                    }
+                  />
+                </label>
+              )}
 
-          {porque === "emoteSuscriptor" && (
-            <label style={labelStyle}>
-              Emote de suscriptor
-              <input
-                style={inputStyle}
-                value={emoteId}
-                placeholder="Emote exacto"
-                onChange={(e) => setEmoteId(e.target.value)}
-              />
-              <span style={noteStyle}>
-                Catálogo real de emotes pendiente — por ahora escribe el emote exacto.
-              </span>
-            </label>
-          )}
+              {porque === "regaloEspecifico" && (
+                <label style={labelStyle}>
+                  Regalo
+                  <input
+                    style={inputStyle}
+                    value={giftName}
+                    placeholder="Nombre exacto del regalo"
+                    onChange={(e) => setGiftName(e.target.value)}
+                  />
+                  <span style={noteStyle}>
+                    Catálogo real de regalos pendiente — por ahora escribe el nombre exacto del regalo.
+                  </span>
+                </label>
+              )}
 
-          {porque === "stickerFanClub" && (
-            <label style={labelStyle}>
-              Sticker del club de fans
-              <input
-                style={inputStyle}
-                value={stickerId}
-                placeholder="Sticker exacto"
-                onChange={(e) => setStickerId(e.target.value)}
-              />
-              <span style={noteStyle}>
-                Catálogo real de stickers pendiente — por ahora escribe el sticker exacto.
-              </span>
-            </label>
-          )}
+              {porque === "emoteSuscriptor" && (
+                <label style={labelStyle}>
+                  Emote de suscriptor
+                  <input
+                    style={inputStyle}
+                    value={emoteId}
+                    placeholder="Emote exacto"
+                    onChange={(e) => setEmoteId(e.target.value)}
+                  />
+                  <span style={noteStyle}>
+                    Catálogo real de emotes pendiente — por ahora escribe el emote exacto.
+                  </span>
+                </label>
+              )}
 
-          {porque === "compraTiktokShop" && (
-            <label style={labelStyle}>
-              Nombre de producto contiene
-              <input
-                style={inputStyle}
-                value={nombreProductoContiene}
-                onChange={(e) => setNombreProductoContiene(e.target.value)}
-              />
-            </label>
+              {porque === "stickerFanClub" && (
+                <label style={labelStyle}>
+                  Sticker del club de fans
+                  <input
+                    style={inputStyle}
+                    value={stickerId}
+                    placeholder="Sticker exacto"
+                    onChange={(e) => setStickerId(e.target.value)}
+                  />
+                  <span style={noteStyle}>
+                    Catálogo real de stickers pendiente — por ahora escribe el sticker exacto.
+                  </span>
+                </label>
+              )}
+
+              {porque === "compraTiktokShop" && (
+                <label style={labelStyle}>
+                  Nombre de producto contiene
+                  <input
+                    style={inputStyle}
+                    value={nombreProductoContiene}
+                    onChange={(e) => setNombreProductoContiene(e.target.value)}
+                  />
+                </label>
+              )}
+            </div>
           )}
 
           <label style={labelStyle}>
             Modo de disparo
             <select
-              style={inputStyle}
+              style={selectStyle}
               value={modoDisparo}
               onChange={(e) => setModoDisparo(e.target.value as EventoModoDisparo)}
             >
@@ -366,53 +404,58 @@ export function EventoModal({
             </select>
           </label>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <span style={{ fontSize: 11, color: "#9A9CA5" }}>
-              Acciones asociadas ({accionesIds.length} seleccionada{accionesIds.length === 1 ? "" : "s"})
-            </span>
-            <input
-              style={inputStyle}
-              value={accionSearch}
-              placeholder="Buscar acciones…"
-              onChange={(e) => setAccionSearch(e.target.value)}
-            />
-            {acciones.length === 0 ? (
-              <div style={noteStyle}>
-                No hay Acciones creadas todavía. Crea una Acción primero.
-              </div>
-            ) : filteredAcciones.length === 0 ? (
-              <div style={noteStyle}>Sin resultados.</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
-                {filteredAcciones.map((a) => {
-                  const selected = accionesIds.includes(a.id);
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 11.5, color: "#9A9CA5" }}>
+              Desencadenar todas estas acciones
+            </label>
+            <div style={chipsBoxStyle}>
+              {accionesIds.length === 0 ? (
+                <span style={{ color: "#5B5D66", fontSize: 12.5 }}>Buscar acción...</span>
+              ) : (
+                accionesIds.map((id) => {
+                  const a = acciones.find((x) => x.id === id);
                   return (
-                    <button
-                      key={a.id}
-                      type="button"
-                      onClick={() => toggleAccion(a.id)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        textAlign: "left",
-                        padding: "8px 10px",
-                        background: selected ? "#1F222B" : "#17181D",
-                        border: `1px solid ${selected ? "#5B7CFA" : "#2A2C33"}`,
-                        borderRadius: 8,
-                        color: selected ? "#F4F4F5" : "#C4C5CC",
-                        fontSize: 12.5,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input type="checkbox" checked={selected} readOnly style={{ pointerEvents: "none" }} />
-                      {a.nombre}
-                    </button>
+                    <span key={id} style={chipStyle}>
+                      {a?.nombre ?? id}
+                      <button type="button" onClick={() => toggleAccion(id)} style={chipRemoveStyle}>
+                        ✕
+                      </button>
+                    </span>
                   );
-                })}
-              </div>
-            )}
+                })
+              )}
+            </div>
           </div>
+
+          <input
+            style={inputStyle}
+            value={accionSearch}
+            placeholder="Buscar acciones…"
+            onChange={(e) => setAccionSearch(e.target.value)}
+          />
+
+          {acciones.length === 0 ? (
+            <div style={noteStyle}>No hay Acciones creadas todavía. Crea una Acción primero.</div>
+          ) : filteredAcciones.length === 0 ? (
+            <div style={noteStyle}>Sin resultados.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
+              {filteredAcciones.map((a) => {
+                const selected = accionesIds.includes(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => toggleAccion(a.id)}
+                    style={actionListItemStyle(selected)}
+                  >
+                    <input type="checkbox" checked={selected} readOnly style={{ pointerEvents: "none" }} />
+                    {a.nombre}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {error && (
             <div style={{ padding: "8px 10px", background: "#2A1416", border: "1px solid #E23A57", borderRadius: 8, color: "#F4A5B4", fontSize: 12 }}>
@@ -426,7 +469,7 @@ export function EventoModal({
             Cancelar
           </button>
           <button type="button" onClick={submit} style={primaryButtonStyle}>
-            {initial ? "Guardar cambios" : "Crear Evento"}
+            ✓ Guardar
           </button>
         </div>
       </div>
@@ -434,48 +477,64 @@ export function EventoModal({
   );
 }
 
+const ACCENT = "#E23A57";
+
 const overlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.6)",
+  background: "rgba(14, 15, 18, 0.61)",
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   justifyContent: "center",
   zIndex: 100,
-  padding: 24,
+  padding: 40,
+  overflowY: "auto",
 };
 
 const cardStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 560,
-  maxHeight: "90vh",
-  overflowY: "auto",
-  background: "#14151A",
+  width: 560,
+  maxWidth: "100%",
+  background: "#17181D",
   border: "1px solid #2A2C33",
-  borderRadius: 12,
+  borderRadius: 16,
+  padding: 24,
   display: "flex",
   flexDirection: "column",
+  gap: 18,
+  boxShadow: "0 20px 60px #00000080",
+  boxSizing: "border-box",
 };
 
-const headerStyle: React.CSSProperties = {
+const eyebrowStyle: React.CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 700,
+  color: "#5B7CFA",
+  letterSpacing: "0.06em",
+};
+
+const titleRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  padding: "14px 18px",
-  borderBottom: "1px solid #2A2C33",
+};
+
+const titleStyle: React.CSSProperties = {
+  margin: 0,
+  fontFamily: "'Space Grotesk', sans-serif",
+  fontSize: 17,
+  fontWeight: 700,
 };
 
 const closeButtonStyle: React.CSSProperties = {
   background: "none",
   border: "none",
-  color: "#9A9CA5",
-  fontSize: 14,
+  color: "#5B5D66",
+  fontSize: 16,
   cursor: "pointer",
-  padding: 4,
+  padding: 0,
 };
 
 const bodyStyle: React.CSSProperties = {
-  padding: 18,
   display: "flex",
   flexDirection: "column",
   gap: 14,
@@ -483,34 +542,153 @@ const bodyStyle: React.CSSProperties = {
 
 const footerStyle: React.CSSProperties = {
   display: "flex",
-  justifyContent: "flex-end",
   gap: 10,
-  padding: "14px 18px",
-  borderTop: "1px solid #2A2C33",
+  justifyContent: "flex-end",
 };
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "8px 10px",
-  background: "#17181D",
+  height: 42,
+  padding: "0 14px",
+  background: "#0E0F12",
   border: "1px solid #2A2C33",
-  borderRadius: 8,
+  borderRadius: 9,
   color: "#F4F4F5",
   fontSize: 13,
+  boxSizing: "border-box",
+};
+
+const selectStyle: React.CSSProperties = {
+  width: "100%",
+  height: 32,
+  padding: "0 10px",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 7,
+  color: "#F4F4F5",
+  fontSize: 12,
   boxSizing: "border-box",
 };
 
 const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 4,
-  fontSize: 11,
+  gap: 5,
+  fontSize: 10.5,
   color: "#9A9CA5",
 };
 
-const noteStyle: React.CSSProperties = {
+const questionLabelStyle: React.CSSProperties = {
   fontSize: 11.5,
-  color: "#9A9CA5",
+  fontWeight: 700,
+  color: "#C4C5CC",
+};
+
+const radioListStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  marginTop: 10,
+};
+
+const radioRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  background: "none",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+  textAlign: "left",
+  color: "#F4F4F5",
+};
+
+function radioOuterStyle(sel: boolean): React.CSSProperties {
+  return {
+    width: 15,
+    height: 15,
+    borderRadius: "50%",
+    border: `1px solid ${sel ? ACCENT : "#3A3C44"}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  };
+}
+
+function radioInnerStyle(sel: boolean): React.CSSProperties {
+  return {
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    background: sel ? ACCENT : "transparent",
+  };
+}
+
+const conditionalBlockStyle: React.CSSProperties = {
+  padding: "14px 16px",
+  background: "#141922",
+  border: "1px solid #22303F",
+  borderRadius: 10,
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const chipsBoxStyle: React.CSSProperties = {
+  minHeight: 40,
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: 6,
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 9,
+  padding: "6px 14px",
+  boxSizing: "border-box",
+};
+
+const chipStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "3px 9px",
+  background: ACCENT,
+  borderRadius: 6,
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#FFFFFF",
+};
+
+const chipRemoveStyle: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "#FFFFFF",
+  fontSize: 11,
+  lineHeight: 1,
+  cursor: "pointer",
+  padding: 0,
+};
+
+function actionListItemStyle(selected: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    textAlign: "left",
+    padding: "8px 10px",
+    background: selected ? "#1E2027" : "#17181D",
+    border: `1px solid ${selected ? "#5B7CFA" : "#2A2C33"}`,
+    borderRadius: 8,
+    color: selected ? "#F4F4F5" : "#C4C5CC",
+    fontSize: 12.5,
+    cursor: "pointer",
+  };
+}
+
+const noteStyle: React.CSSProperties = {
+  fontSize: 10.5,
+  color: "#5B5D66",
 };
 
 const proximamenteNoteStyle: React.CSSProperties = {
@@ -523,22 +701,31 @@ const proximamenteNoteStyle: React.CSSProperties = {
 };
 
 const primaryButtonStyle: React.CSSProperties = {
-  padding: "8px 16px",
-  background: "#E23A57",
+  padding: "0 18px",
+  height: 40,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: ACCENT,
   border: "none",
-  borderRadius: 8,
-  color: "#fff",
-  fontSize: 13,
+  borderRadius: 9,
+  color: "#FFFFFF",
+  fontSize: 12.5,
   fontWeight: 700,
   cursor: "pointer",
 };
 
 const ghostButtonStyle: React.CSSProperties = {
-  padding: "8px 16px",
+  padding: "0 18px",
+  height: 40,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   background: "transparent",
   border: "1px solid #2A2C33",
-  borderRadius: 8,
+  borderRadius: 9,
   color: "#C4C5CC",
-  fontSize: 13,
+  fontSize: 12.5,
+  fontWeight: 700,
   cursor: "pointer",
 };

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { Accion, AccionMedia, ModHelloPayload } from "@streamtok/shared";
+import type { Accion, AccionMedia, ModAction, ModHelloPayload } from "@streamtok/shared";
+import { getCategoryIcon } from "../lib/categoryIcons";
 import {
   defaultParamValues,
   ParamEditor,
@@ -12,6 +13,22 @@ type ComandoDraft = {
   modActionId: string;
   params: ParamValues;
 };
+
+const ACCENT = "#E23A57";
+
+const GENERALES = [
+  "Comandos Minecraft",
+  "Play Audio",
+  "Mostrar IMG / GIF / VIDEO",
+  "Mostrar Alerta",
+  "Animaciones",
+  "Simular Keystrokes",
+  "Read Text (TTS)",
+  "Streamer.bot Action",
+  "Comandos WebHook",
+  "Conexión RCON",
+  "Conexión OBS",
+];
 
 function newId(): string {
   return crypto.randomUUID();
@@ -30,9 +47,10 @@ function emptyMedia(): AccionMedia {
 }
 
 /**
- * Modal "Nueva Acción" / "Editar Acción" (issue #24). La lista de `comandos`
- * reutiliza `ParamEditor` para elegir el comando del catálogo del mod y editar
- * sus params; cada Acción puede tener más de un comando.
+ * Modal "Nueva Acción" / "Editar Acción" (ModNuevaAccion.dc.html). La lista de
+ * comandos reutiliza `ParamEditor` real; el resto ("¿Qué deseas realizar?",
+ * el bloque de ejemplo y "Configuraciones adicionales") es estructura visual
+ * sin backend de acciones generales todavía.
  */
 export function AccionModal({
   catalog,
@@ -46,11 +64,6 @@ export function AccionModal({
   onClose: () => void;
 }) {
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
-  const [descripcion, setDescripcion] = useState(initial?.descripcion ?? "");
-  const [pantalla, setPantalla] = useState(initial?.pantalla ?? "");
-  const [duracionSeg, setDuracionSeg] = useState<number>(initial?.duracionSeg ?? 0);
-  const [puntos, setPuntos] = useState<number>(initial?.puntos ?? 0);
-  const [media, setMedia] = useState<AccionMedia>(initial?.media ?? emptyMedia());
   const [comandos, setComandos] = useState<ComandoDraft[]>(
     initial?.comandos.map((c) => ({
       key: newId(),
@@ -82,10 +95,6 @@ export function AccionModal({
     });
   }
 
-  function setMediaFlag(flag: keyof AccionMedia, value: boolean) {
-    setMedia((prev) => ({ ...prev, [flag]: value }));
-  }
-
   function submit() {
     const name = nombre.trim();
     if (!name) {
@@ -100,11 +109,11 @@ export function AccionModal({
     onSave({
       id: initial?.id ?? newId(),
       nombre: name,
-      descripcion: descripcion.trim(),
-      duracionSeg: Number.isFinite(duracionSeg) ? duracionSeg : 0,
-      puntos: Number.isFinite(puntos) ? puntos : 0,
-      pantalla: pantalla.trim() ? pantalla.trim() : null,
-      media: { ...media },
+      descripcion: initial?.descripcion ?? "",
+      duracionSeg: initial?.duracionSeg ?? 0,
+      puntos: initial?.puntos ?? 0,
+      pantalla: initial?.pantalla ?? null,
+      media: initial?.media ?? emptyMedia(),
       comandos: validComandos,
     });
   }
@@ -112,145 +121,309 @@ export function AccionModal({
   return (
     <div style={overlayStyle}>
       <div style={cardStyle}>
-        <div style={headerStyle}>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>
-            {initial ? "Editar Acción" : "Nueva Acción"}
-          </span>
+        <span style={eyebrowStyle}>MODAL · ABIERTO DESDE GTA V CHAOS MOD</span>
+        <div style={titleRowStyle}>
+          <h2 style={titleStyle}>{initial ? "Editar Acción" : "Nueva Acción"}</h2>
           <button type="button" onClick={onClose} style={closeButtonStyle}>
             ✕
           </button>
         </div>
 
-        <div style={bodyStyle}>
-          <label style={labelStyle}>
-            Nombre
-            <input style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus />
-          </label>
+        <input
+          type="text"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre de la acción"
+          autoFocus
+          style={{
+            height: 42,
+            background: "#0E0F12",
+            border: "1px solid #2A2C33",
+            borderRadius: 9,
+            color: "#F4F4F5",
+            padding: "0 14px",
+            fontSize: 13,
+            outline: "none",
+            fontFamily: "'Manrope', sans-serif",
+            boxSizing: "border-box",
+          }}
+        />
 
-          <label style={labelStyle}>
-            Descripción
-            <textarea
-              style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-            />
-          </label>
-
-          <label style={labelStyle}>
-            Pantalla
-            <input
-              style={inputStyle}
-              value={pantalla}
-              placeholder="Sin servidor de overlay aún — texto libre"
-              onChange={(e) => setPantalla(e.target.value)}
-            />
-          </label>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <label style={labelStyle}>
-              Duración (seg.)
-              <input
-                type="number"
-                style={inputStyle}
-                value={Number.isFinite(duracionSeg) ? duracionSeg : ""}
-                min={0}
-                onChange={(e) => setDuracionSeg(e.target.value === "" ? NaN : Number(e.target.value))}
-              />
-            </label>
-            <label style={labelStyle}>
-              Puntos +/-
-              <input
-                type="number"
-                style={inputStyle}
-                value={Number.isFinite(puntos) ? puntos : ""}
-                onChange={(e) => setPuntos(e.target.value === "" ? NaN : Number(e.target.value))}
-              />
-            </label>
+        {/* ¿Qué deseas realizar? */}
+        <div style={{ border: "1px solid #2A2C33", borderRadius: 10, overflow: "hidden" }}>
+          <div
+            style={{
+              padding: "12px 14px",
+              background: "#0E0F12",
+              fontSize: 12.5,
+              fontWeight: 700,
+            }}
+          >
+            » ¿Qué deseas realizar?
           </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "#9A9CA5" }}>Media (flags informativos, sin subida real)</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-              {(["animacion", "imagen", "sonido", "video"] as const).map((flag) => (
-                <label key={flag} style={{ ...labelStyle, flexDirection: "row", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={media[flag]}
-                    onChange={(e) => setMediaFlag(flag, e.target.checked)}
-                  />
-                  {flag === "animacion" ? "Animación" : flag === "imagen" ? "Imagen" : flag === "sonido" ? "Sonido" : "Video"}
-                </label>
-              ))}
+          {GENERALES.map((g) => (
+            <div
+              key={g}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 14px",
+                borderTop: "1px solid #1E2027",
+              }}
+            >
+              <div
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 4,
+                  border: "1px solid #2A2C33",
+                  flexShrink: 0,
+                  boxSizing: "border-box",
+                }}
+              />
+              <span style={{ fontSize: 12.5 }}>{g}</span>
             </div>
-          </div>
+          ))}
+        </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11, color: "#9A9CA5" }}>Comandos del mod</span>
-              <button
-                type="button"
-                onClick={addComando}
-                disabled={actions.length === 0}
-                style={actions.length === 0 ? disabledButtonStyle : secondaryButtonStyle}
+        {/* Commands */}
+        <div
+          style={{
+            padding: 14,
+            background: "#0E0F12",
+            border: "1px solid #2A2C33",
+            borderRadius: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#C4C5CC" }}>
+              Commands {comandos.length}/10 · GTA V Chaos Mod
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, color: "#9A9CA5" }}>Delay #1:</span>
+              <div
+                style={{
+                  width: 50,
+                  height: 26,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "#17181D",
+                  border: "1px solid #2A2C33",
+                  borderRadius: 6,
+                  fontSize: 11,
+                }}
               >
-                + Agregar comando
-              </button>
-            </div>
-
-            {actions.length === 0 && (
-              <div style={{ fontSize: 12, color: "#5B5D66" }}>
-                Sin catálogo del mod: no hay comandos para elegir. Conecta el mod a ws://localhost:7331.
+                0ms
               </div>
-            )}
-
-            {comandos.map((c) => {
-              const action = actions.find((a) => a.id === c.modActionId);
-              return (
-                <div key={c.key} style={{ padding: 12, background: "#17181D", border: "1px solid #2A2C33", borderRadius: 9, display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <select
-                      style={{ ...inputStyle, flex: 1 }}
-                      value={c.modActionId}
-                      onChange={(e) => selectAction(c.key, e.target.value)}
-                    >
-                      <option value="">Seleccionar comando…</option>
-                      {actions.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button type="button" onClick={() => removeComando(c.key)} style={linkButtonStyle}>
-                      Quitar
-                    </button>
-                  </div>
-
-                  {action && action.params.length > 0 && (
-                    <ParamEditor
-                      key={`${c.key}-${action.id}`}
-                      params={action.params}
-                      initialValues={c.params}
-                      onChange={(v) => patchComando(c.key, { params: v })}
-                    />
-                  )}
-                </div>
-              );
-            })}
+            </div>
           </div>
 
-          {error && (
-            <div style={{ padding: "8px 10px", background: "#2A1416", border: "1px solid #E23A57", borderRadius: 8, color: "#F4A5B4", fontSize: 12 }}>
-              {error}
+          {actions.length === 0 && (
+            <div style={{ fontSize: 12, color: "#5B5D66" }}>
+              Sin catálogo del mod: no hay comandos para elegir. Conecta el mod a ws://localhost:7331.
             </div>
           )}
+
+          {comandos.map((c, i) => {
+            const action = actions.find((a) => a.id === c.modActionId);
+            return (
+              <div
+                key={c.key}
+                style={{
+                  padding: 12,
+                  background: "#17181D",
+                  border: "1px solid #2A2C33",
+                  borderRadius: 9,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700 }}>Command #{i + 1}</span>
+                  <button type="button" onClick={() => removeComando(c.key)} style={closeCommandStyle}>
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <label style={{ fontSize: 10.5, color: "#9A9CA5" }}>Comando del mod</label>
+                  <CommandPicker
+                    value={c.modActionId}
+                    actions={actions}
+                    onSelect={(id) => selectAction(c.key, id)}
+                  />
+                </div>
+
+                {action && action.params.length > 0 && (
+                  <ParamEditor
+                    key={`${c.key}-${action.id}`}
+                    params={action.params}
+                    initialValues={c.params}
+                    onChange={(v) => patchComando(c.key, { params: v })}
+                  />
+                )}
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={addComando}
+            disabled={actions.length === 0}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              color: actions.length === 0 ? "#5B5D66" : "#34D399",
+              background: "none",
+              border: "none",
+              cursor: actions.length === 0 ? "default" : "pointer",
+              padding: 0,
+              alignSelf: "flex-start",
+            }}
+          >
+            <span style={{ fontSize: 13 }}>+</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700 }}>Add command</span>
+          </button>
         </div>
+
+        {/* Comando general de ejemplo */}
+        <div
+          style={{
+            padding: 14,
+            background: "#0E0F12",
+            border: "1px solid #2A2C33",
+            borderRadius: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 4,
+                background: ACCENT,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <span style={{ fontSize: 10, color: "#FFFFFF" }}>✓</span>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>Comando General: Simular Keystrokes</span>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <div style={chipStyle}>
+              Tecla: <b>1</b>
+            </div>
+            <div style={chipStyle}>Tipo: Tap</div>
+            <div style={chipStyle}>250 ms</div>
+          </div>
+          <span style={{ fontSize: 11, color: "#5B7CFA", fontWeight: 600 }}>↗ Expandir Editor</span>
+        </div>
+
+        {/* Configuraciones adicionales */}
+        <div
+          style={{
+            padding: 14,
+            background: "#0E0F12",
+            border: "1px solid #2A2C33",
+            borderRadius: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#C4C5CC" }}>
+            Configuraciones adicionales
+          </span>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
+              <label style={{ fontSize: 10.5, color: "#9A9CA5" }}>Cola de alertas</label>
+              <select style={additionalSelectStyle}>
+                <option>Screen 1</option>
+                <option>Screen 2</option>
+              </select>
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
+              <label style={{ fontSize: 10.5, color: "#9A9CA5" }}>Cola de animaciones</label>
+              <select style={additionalSelectStyle}>
+                <option>Screen 1</option>
+                <option>Screen 2</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, maxWidth: 160 }}>
+            <label style={{ fontSize: 10.5, color: "#9A9CA5" }}>Retraso de la acción</label>
+            <div
+              style={{
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                padding: "0 10px",
+                background: "#17181D",
+                border: "1px solid #2A2C33",
+                borderRadius: 7,
+                fontSize: 12,
+              }}
+            >
+              0 seg
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 4,
+                background: ACCENT,
+                flexShrink: 0,
+                marginTop: 1,
+              }}
+            />
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600 }}>¿Repetir con combo de regalos?</div>
+              <div style={{ fontSize: 10.5, color: "#5B5D66" }}>
+                Se ejecuta por cada regalo enviado, no solo una vez.
+              </div>
+            </div>
+          </div>
+          <p style={{ margin: 0, fontSize: 10.5, color: "#5B5D66", lineHeight: 1.5 }}>
+            Recuerda: para que esta acción sea visible en tu stream, la pantalla elegida arriba debe
+            estar pegada como fuente "Link" en TikTok LIVE Studio u OBS.
+          </p>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              padding: "8px 10px",
+              background: "#2A1416",
+              border: "1px solid #E23A57",
+              borderRadius: 8,
+              color: "#F4A5B4",
+              fontSize: 12,
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         <div style={footerStyle}>
           <button type="button" onClick={onClose} style={ghostButtonStyle}>
-            Cancelar
+            Descartar
           </button>
           <button type="button" onClick={submit} style={primaryButtonStyle}>
-            {initial ? "Guardar cambios" : "Crear Acción"}
+            ✓ Aplicar
           </button>
         </div>
       </div>
@@ -258,123 +431,256 @@ export function AccionModal({
   );
 }
 
+function CommandPicker({
+  value,
+  actions,
+  onSelect,
+}: {
+  value: string;
+  actions: ModAction[];
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const selected = actions.find((a) => a.id === value);
+  const SelectedIcon = selected ? getCategoryIcon(selected.category) : null;
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ ...pickerTriggerStyle, color: selected ? "#F4F4F5" : "#5B5D66" }}
+      >
+        {selected && SelectedIcon ? (
+          <>
+            <SelectedIcon size={16} />
+            <span style={pickerTriggerLabelStyle}>{selected.name}</span>
+          </>
+        ) : (
+          <span style={pickerTriggerLabelStyle}>Seleccionar comando…</span>
+        )}
+        <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>
+      </button>
+
+      {open && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 15 }}
+            onClick={() => setOpen(false)}
+          />
+          <div style={pickerDropdownStyle}>
+            {actions.map((a) => {
+              const Icon = getCategoryIcon(a.category);
+              const active = a.id === value || hovered === a.id;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onMouseEnter={() => setHovered(a.id)}
+                  onMouseLeave={() => setHovered(null)}
+                  onClick={() => {
+                    onSelect(a.id);
+                    setOpen(false);
+                  }}
+                  style={{
+                    ...pickerOptionStyle,
+                    background: active ? "#1E2027" : "transparent",
+                    color: active ? "#F4F4F5" : "#9A9CA5",
+                  }}
+                >
+                  <Icon size={16} />
+                  <span style={pickerOptionLabelStyle}>{a.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const overlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.6)",
+  background: "rgba(14, 15, 18, 0.61)",
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   justifyContent: "center",
   zIndex: 100,
-  padding: 24,
+  padding: 40,
+  overflowY: "auto",
 };
 
 const cardStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 560,
-  maxHeight: "90vh",
-  overflowY: "auto",
-  background: "#14151A",
+  width: 560,
+  maxWidth: "100%",
+  background: "#17181D",
   border: "1px solid #2A2C33",
-  borderRadius: 12,
+  borderRadius: 16,
+  padding: 24,
   display: "flex",
   flexDirection: "column",
+  gap: 16,
+  boxShadow: "0 20px 60px #00000080",
+  boxSizing: "border-box",
 };
 
-const headerStyle: React.CSSProperties = {
+const eyebrowStyle: React.CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 700,
+  color: "#5B7CFA",
+  letterSpacing: "0.06em",
+};
+
+const titleRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  padding: "14px 18px",
-  borderBottom: "1px solid #2A2C33",
+};
+
+const titleStyle: React.CSSProperties = {
+  margin: 0,
+  fontFamily: "'Space Grotesk', sans-serif",
+  fontSize: 17,
+  fontWeight: 700,
 };
 
 const closeButtonStyle: React.CSSProperties = {
   background: "none",
   border: "none",
-  color: "#9A9CA5",
-  fontSize: 14,
+  color: "#5B5D66",
+  fontSize: 16,
   cursor: "pointer",
-  padding: 4,
+  padding: 0,
 };
 
-const bodyStyle: React.CSSProperties = {
-  padding: 18,
+const closeCommandStyle: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "#5B5D66",
+  fontSize: 11,
+  cursor: "pointer",
+  padding: 0,
+};
+
+const pickerTriggerStyle: React.CSSProperties = {
+  width: "100%",
+  height: 32,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "0 10px",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 7,
+  cursor: "pointer",
+  boxSizing: "border-box",
+};
+
+const pickerTriggerLabelStyle: React.CSSProperties = {
+  flex: 1,
+  textAlign: "left",
+  fontSize: 12,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const pickerDropdownStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 4px)",
+  left: 0,
+  right: 0,
+  zIndex: 16,
   display: "flex",
   flexDirection: "column",
-  gap: 14,
+  maxHeight: 220,
+  overflowY: "auto",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 8,
+  boxShadow: "0 12px 32px #00000080",
+  padding: 4,
+  boxSizing: "border-box",
+};
+
+const pickerOptionStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "7px 8px",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+  textAlign: "left",
+};
+
+const pickerOptionLabelStyle: React.CSSProperties = {
+  flex: 1,
+  fontSize: 12,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const additionalSelectStyle: React.CSSProperties = {
+  width: "100%",
+  height: 32,
+  padding: "0 10px",
+  background: "#17181D",
+  border: "1px solid #2A2C33",
+  borderRadius: 7,
+  color: "#F4F4F5",
+  fontSize: 12,
+  outline: "none",
+  fontFamily: "'Manrope', sans-serif",
+  boxSizing: "border-box",
+};
+
+const chipStyle: React.CSSProperties = {
+  padding: "5px 10px",
+  background: "#17181D",
+  border: "1px solid #2A2C33",
+  borderRadius: 6,
+  fontSize: 11,
 };
 
 const footerStyle: React.CSSProperties = {
   display: "flex",
-  justifyContent: "flex-end",
   gap: 10,
-  padding: "14px 18px",
-  borderTop: "1px solid #2A2C33",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 10px",
-  background: "#17181D",
-  border: "1px solid #2A2C33",
-  borderRadius: 8,
-  color: "#F4F4F5",
-  fontSize: 13,
-  boxSizing: "border-box",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  fontSize: 11,
-  color: "#9A9CA5",
+  justifyContent: "flex-end",
 };
 
 const primaryButtonStyle: React.CSSProperties = {
-  padding: "8px 16px",
-  background: "#E23A57",
+  padding: "0 18px",
+  height: 40,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: ACCENT,
   border: "none",
-  borderRadius: 8,
-  color: "#fff",
-  fontSize: 13,
+  borderRadius: 9,
+  color: "#FFFFFF",
+  fontSize: 12.5,
   fontWeight: 700,
   cursor: "pointer",
 };
 
-const secondaryButtonStyle: React.CSSProperties = {
-  padding: "6px 12px",
-  background: "#1F222B",
-  border: "1px solid #2A2C33",
-  borderRadius: 8,
-  color: "#C4C5CC",
-  fontSize: 12,
-  cursor: "pointer",
-};
-
-const disabledButtonStyle: React.CSSProperties = {
-  ...secondaryButtonStyle,
-  background: "#23252C",
-  color: "#5B5D66",
-  cursor: "default",
-};
-
 const ghostButtonStyle: React.CSSProperties = {
-  padding: "8px 16px",
+  padding: "0 18px",
+  height: 40,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   background: "transparent",
   border: "1px solid #2A2C33",
-  borderRadius: 8,
+  borderRadius: 9,
   color: "#C4C5CC",
-  fontSize: 13,
+  fontSize: 12.5,
+  fontWeight: 700,
   cursor: "pointer",
-};
-
-const linkButtonStyle: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  color: "#E23A57",
-  fontSize: 12,
-  cursor: "pointer",
-  padding: 0,
 };
