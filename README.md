@@ -139,6 +139,10 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
 - [`0004`](docs/adr/0004-motor-generico-acciones-eventos.md) — motor genérico
   de Acciones y Eventos que reemplaza a `MappingRule` y `CommunityRule`, con
   migración sin pérdida de datos
+- [`0005`](docs/adr/0005-metadata-liveevent-ampliada.md) — metadata de viewer
+  en `LiveEvent` (`seguidor`/`suscriptor`/`moderador`/`donanteTop` y
+  `emoteSuscriptor`/`stickerFanClub`) y qué queda sin implementar por límites
+  de `tiktok-live-connector`
 
 ## Desarrollo
 
