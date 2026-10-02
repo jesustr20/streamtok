@@ -99,6 +99,7 @@ if (tiktokUsername) {
       console.error("Error procesando live-event (TikTok):", err);
     });
   });
+  tiktok.on("connected", () => engine.resetSession());
   tiktok.start().catch((err) => {
     // eslint-disable-next-line no-console
     console.error(`No se pudo conectar al LIVE de TikTok (@${tiktokUsername}):`, err?.message ?? err);

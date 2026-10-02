@@ -45,66 +45,24 @@ function normalizeHandle(value: string): string {
   return (trimmed.startsWith("@") ? trimmed.slice(1) : trimmed).toLowerCase();
 }
 
-function quienMatches(ev: Evento, live: LiveEvent): boolean {
-  switch (ev.quien) {
-    case "todos":
-      return true;
-    case "usuarioEspecifico":
-      if (!ev.usuarioEspecifico) return false;
-      return normalizeHandle(live.username) === normalizeHandle(ev.usuarioEspecifico);
-    case "seguidor":
-    case "suscriptor":
-    case "moderador":
-    case "donanteTop":
-      // Sin metadata de viewer en LiveEvent (fuera de alcance); no coinciden aún.
-      return false;
+/**
+ * Calcula el ranking 1-based de un donante dentro de un mapa de monedas
+ * acumuladas por handle. Usa ranking "dense": los empates comparten posición
+ * (rank = 1 + cantidad de totales estrictamente mayores). Devuelve null si el
+ * usuario no está registrado o no tiene monedas. Puro y testeable (issue #23).
+ */
+export function computeGifterRank(
+  totals: ReadonlyMap<string, number>,
+  username: string,
+): number | null {
+  const handle = normalizeHandle(username);
+  const total = totals.get(handle);
+  if (total === undefined || total <= 0) return null;
+  const greater = new Set<number>();
+  for (const value of totals.values()) {
+    if (value > total) greater.add(value);
   }
-}
-
-function porqueMatches(ev: Evento, live: LiveEvent): boolean {
-  switch (ev.porque) {
-    case "unirse":
-      return live.event === "join";
-    case "primeraActividad":
-      return false; // sin dato equivalente en LiveEvent
-    case "compartir":
-      return live.event === "share";
-    case "seguir":
-      return live.event === "follow";
-    case "suscribirse":
-      return live.event === "subscribe";
-    case "likes":
-      return live.event === "like";
-    case "chat":
-      return live.event === "comment";
-    case "comando": {
-      if (live.event !== "comment") return false;
-      const command = (ev.comando ?? "").trim().toLowerCase();
-      if (!command) return false;
-      return live.text?.trim().toLowerCase().startsWith(command) ?? false;
-    }
-    case "regaloValorMinimo": {
-      if (live.event !== "gift") return false;
-      const min = ev.valorMinimoMonedas ?? 1;
-      return (live.coins ?? 0) >= min;
-    }
-    case "regaloEspecifico": {
-      if (live.event !== "gift") return false;
-      if (ev.giftId && String(live.giftId ?? "") === ev.giftId) return true;
-      if (ev.giftName && live.giftName === ev.giftName) return true;
-      return false;
-    }
-    case "emoteSuscriptor":
-      return false; // sin dato equivalente en LiveEvent
-    case "stickerFanClub":
-      return false; // sin dato equivalente en LiveEvent
-    case "compraTiktokShop":
-      return false; // sin dato equivalente en LiveEvent
-  }
-}
-
-function matchesEvento(ev: Evento, live: LiveEvent): boolean {
-  return quienMatches(ev, live) && porqueMatches(ev, live);
+  return greater.size + 1;
 }
 
 function sanitizeCommandParams(
@@ -128,6 +86,8 @@ export class AccionesEventosEngine extends EventEmitter {
   private eventos: Evento[] = [];
   /** Likes acumulados por Evento (para "cada N likes"). */
   private likeCounts = new Map<string, number>();
+  /** Monedas acumuladas por handle durante la sesión (ranking de donantes). */
+  private gifterCoins = new Map<string, number>();
 
   constructor(private modBridge: ModBridge) {
     super();
@@ -150,6 +110,85 @@ export class AccionesEventosEngine extends EventEmitter {
     return this.eventos;
   }
 
+  /** Reinicia el estado de sesión (ranking de donantes y umbral de likes).
+   * Se invoca al iniciar una nueva sesión de LIVE. */
+  resetSession() {
+    this.gifterCoins.clear();
+    this.likeCounts.clear();
+  }
+
+  private quienMatches(ev: Evento, live: LiveEvent): boolean {
+    switch (ev.quien) {
+      case "todos":
+        return true;
+      case "usuarioEspecifico":
+        if (!ev.usuarioEspecifico) return false;
+        return normalizeHandle(live.username) === normalizeHandle(ev.usuarioEspecifico);
+      case "seguidor":
+        return live.isFollower === true;
+      case "suscriptor":
+        return live.isSubscriber === true;
+      case "moderador":
+        return live.isModerator === true;
+      case "donanteTop": {
+        const n = ev.numeroDonantesTop ?? 1;
+        if (n <= 0) return false;
+        const rank = computeGifterRank(this.gifterCoins, live.username);
+        return rank !== null && rank <= n;
+      }
+    }
+  }
+
+  private porqueMatches(ev: Evento, live: LiveEvent): boolean {
+    switch (ev.porque) {
+      case "unirse":
+        return live.event === "join";
+      case "primeraActividad":
+        return false; // tiktok-live-connector no expone señal de "primera interacción" (ADR 0005)
+      case "compartir":
+        return live.event === "share";
+      case "seguir":
+        return live.event === "follow";
+      case "suscribirse":
+        return live.event === "subscribe";
+      case "likes":
+        return live.event === "like";
+      case "chat":
+        return live.event === "comment";
+      case "comando": {
+        if (live.event !== "comment") return false;
+        const command = (ev.comando ?? "").trim().toLowerCase();
+        if (!command) return false;
+        return live.text?.trim().toLowerCase().startsWith(command) ?? false;
+      }
+      case "regaloValorMinimo": {
+        if (live.event !== "gift") return false;
+        const min = ev.valorMinimoMonedas ?? 1;
+        return (live.coins ?? 0) >= min;
+      }
+      case "regaloEspecifico": {
+        if (live.event !== "gift") return false;
+        if (ev.giftId && String(live.giftId ?? "") === ev.giftId) return true;
+        if (ev.giftName && live.giftName === ev.giftName) return true;
+        return false;
+      }
+      case "emoteSuscriptor":
+        if (live.event !== "emote") return false;
+        if (live.emoteScene !== "subscriber") return false;
+        return !!ev.emoteId && live.emoteId === ev.emoteId;
+      case "stickerFanClub":
+        if (live.event !== "emote") return false;
+        if (live.emoteScene !== "fanClub") return false;
+        return !!ev.stickerId && live.emoteId === ev.stickerId;
+      case "compraTiktokShop":
+        return false; // oecLiveShopping no es una compra confirmada (ADR 0005)
+    }
+  }
+
+  private matchesEvento(ev: Evento, live: LiveEvent): boolean {
+    return this.quienMatches(ev, live) && this.porqueMatches(ev, live);
+  }
+
   /** Se llama por cada LiveEvent normalizado que llega del sidecar de TikTok. */
   async handleEvent(evt: LiveEvent) {
     // Streaks de regalo: solo actuar cuando termina el combo.
@@ -163,11 +202,17 @@ export class AccionesEventosEngine extends EventEmitter {
       return;
     }
 
+    // Ranking de donantes: acumular monedas por usuario en la sesión (issue #23).
+    if (evt.event === "gift" && typeof evt.coins === "number" && evt.coins > 0) {
+      const handle = normalizeHandle(evt.username);
+      this.gifterCoins.set(handle, (this.gifterCoins.get(handle) ?? 0) + evt.coins);
+    }
+
     let matched = false;
 
     for (const evento of this.eventos) {
       if (!evento.activo) continue;
-      if (!matchesEvento(evento, evt)) continue;
+      if (!this.matchesEvento(evento, evt)) continue;
       matched = true;
 
       // Umbral de likes ("cada N likes"): acumular y solo disparar al alcanzarlo.

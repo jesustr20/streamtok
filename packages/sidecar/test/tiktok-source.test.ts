@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EmoteScene } from "tiktok-live-connector";
 import { mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
 
 describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", () => {
@@ -61,6 +62,73 @@ describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", 
     expect(mapTiktokEvent("gift", {})).toBeNull();
     expect(mapTiktokEvent("chat", {})).toBeNull();
     expect(mapTiktokEvent("gift", { user: { displayId: "fan" }, giftId: "no-es-numero" })).toBeNull();
+  });
+
+  it("propaga metadata de viewer (seguidor/suscriptor/moderador) cuando la reporta", () => {
+    const evt = mapTiktokEvent("chat", {
+      user: {
+        displayId: "fan",
+        nickname: "Fan",
+        isFollower: true,
+        isSubscribe: true,
+        userAttr: { isAdmin: true },
+      },
+      content: "hola",
+    });
+
+    expect(evt).toMatchObject({
+      event: "comment",
+      isFollower: true,
+      isSubscriber: true,
+      isModerator: true,
+    });
+  });
+
+  it("no inventa flags de viewer que la fuente no reporta", () => {
+    const evt = mapTiktokEvent("chat", {
+      user: { displayId: "fan", nickname: "Fan" },
+      content: "hola",
+    });
+
+    expect(evt?.isFollower).toBeUndefined();
+    expect(evt?.isSubscriber).toBeUndefined();
+    expect(evt?.isModerator).toBeUndefined();
+  });
+
+  it("normaliza un emote de suscriptor a un LiveEvent emote/subscriber", () => {
+    const evt = mapTiktokEvent("emote", {
+      user: { displayId: "sub", nickname: "Sub" },
+      emoteList: [{ emoteId: "sub_emote_1", emoteScene: EmoteScene.SUBSCRIPTION }],
+    });
+
+    expect(evt).toMatchObject({
+      event: "emote",
+      username: "@sub",
+      emoteId: "sub_emote_1",
+      emoteScene: "subscriber",
+    });
+  });
+
+  it("normaliza un sticker del Fan Club a un LiveEvent emote/fanClub", () => {
+    const evt = mapTiktokEvent("emote", {
+      user: { displayId: "fanclub", nickname: "FanClub" },
+      emoteList: [{ emoteId: "sticker_1", emoteScene: EmoteScene.FANS_CLUB }],
+    });
+
+    expect(evt).toMatchObject({
+      event: "emote",
+      username: "@fanclub",
+      emoteId: "sticker_1",
+      emoteScene: "fanClub",
+    });
+  });
+
+  it("descarta un emote sin emoteId o sin remitente", () => {
+    expect(mapTiktokEvent("emote", {})).toBeNull();
+    expect(mapTiktokEvent("emote", { user: { displayId: "x" }, emoteList: [] })).toBeNull();
+    expect(
+      mapTiktokEvent("emote", { user: { displayId: "x" }, emoteList: [{ emoteScene: EmoteScene.FANS_CLUB }] }),
+    ).toBeNull();
   });
 });
 

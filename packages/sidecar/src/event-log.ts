@@ -24,6 +24,7 @@ export const EVENT_LABELS: Record<LiveEventTypeT, string> = {
   share: "compartir",
   join: "entrada al live",
   subscribe: "suscripción",
+  emote: "emote/sticker",
 };
 
 /**

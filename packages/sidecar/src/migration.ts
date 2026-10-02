@@ -72,6 +72,11 @@ function whenToEvento(when: MappingRule["when"], accionesIds: string[]): Evento 
       return { ...base, porque: "unirse" };
     case "subscribe":
       return { ...base, porque: "suscribirse" };
+    default:
+      // "emote" (y cualquier valor futuro) no existía en las MappingRule
+      // legacy; imposible en datos viejos. Fallback inocuo para que la
+      // migración siga siendo exhaustiva (issue #23).
+      return { ...base, porque: "chat" };
   }
 }
 

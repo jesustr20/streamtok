@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Accion, Evento, EventLogEntry, LiveEvent } from "@streamtok/shared";
-import { AccionesEventosEngine } from "../src/acciones-eventos-engine.js";
+import { AccionesEventosEngine, computeGifterRank } from "../src/acciones-eventos-engine.js";
 import type { ModBridge } from "../src/mod-bridge.js";
 
 type Call = {
@@ -63,6 +63,14 @@ function collect(engine: AccionesEventosEngine): { entries: EventLogEntry[] } {
 
 function followEvent(): LiveEvent {
   return { event: "follow", username: "@fan", nickname: "Fan 123", timestamp: 0 };
+}
+
+function giftEvent(username: string, coins: number, nickname?: string): LiveEvent {
+  return { event: "gift", username, nickname, coins, repeatEnd: true, timestamp: 0 };
+}
+
+function emoteEvent(username: string, emoteId: string, emoteScene: "subscriber" | "fanClub"): LiveEvent {
+  return { event: "emote", username, emoteId, emoteScene, timestamp: 0 };
 }
 
 describe("AccionesEventosEngine — matching", () => {
@@ -224,5 +232,115 @@ describe("AccionesEventosEngine — matching", () => {
     await engine.handleEvent(followEvent());
 
     expect(bridge.calls[0].opts?.nameTag).toBe("Fan 123");
+  });
+});
+
+describe("AccionesEventosEngine — quien con metadata (issue #23)", () => {
+  it("quien seguidor coincide cuando la fuente reporta isFollower", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "seguir", quien: "seguidor" })]);
+
+    await engine.handleEvent({ event: "follow", username: "@fan", isFollower: true, timestamp: 0 });
+    await engine.handleEvent({ event: "follow", username: "@otro", isFollower: false, timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(1);
+    expect(bridge.calls[0].opts?.nameTag).toBe("@fan");
+  });
+
+  it("quien suscriptor coincide cuando la fuente reporta isSubscriber", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "seguir", quien: "suscriptor" })]);
+
+    await engine.handleEvent({ event: "follow", username: "@sub", isSubscriber: true, timestamp: 0 });
+    await engine.handleEvent({ event: "follow", username: "@nadie", timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("quien moderador coincide cuando la fuente reporta isModerator", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "seguir", quien: "moderador" })]);
+
+    await engine.handleEvent({ event: "follow", username: "@mod", isModerator: true, timestamp: 0 });
+    await engine.handleEvent({ event: "follow", username: "@otro", timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("quien donanteTop coincide con el top N de la sesión", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "regaloValorMinimo", quien: "donanteTop", numeroDonantesTop: 2 })]);
+
+    await engine.handleEvent(giftEvent("@a", 100, "A")); // rank 1 → top 2 → dispara
+    await engine.handleEvent(giftEvent("@b", 300, "B")); // rank 1 → dispara
+    await engine.handleEvent(giftEvent("@c", 500, "C")); // rank 1 → dispara
+    await engine.handleEvent(giftEvent("@a", 10, "A")); // ahora A = 110 → rank 3 → no dispara
+
+    expect(bridge.calls).toHaveLength(3);
+    expect(bridge.calls.map((c) => c.opts?.nameTag)).toEqual(["A", "B", "C"]);
+  });
+
+  it("porque emoteSuscriptor coincide con un emote de suscriptor por id", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "emoteSuscriptor", emoteId: "sub_emote_1" })]);
+
+    await engine.handleEvent(emoteEvent("@sub", "sub_emote_1", "subscriber"));
+    await engine.handleEvent(emoteEvent("@sub", "sub_emote_1", "fanClub")); // escena equivocada
+    await engine.handleEvent(emoteEvent("@sub", "otro", "subscriber")); // id distinto
+
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("porque stickerFanClub coincide con un sticker del Fan Club por id", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "stickerFanClub", stickerId: "sticker_1" })]);
+
+    await engine.handleEvent(emoteEvent("@fan", "sticker_1", "fanClub"));
+    await engine.handleEvent(emoteEvent("@fan", "sticker_1", "subscriber")); // escena equivocada
+
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("primeraActividad y compraTiktokShop siguen sin coincidir (sin señal en la fuente)", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "primeraActividad" }), evento({ porque: "compraTiktokShop", nombreProductoContiene: "x" })]);
+
+    await engine.handleEvent({ event: "join", username: "@fan", timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(0);
+  });
+});
+
+describe("computeGifterRank", () => {
+  it("calcula ranking denso (empates comparten posición)", () => {
+    const totals = new Map<string, number>([
+      ["a", 100],
+      ["b", 300],
+      ["c", 300],
+    ]);
+
+    expect(computeGifterRank(totals, "@c")).toBe(1);
+    expect(computeGifterRank(totals, "b")).toBe(1);
+    expect(computeGifterRank(totals, "a")).toBe(2);
+  });
+
+  it("devuelve null para usuarios sin monedas o desconocidos", () => {
+    expect(computeGifterRank(new Map([["a", 0]]), "a")).toBeNull();
+    expect(computeGifterRank(new Map(), "a")).toBeNull();
+    expect(computeGifterRank(new Map([["a", 100]]), "b")).toBeNull();
   });
 });

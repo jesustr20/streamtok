@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import {
   ControlEvent,
+  EmoteScene,
   TikTokLiveConnection,
   WebcastEvent,
 } from "tiktok-live-connector";
@@ -35,7 +36,8 @@ export type TiktokEventKind =
   | "member"
   | "follow"
   | "share"
-  | "subNotify";
+  | "subNotify"
+  | "emote";
 
 export interface TiktokLogEntry {
   level: "debug" | "info" | "warn" | "error";
@@ -65,6 +67,26 @@ function extractUserIdentity(raw: RawRecord): { username: string | null; nicknam
   return { username: `@${handle}`, nickname };
 }
 
+/**
+ * Metadata de viewer que tiktok-live-connector reporta en el campo `user` de la
+ * mayoría de eventos (chat/gift/like/member/social/subNotify/emote). Solo se
+ * incluye cada bandera cuando la fuente la afirma explícitamente (`true`);
+ * ausencia = desconocido = ese `quien` no coincidirá. Ver ADR 0005.
+ */
+function extractUserFlags(raw: RawRecord): {
+  isFollower?: boolean;
+  isSubscriber?: boolean;
+  isModerator?: boolean;
+} {
+  const user = asRecord(raw.user);
+  const userAttr = asRecord(user.userAttr);
+  const flags: { isFollower?: boolean; isSubscriber?: boolean; isModerator?: boolean } = {};
+  if (user.isFollower === true) flags.isFollower = true;
+  if (user.isSubscribe === true) flags.isSubscriber = true;
+  if (userAttr.isAdmin === true || userAttr.isSuperAdmin === true) flags.isModerator = true;
+  return flags;
+}
+
 /** Valida el candidato con LiveEventSchema; devuelve null si no calza. */
 function finalize(candidate: Record<string, unknown>): LiveEvent | null {
   const parsed = LiveEventSchema.safeParse(candidate);
@@ -76,7 +98,14 @@ function mapChat(raw: RawRecord): LiveEvent | null {
   if (!username) return null;
   const text = typeof raw.content === "string" ? raw.content.trim() : "";
   if (!text) return null;
-  return finalize({ event: "comment", username, nickname, text, timestamp: Date.now() });
+  return finalize({
+    event: "comment",
+    username,
+    nickname,
+    text,
+    timestamp: Date.now(),
+    ...extractUserFlags(raw),
+  });
 }
 
 function mapGift(raw: RawRecord): LiveEvent | null {
@@ -116,6 +145,7 @@ function mapGift(raw: RawRecord): LiveEvent | null {
     coins,
     repeatEnd: true,
     timestamp: Date.now(),
+    ...extractUserFlags(raw),
   });
 }
 
@@ -125,7 +155,37 @@ function mapUserEvent(
 ): LiveEvent | null {
   const { username, nickname } = extractUserIdentity(raw);
   if (!username) return null;
-  return finalize({ event, username, nickname, timestamp: Date.now() });
+  return finalize({ event, username, nickname, timestamp: Date.now(), ...extractUserFlags(raw) });
+}
+
+/**
+ * Mapea el evento `emote` (WebcastEmoteChatMessage). TikTok usa el mismo
+ * mensaje tanto para el emote de suscriptor como para el sticker del Fan Club,
+ * distinguiéndolos por `EmoteScene`. Solo tomamos el primer emote con `emoteId`.
+ */
+function mapEmote(raw: RawRecord): LiveEvent | null {
+  const { username, nickname } = extractUserIdentity(raw);
+  if (!username) return null;
+
+  const emoteList = Array.isArray(raw.emoteList) ? raw.emoteList : [];
+  const emote = emoteList.find((entry) => {
+    const id = asRecord(entry).emoteId;
+    return typeof id === "string" && id.length > 0;
+  });
+  if (!emote) return null;
+
+  const id = emote.emoteId as string;
+  const scene = emote.emoteScene === EmoteScene.FANS_CLUB ? "fanClub" : "subscriber";
+
+  return finalize({
+    event: "emote",
+    username,
+    nickname,
+    emoteId: id,
+    emoteScene: scene,
+    timestamp: Date.now(),
+    ...extractUserFlags(raw),
+  });
 }
 
 /**
@@ -151,6 +211,8 @@ export function mapTiktokEvent(kind: TiktokEventKind, raw: unknown): LiveEvent |
       return mapUserEvent("share", msg);
     case "subNotify":
       return mapUserEvent("subscribe", msg);
+    case "emote":
+      return mapEmote(msg);
     default:
       return null;
   }
@@ -190,6 +252,7 @@ export class TikTokLiveSource extends EventEmitter {
     events.on(WebcastEvent.FOLLOW, (data) => this.ingest("follow", data));
     events.on(WebcastEvent.SHARE, (data) => this.ingest("share", data));
     events.on(WebcastEvent.SUB_NOTIFY, (data) => this.ingest("subNotify", data));
+    events.on(WebcastEvent.EMOTE, (data) => this.ingest("emote", data));
 
     events.on(ControlEvent.ERROR, (err) => {
       this.emit("log", {
@@ -206,6 +269,7 @@ export class TikTokLiveSource extends EventEmitter {
     });
 
     await connection.connect();
+    this.emit("connected");
     this.emit("log", { level: "info", message: `Conectado al LIVE de TikTok (@${this.username})` });
   }
 
