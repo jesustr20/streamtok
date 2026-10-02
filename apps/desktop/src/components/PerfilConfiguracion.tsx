@@ -6,10 +6,17 @@ const ACCENT = "#E23A57";
 
 /**
  * Barra "Perfil de configuración" (ModDetalle.dc.html, fondo #141922 /
- * borde #22303F): selector del perfil activo + botón "+ Nuevo perfil".
- * Gestiona el perfil activo por el canal WS `profiles` (ADR 0002).
+ * borde #22303F): selector del perfil activo + botón "+ Nuevo perfil" +
+ * acceso a "Gestionar perfiles". Gestiona el perfil activo por el canal WS
+ * `profiles` (ADR 0002).
  */
-export function PerfilConfiguracion({ client }: { client: SidecarClient | null }) {
+export function PerfilConfiguracion({
+  client,
+  onGestionarPerfiles,
+}: {
+  client: SidecarClient | null;
+  onGestionarPerfiles: () => void;
+}) {
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -52,7 +59,24 @@ export function PerfilConfiguracion({ client }: { client: SidecarClient | null }
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 16 }}>🗂</span>
         <div>
-          <div style={{ fontSize: 12, color: "#7C93AD" }}>Perfil de configuración de este mod</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, color: "#7C93AD" }}>Perfil de configuración de este mod</span>
+            <button
+              type="button"
+              onClick={onGestionarPerfiles}
+              style={{
+                fontSize: 11.5,
+                color: "#5B7CFA",
+                fontWeight: 700,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              Gestionar
+            </button>
+          </div>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>Aplica a Acciones y Eventos de abajo</div>
         </div>
       </div>
@@ -128,6 +152,26 @@ export function PerfilConfiguracion({ client }: { client: SidecarClient | null }
               }}
             >
               Crear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNewName("");
+                setCreating(false);
+              }}
+              style={{
+                height: 38,
+                padding: "0 12px",
+                background: "transparent",
+                border: "1px solid #2A2C33",
+                borderRadius: 9,
+                color: "#C4C5CC",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Cancelar
             </button>
           </div>
         ) : (

@@ -39,6 +39,7 @@ function accion(overrides: Partial<Accion> = {}): Accion {
     pantalla: null,
     media: { animacion: false, imagen: false, sonido: false, video: false },
     comandos: [{ modActionId: "arena_join", params: { character: "default" } }],
+    repetirConComboDeRegalos: false,
     ...overrides,
   };
 }
@@ -120,6 +121,38 @@ describe("AccionesEventosEngine — matching", () => {
     await engine.handleEvent({ event: "gift", username: "@fan", repeatEnd: false, timestamp: 0 });
 
     expect(entries[0].reason).toBe("gift-in-progress");
+  });
+
+  it("repetirConComboDeRegalos:true dispara en cada evento del combo (incl. intermedios)", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: true })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 1, repeatEnd: false, timestamp: 0 });
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 2, repeatEnd: false, timestamp: 0 });
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 3, repeatEnd: true, timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(3);
+    expect(entries.filter((e) => e.status === "fired")).toHaveLength(3);
+    expect(entries.filter((e) => e.reason === "gift-in-progress")).toHaveLength(0);
+  });
+
+  it("repetirConComboDeRegalos:false (o ausente) solo dispara al cierre del combo", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: false })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 1, repeatEnd: false, timestamp: 0 });
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 2, repeatEnd: false, timestamp: 0 });
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 3, repeatEnd: true, timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(1);
+    expect(entries.filter((e) => e.status === "fired")).toHaveLength(1);
+    expect(entries.filter((e) => e.reason === "gift-in-progress")).toHaveLength(2);
   });
 
   it("una acción con varios comandos envía todos", async () => {

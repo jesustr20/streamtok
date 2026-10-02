@@ -18,6 +18,7 @@ const accion1: Accion = {
   pantalla: null,
   media: { animacion: false, imagen: false, sonido: false, video: false },
   comandos: [{ modActionId: "arena_join", params: { character: "default" } }],
+  repetirConComboDeRegalos: false,
 };
 
 const evento1: Evento = {

@@ -191,24 +191,19 @@ export class AccionesEventosEngine extends EventEmitter {
 
   /** Se llama por cada LiveEvent normalizado que llega del sidecar de TikTok. */
   async handleEvent(evt: LiveEvent) {
-    // Streaks de regalo: solo actuar cuando termina el combo.
-    if (evt.event === "gift" && evt.repeatEnd === false) {
-      this.emitEntry({
-        status: "discarded",
-        event: evt.event,
-        reason: "gift-in-progress",
-        message: "regalo en combo (se ignora hasta el fin del streak)",
-      });
-      return;
-    }
+    // Regalo en mitad de combo: solo lo disparan las Acciones con
+    // `repetirConComboDeRegalos: true`; el resto espera al cierre del combo.
+    const giftInProgress = evt.event === "gift" && evt.repeatEnd === false;
 
     // Ranking de donantes: acumular monedas por usuario en la sesión (issue #23).
-    if (evt.event === "gift" && typeof evt.coins === "number" && evt.coins > 0) {
+    // Solo se acumula el cierre del combo (el total), no los eventos intermedios.
+    if (evt.event === "gift" && !giftInProgress && typeof evt.coins === "number" && evt.coins > 0) {
       const handle = normalizeHandle(evt.username);
       this.gifterCoins.set(handle, (this.gifterCoins.get(handle) ?? 0) + evt.coins);
     }
 
     let matched = false;
+    let fired = false;
 
     for (const evento of this.eventos) {
       if (!evento.activo) continue;
@@ -232,7 +227,18 @@ export class AccionesEventosEngine extends EventEmitter {
         }
       }
 
-      await this.fireEvento(evento, evt);
+      const didFire = await this.fireEvento(evento, evt, { onlyRepeat: giftInProgress });
+      if (didFire) fired = true;
+    }
+
+    if (giftInProgress && !fired) {
+      this.emitEntry({
+        status: "discarded",
+        event: evt.event,
+        reason: "gift-in-progress",
+        message: "regalo en combo (se ignora hasta el fin del streak)",
+      });
+      return;
     }
 
     if (!matched) {
@@ -245,12 +251,17 @@ export class AccionesEventosEngine extends EventEmitter {
     }
   }
 
-  private async fireEvento(evento: Evento, evt: LiveEvent) {
+  private async fireEvento(
+    evento: Evento,
+    evt: LiveEvent,
+    opts: { onlyRepeat?: boolean } = {},
+  ): Promise<boolean> {
     const ids =
       evento.modoDisparo === "unaAlAzar" && evento.accionesIds.length > 0
         ? [pickRandom(evento.accionesIds)]
         : evento.accionesIds;
 
+    let fired = false;
     for (const accionId of ids) {
       const accion = this.acciones.find((a) => a.id === accionId);
       if (!accion) {
@@ -263,8 +274,15 @@ export class AccionesEventosEngine extends EventEmitter {
         });
         continue;
       }
+      // En un regalo intermedio de combo solo disparan las acciones que
+      // repiten con cada regalo del combo; las demás esperan el cierre.
+      if (opts.onlyRepeat && accion.repetirConComboDeRegalos !== true) {
+        continue;
+      }
       await this.executeAccion(evento, accion, evt);
+      fired = true;
     }
+    return fired;
   }
 
   private async executeAccion(evento: Evento, accion: Accion, evt: LiveEvent) {

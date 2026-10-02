@@ -29,10 +29,12 @@ export function ModDetalle({
   catalog,
   client,
   onBack,
+  onGestionarPerfiles,
 }: {
   catalog: ModHelloPayload | null;
   client: SidecarClient | null;
   onBack: () => void;
+  onGestionarPerfiles: () => void;
 }) {
   const [eventosCount, setEventosCount] = useState(0);
 
@@ -197,7 +199,7 @@ export function ModDetalle({
       </div>
 
       {/* Perfil de configuración */}
-      <PerfilConfiguracion client={client} />
+      <PerfilConfiguracion client={client} onGestionarPerfiles={onGestionarPerfiles} />
 
       {/* Acciones y Eventos */}
       <div ref={refs.accioneseventos}>

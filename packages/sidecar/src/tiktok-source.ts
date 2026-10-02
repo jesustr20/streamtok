@@ -113,11 +113,14 @@ function mapGift(raw: RawRecord): LiveEvent | null {
   if (!username) return null;
 
   // Streaks de regalo: tiktok-live-connector emite eventos intermedios
-  // (repeatEnd: 0) y un evento final (repeatEnd: 1). Solo el final dispara
-  // handleEvent — mismo convenio que el motor con `repeatEnd`.
-  const repeatEnd = raw.repeatEnd === 1 || raw.repeatEnd === true;
-  const giftType = raw.gift?.type;
-  if (giftType === 1 && !repeatEnd) return null;
+  // (repeatEnd: 0) y un evento final (repeatEnd: 1). Normalizamos `repeatEnd`
+  // tal cual para que el motor decida (repetir con combo o esperar el cierre).
+  const repeatEnd =
+    raw.repeatEnd === 1 || raw.repeatEnd === true
+      ? true
+      : raw.repeatEnd === 0 || raw.repeatEnd === false
+        ? false
+        : undefined;
 
   let giftId: number | undefined;
   if (raw.giftId !== undefined && raw.giftId !== null && raw.giftId !== "") {
@@ -143,7 +146,7 @@ function mapGift(raw: RawRecord): LiveEvent | null {
     giftId,
     giftName,
     coins,
-    repeatEnd: true,
+    repeatEnd,
     timestamp: Date.now(),
     ...extractUserFlags(raw),
   });

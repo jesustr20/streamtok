@@ -1,12 +1,13 @@
 import type { ModHelloPayload } from "@streamtok/shared";
 import { useEffect, useState } from "react";
+import { GestionarPerfiles } from "./components/GestionarPerfiles";
 import { InicioView } from "./components/InicioView";
 import { ModDetalle } from "./components/ModDetalle";
 import { ModsLibrary } from "./components/ModsLibrary";
 import { Sidebar } from "./components/Sidebar";
 import { SidecarClient } from "./lib/ws-client";
 
-export type ViewId = "inicio" | "juegos" | "juego-detalle";
+export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles";
 
 export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
@@ -56,7 +57,15 @@ export function App() {
           <ModsLibrary catalog={catalog} onOpenMod={() => setView("juego-detalle")} />
         )}
         {view === "juego-detalle" && (
-          <ModDetalle catalog={catalog} client={client} onBack={() => setView("juegos")} />
+          <ModDetalle
+            catalog={catalog}
+            client={client}
+            onBack={() => setView("juegos")}
+            onGestionarPerfiles={() => setView("gestionar-perfiles")}
+          />
+        )}
+        {view === "gestionar-perfiles" && (
+          <GestionarPerfiles client={client} onBack={() => setView("juego-detalle")} />
         )}
       </main>
     </div>
