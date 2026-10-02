@@ -19,71 +19,92 @@ const NAV_ITEMS: NavItem[] = [
  * Barra lateral de navegación. Por ahora solo "Inicio" y "Juegos" navegan;
  * el resto se ven pero deshabilitados con etiqueta "Próximamente" (issue #24).
  */
+const ACCENT = "#E23A57";
+
 export function Sidebar({ view, onNavigate }: { view: ViewId; onNavigate: (v: ViewId) => void }) {
   return (
     <aside
       style={{
-        width: 200,
+        width: 220,
         flexShrink: 0,
-        padding: "24px 12px",
+        boxSizing: "border-box",
+        padding: "28px 16px",
+        borderRight: "1px solid #22242B",
         display: "flex",
         flexDirection: "column",
-        gap: 4,
-        borderRight: "1px solid #2A2C33",
-        background: "#14151A",
+        gap: 24,
         minHeight: "100vh",
-        boxSizing: "border-box",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px 20px" }}>
-        <div style={{ width: 24, height: 24, borderRadius: 7, background: "#E23A57" }} />
-        <span style={{ fontSize: 16, fontWeight: 700 }}>StreamTok</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px" }}>
+        <div style={{ width: 24, height: 24, borderRadius: 7, background: ACCENT }} />
+        <span
+          style={{
+            fontFamily: "'Space Grotesk', sans-serif",
+            fontSize: 16,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          StreamTok
+        </span>
       </div>
 
-      {NAV_ITEMS.map((item) => {
-        const active = item.enabled && view === item.id;
-        const clickable = item.enabled;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            disabled={!clickable}
-            onClick={() => onNavigate(item.id as ViewId)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              width: "100%",
-              textAlign: "left",
-              padding: "9px 12px",
-              borderRadius: 8,
-              background: active ? "#1F222B" : "transparent",
-              border: "none",
-              color: active ? "#F4F4F5" : clickable ? "#C4C5CC" : "#5B5D66",
-              fontSize: 13.5,
-              fontWeight: active ? 700 : 500,
-              cursor: clickable ? "pointer" : "default",
-            }}
-          >
-            <span style={{ flex: 1 }}>{item.label}</span>
-            {!clickable && (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {NAV_ITEMS.map((item) => {
+          const active = item.enabled && view === item.id;
+          const clickable = item.enabled;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              disabled={!clickable}
+              onClick={() => onNavigate(item.id as ViewId)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: active ? "#1E2027" : "transparent",
+                border: "none",
+                color: active ? "#FFFFFF" : "#9A9CA5",
+                fontSize: 14,
+                fontWeight: active ? 700 : 500,
+                cursor: clickable ? "pointer" : "default",
+              }}
+            >
               <span
                 style={{
-                  fontSize: 9.5,
-                  fontWeight: 700,
-                  color: "#9A9CA5",
-                  background: "#23252C",
-                  padding: "2px 6px",
-                  borderRadius: 4,
-                  letterSpacing: "0.02em",
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: active ? ACCENT : "#3A3C44",
+                  flexShrink: 0,
                 }}
-              >
-                Próximamente
-              </span>
-            )}
-          </button>
-        );
-      })}
+              />
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {!clickable && (
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    color: "#9A9CA5",
+                    background: "#23252C",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  Próximamente
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </aside>
   );
 }

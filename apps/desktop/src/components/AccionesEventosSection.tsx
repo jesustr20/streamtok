@@ -173,35 +173,70 @@ export function AccionesEventosSection({
   const filteredEventos = eventos.filter((e) => eventoSearchText(e, acciones).includes(q));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+    <div style={sectionCardStyle}>
+      <div>
+        <span style={eyebrowStyle}>GENERAL</span>
+        <h2 style={sectionTitleStyle}>Acciones y Eventos</h2>
+        <p style={sectionDescStyle}>
+          Aquí puedes definir tus acciones y eventos personalizados (desencadenantes). Por
+          ejemplo, puedes mostrar una alerta o ejecutar un comando de este mod con un regalo
+          específico. Para esto, primero debes definir la acción y luego el evento.
+        </p>
+      </div>
+
       {/* ------------------------------- Acciones ------------------------------- */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => setAccionModal({ initial: null })} style={primaryButtonStyle}>
-            + Crear nueva Acción
-          </button>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#C4C5CC", cursor: "pointer" }}>
-            <input type="checkbox" checked={habilitado} onChange={(e) => setHabilitado(e.target.checked)} />
-            Habilitado
-          </label>
-          <input
-            style={{ ...inputStyle, maxWidth: 240, marginLeft: "auto" }}
-            value={accionSearch}
-            placeholder="Search existing actions..."
-            onChange={(e) => setAccionSearch(e.target.value)}
-          />
+      <div style={accionesBlockStyle}>
+        <div>
+          <h3 style={subTitleStyle}>Acciones</h3>
+          <p style={subDescStyle}>
+            ¿Qué quieres que ocurra? Aquí puedes crear nuevas acciones y editar las existentes.
+            Puedes vincular estas acciones a eventos a continuación.
+          </p>
+        </div>
+
+        <div style={toolbarStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <button type="button" onClick={() => setAccionModal({ initial: null })} style={createButtonStyle}>
+              + Crear nueva Acción
+            </button>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#C4C5CC", cursor: "pointer" }}>
+              <button type="button" onClick={() => setHabilitado(!habilitado)} style={checkBoxStyle}>
+                {habilitado ? "✓" : ""}
+              </button>
+              Habilitado
+            </label>
+          </div>
+          <div style={searchBoxStyle}>
+            <span style={{ color: "#5B5D66", fontSize: 12, marginRight: 6 }}>⌕</span>
+            <input
+              style={searchInputStyle}
+              value={accionSearch}
+              placeholder="Search existing actions..."
+              onChange={(e) => setAccionSearch(e.target.value)}
+            />
+          </div>
         </div>
 
         {testResult && (
-          <div style={{ padding: "8px 10px", background: "#17181D", border: "1px solid #2A2C33", borderRadius: 8, fontSize: 12, color: "#C4C5CC" }}>
-            {testResult}
-          </div>
+          <div style={testResultStyle}>{testResult}</div>
         )}
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={tableStyle}>
+        <div style={tableContainerStyle}>
+          <table style={{ ...tableStyle, minWidth: 820 }}>
+            <colgroup>
+              <col style={{ width: 78 }} />
+              <col style={{ width: 150 }} />
+              <col style={{ width: 70 }} />
+              <col style={{ width: 80 }} />
+              <col style={{ width: 70 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 55 }} />
+              <col style={{ width: 55 }} />
+              <col style={{ width: 50 }} />
+              <col />
+            </colgroup>
             <thead>
-              <tr>
+              <tr style={headerRowStyle}>
                 <th style={thStyle} />
                 <th style={thStyle}>Nombre</th>
                 <th style={thStyle}>Pantalla</th>
@@ -223,36 +258,38 @@ export function AccionesEventosSection({
                 </tr>
               ) : (
                 filteredAcciones.map((a) => (
-                  <tr key={a.id} style={rowStyle}>
-                    <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
-                      <button
-                        type="button"
-                        title="Probar"
-                        onClick={() => testAccion(a)}
-                        disabled={testingId !== null}
-                        style={iconButtonStyle}
-                      >
-                        ▶
-                      </button>
-                      <button type="button" title="Editar" onClick={() => setAccionModal({ initial: a })} style={iconButtonStyle}>
-                        ✎
-                      </button>
-                      <button type="button" title="Duplicar" onClick={() => duplicateAccion(a.id)} style={iconButtonStyle}>
-                        ⧉
-                      </button>
-                      <button type="button" title="Borrar" onClick={() => deleteAccion(a.id)} style={{ ...iconButtonStyle, color: "#E5484D" }}>
-                        🗑
-                      </button>
+                  <tr key={a.id}>
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <button
+                          type="button"
+                          title="Probar"
+                          onClick={() => testAccion(a)}
+                          disabled={testingId !== null}
+                          style={iconButtonStyle}
+                        >
+                          ▶
+                        </button>
+                        <button type="button" title="Editar" onClick={() => setAccionModal({ initial: a })} style={iconButtonStyle}>
+                          ✎
+                        </button>
+                        <button type="button" title="Duplicar" onClick={() => duplicateAccion(a.id)} style={iconButtonStyle}>
+                          ⧉
+                        </button>
+                        <button type="button" title="Borrar" onClick={() => deleteAccion(a.id)} style={{ ...iconButtonStyle, color: "#E5484D" }}>
+                          🗑
+                        </button>
+                      </div>
                     </td>
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>{a.nombre}</td>
-                    <td style={tdStyle}>{a.pantalla ?? "—"}</td>
-                    <td style={tdStyle}>{a.duracionSeg}</td>
-                    <td style={tdStyle}>{a.puntos > 0 ? `+${a.puntos}` : a.puntos}</td>
-                    <td style={tdStyle}>{a.media.animacion ? "✓" : "—"}</td>
-                    <td style={tdStyle}>{a.media.imagen ? "✓" : "—"}</td>
-                    <td style={tdStyle}>{a.media.sonido ? "✓" : "—"}</td>
-                    <td style={tdStyle}>{a.media.video ? "✓" : "—"}</td>
-                    <td style={{ ...tdStyle, color: "#9A9CA5" }}>{a.descripcion || "—"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, fontWeight: 600 }}>{a.nombre}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{a.pantalla ?? "—"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{a.duracionSeg}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{a.puntos > 0 ? `+${a.puntos}` : a.puntos}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66" }}>{a.media.animacion ? "☑" : "☐"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66" }}>{a.media.imagen ? "☑" : "☐"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66" }}>{a.media.sonido ? "☑" : "☐"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66" }}>{a.media.video ? "☑" : "☐"}</td>
+                    <td style={{ ...tdStyle, fontSize: 11.5, color: "#9A9CA5" }}>{a.descripcion || "—"}</td>
                   </tr>
                 ))
               )}
@@ -263,22 +300,40 @@ export function AccionesEventosSection({
 
       {/* ------------------------------- Eventos ------------------------------- */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button type="button" onClick={() => setEventoModal({ initial: null })} style={primaryButtonStyle}>
-            + Crear nuevo Evento
-          </button>
-          <input
-            style={{ ...inputStyle, maxWidth: 240, marginLeft: "auto" }}
-            value={eventoSearch}
-            placeholder="Search existing events..."
-            onChange={(e) => setEventoSearch(e.target.value)}
-          />
+        <div>
+          <h3 style={subTitleStyle}>Eventos</h3>
+          <p style={subDescStyle}>
+            Aquí puedes definir qué desencadenará tus acciones. Incluye los disparadores de
+            comunidad (seguir, compartir, SuperFan, likes) junto con cualquier otro evento.
+          </p>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
+        <div style={toolbarStyle}>
+          <button type="button" onClick={() => setEventoModal({ initial: null })} style={createButtonStyle}>
+            + Crear nuevo Evento
+          </button>
+          <div style={searchBoxStyle}>
+            <span style={{ color: "#5B5D66", fontSize: 12, marginRight: 6 }}>⌕</span>
+            <input
+              style={searchInputStyle}
+              value={eventoSearch}
+              placeholder="Search existing events..."
+              onChange={(e) => setEventoSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div style={tableContainerStyle}>
           <table style={tableStyle}>
+            <colgroup>
+              <col style={{ width: 56 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 80 }} />
+              <col />
+              <col />
+            </colgroup>
             <thead>
-              <tr>
+              <tr style={headerRowStyle}>
                 <th style={thStyle} />
                 <th style={thStyle}>Activo</th>
                 <th style={thStyle}>Usuario</th>
@@ -295,27 +350,44 @@ export function AccionesEventosSection({
                 </tr>
               ) : (
                 filteredEventos.map((e) => (
-                  <tr key={e.id} style={rowStyle}>
-                    <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
-                      <button type="button" title="Editar" onClick={() => setEventoModal({ initial: e })} style={iconButtonStyle}>
-                        ✎
-                      </button>
-                      <button type="button" title="Borrar" onClick={() => deleteEvento(e.id)} style={{ ...iconButtonStyle, color: "#E5484D" }}>
-                        🗑
-                      </button>
+                  <tr key={e.id}>
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <button type="button" title="Editar" onClick={() => setEventoModal({ initial: e })} style={iconButtonStyle}>
+                          ✎
+                        </button>
+                        <button type="button" title="Borrar" onClick={() => deleteEvento(e.id)} style={{ ...iconButtonStyle, color: "#E5484D" }}>
+                          🗑
+                        </button>
+                      </div>
                     </td>
                     <td style={tdStyle}>
-                      <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={e.activo}
-                          onChange={() => toggleEventoActivo(e.id)}
-                        />
-                      </label>
+                      <button
+                        type="button"
+                        title={e.activo ? "Desactivar" : "Activar"}
+                        onClick={() => toggleEventoActivo(e.id)}
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: 4,
+                          border: `1px solid ${e.activo ? ACCENT : "#3A3C44"}`,
+                          background: e.activo ? ACCENT : "transparent",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#FFFFFF",
+                          fontSize: 10,
+                          lineHeight: 1,
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        {e.activo ? "✓" : ""}
+                      </button>
                     </td>
-                    <td style={tdStyle}>{describeQuien(e)}</td>
-                    <td style={tdStyle}>{PORQUE_LABELS[e.porque]}</td>
-                    <td style={{ ...tdStyle, color: "#9A9CA5" }}>{accionNamesFor(acciones, e.accionesIds)}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#9A9CA5" }}>{describeQuien(e)}</td>
+                    <td style={{ ...tdStyle, fontSize: 12.5, fontWeight: 600 }}>{PORQUE_LABELS[e.porque]}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{accionNamesFor(acciones, e.accionesIds)}</td>
                   </tr>
                 ))
               )}
@@ -351,54 +423,170 @@ export function AccionesEventosSection({
   );
 }
 
-const primaryButtonStyle: React.CSSProperties = {
-  padding: "8px 16px",
-  background: "#E23A57",
-  border: "none",
-  borderRadius: 8,
-  color: "#fff",
-  fontSize: 13,
-  fontWeight: 700,
-  cursor: "pointer",
-};
+const ACCENT = "#E23A57";
 
-const inputStyle: React.CSSProperties = {
-  padding: "8px 10px",
+const sectionCardStyle: React.CSSProperties = {
+  padding: 22,
   background: "#17181D",
   border: "1px solid #2A2C33",
+  borderRadius: 16,
+  display: "flex",
+  flexDirection: "column",
+  gap: 20,
+};
+
+const eyebrowStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#5B7CFA",
+  letterSpacing: "0.06em",
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  margin: "4px 0 0",
+  fontFamily: "'Space Grotesk', sans-serif",
+  fontSize: 17,
+  fontWeight: 700,
+};
+
+const sectionDescStyle: React.CSSProperties = {
+  margin: "6px 0 0",
+  fontSize: 12.5,
+  color: "#9A9CA5",
+  lineHeight: 1.6,
+  maxWidth: 640,
+};
+
+const subTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 14.5,
+  fontWeight: 700,
+  color: "#5B7CFA",
+};
+
+const subDescStyle: React.CSSProperties = {
+  margin: "4px 0 0",
+  fontSize: 12,
+  color: "#9A9CA5",
+};
+
+const accionesBlockStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  paddingBottom: 20,
+  borderBottom: "1px solid #2A2C33",
+};
+
+const toolbarStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const createButtonStyle: React.CSSProperties = {
+  padding: "0 14px",
+  height: 34,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: ACCENT,
+  color: "#FFFFFF",
   borderRadius: 8,
-  color: "#F4F4F5",
-  fontSize: 13,
+  fontSize: 12,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+  cursor: "pointer",
+  border: "none",
+};
+
+const checkBoxStyle: React.CSSProperties = {
+  width: 15,
+  height: 15,
+  borderRadius: 4,
+  background: ACCENT,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  color: "#FFFFFF",
+  fontSize: 9,
+  lineHeight: 1,
+  border: "none",
+  cursor: "pointer",
+  padding: 0,
+};
+
+const searchBoxStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 8,
+  padding: "0 12px",
+  height: 32,
+  width: 200,
+  flexShrink: 0,
   boxSizing: "border-box",
+};
+
+const searchInputStyle: React.CSSProperties = {
+  flex: 1,
+  background: "transparent",
+  border: "none",
+  color: "#F4F4F5",
+  fontSize: 11.5,
+  padding: 0,
+  minWidth: 0,
+  outline: "none",
+  fontFamily: "'Manrope', sans-serif",
+};
+
+const testResultStyle: React.CSSProperties = {
+  padding: "8px 10px",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "#C4C5CC",
+};
+
+const tableContainerStyle: React.CSSProperties = {
+  border: "1px solid #2A2C33",
+  borderRadius: 10,
+  overflow: "hidden",
+  overflowX: "auto",
 };
 
 const tableStyle: React.CSSProperties = {
   width: "100%",
   borderCollapse: "collapse",
-  minWidth: 820,
+  tableLayout: "fixed",
+};
+
+const headerRowStyle: React.CSSProperties = {
+  background: "#0E0F12",
 };
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",
-  fontSize: 10.5,
+  fontSize: 10,
   fontWeight: 700,
-  color: "#9A9CA5",
+  color: "#6B6D76",
   textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  padding: "8px 10px",
-  borderBottom: "1px solid #2A2C33",
+  letterSpacing: "0.03em",
+  padding: "9px 12px",
   whiteSpace: "nowrap",
+  boxSizing: "border-box",
 };
 
 const tdStyle: React.CSSProperties = {
-  fontSize: 12.5,
-  padding: "10px",
-  borderBottom: "1px solid #1F222B",
+  fontSize: 12,
+  padding: "10px 12px",
+  borderTop: "1px solid #22242B",
   whiteSpace: "nowrap",
-};
-
-const rowStyle: React.CSSProperties = {
-  background: "#17181D",
+  boxSizing: "border-box",
 };
 
 const emptyStyle: React.CSSProperties = {
@@ -411,8 +599,8 @@ const emptyStyle: React.CSSProperties = {
 const iconButtonStyle: React.CSSProperties = {
   background: "none",
   border: "none",
-  color: "#C4C5CC",
-  fontSize: 13,
+  color: "#5B7CFA",
+  fontSize: 11,
   cursor: "pointer",
-  padding: "2px 6px",
+  padding: "0 2px",
 };

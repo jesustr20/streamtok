@@ -112,10 +112,9 @@ export function AccionModal({
   return (
     <div style={overlayStyle}>
       <div style={cardStyle}>
-        <div style={headerStyle}>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>
-            {initial ? "Editar Acción" : "Nueva Acción"}
-          </span>
+        <span style={eyebrowStyle}>MODAL · ABIERTO DESDE GTA V CHAOS MOD</span>
+        <div style={titleRowStyle}>
+          <h2 style={titleStyle}>{initial ? "Editar Acción" : "Nueva Acción"}</h2>
           <button type="button" onClick={onClose} style={closeButtonStyle}>
             ✕
           </button>
@@ -130,7 +129,7 @@ export function AccionModal({
           <label style={labelStyle}>
             Descripción
             <textarea
-              style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
+              style={{ ...inputStyle, height: "auto", minHeight: 60, padding: "10px 14px", resize: "vertical" }}
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
             />
@@ -169,7 +168,7 @@ export function AccionModal({
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "#9A9CA5" }}>Media (flags informativos, sin subida real)</span>
+            <span style={{ fontSize: 10.5, color: "#9A9CA5" }}>Media (flags informativos, sin subida real)</span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
               {(["animacion", "imagen", "sonido", "video"] as const).map((flag) => (
                 <label key={flag} style={{ ...labelStyle, flexDirection: "row", alignItems: "center", gap: 6, cursor: "pointer" }}>
@@ -186,7 +185,7 @@ export function AccionModal({
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11, color: "#9A9CA5" }}>Comandos del mod</span>
+              <span style={{ fontSize: 10.5, color: "#9A9CA5" }}>Comandos del mod</span>
               <button
                 type="button"
                 onClick={addComando}
@@ -206,10 +205,10 @@ export function AccionModal({
             {comandos.map((c) => {
               const action = actions.find((a) => a.id === c.modActionId);
               return (
-                <div key={c.key} style={{ padding: 12, background: "#17181D", border: "1px solid #2A2C33", borderRadius: 9, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div key={c.key} style={commandBlockStyle}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <select
-                      style={{ ...inputStyle, flex: 1 }}
+                      style={{ ...selectStyle, flex: 1 }}
                       value={c.modActionId}
                       onChange={(e) => selectAction(c.key, e.target.value)}
                     >
@@ -258,48 +257,64 @@ export function AccionModal({
   );
 }
 
+const ACCENT = "#E23A57";
+
 const overlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.6)",
+  background: "rgba(14, 15, 18, 0.61)",
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   justifyContent: "center",
   zIndex: 100,
-  padding: 24,
+  padding: 40,
+  overflowY: "auto",
 };
 
 const cardStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 560,
-  maxHeight: "90vh",
-  overflowY: "auto",
-  background: "#14151A",
+  width: 560,
+  maxWidth: "100%",
+  background: "#17181D",
   border: "1px solid #2A2C33",
-  borderRadius: 12,
+  borderRadius: 16,
+  padding: 24,
   display: "flex",
   flexDirection: "column",
+  gap: 16,
+  boxShadow: "0 20px 60px #00000080",
+  boxSizing: "border-box",
 };
 
-const headerStyle: React.CSSProperties = {
+const eyebrowStyle: React.CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 700,
+  color: "#5B7CFA",
+  letterSpacing: "0.06em",
+};
+
+const titleRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  padding: "14px 18px",
-  borderBottom: "1px solid #2A2C33",
+};
+
+const titleStyle: React.CSSProperties = {
+  margin: 0,
+  fontFamily: "'Space Grotesk', sans-serif",
+  fontSize: 17,
+  fontWeight: 700,
 };
 
 const closeButtonStyle: React.CSSProperties = {
   background: "none",
   border: "none",
-  color: "#9A9CA5",
-  fontSize: 14,
+  color: "#5B5D66",
+  fontSize: 16,
   cursor: "pointer",
-  padding: 4,
+  padding: 0,
 };
 
 const bodyStyle: React.CSSProperties = {
-  padding: 18,
   display: "flex",
   flexDirection: "column",
   gap: 14,
@@ -307,47 +322,72 @@ const bodyStyle: React.CSSProperties = {
 
 const footerStyle: React.CSSProperties = {
   display: "flex",
-  justifyContent: "flex-end",
   gap: 10,
-  padding: "14px 18px",
-  borderTop: "1px solid #2A2C33",
+  justifyContent: "flex-end",
 };
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "8px 10px",
-  background: "#17181D",
+  height: 42,
+  padding: "0 14px",
+  background: "#0E0F12",
   border: "1px solid #2A2C33",
-  borderRadius: 8,
+  borderRadius: 9,
   color: "#F4F4F5",
   fontSize: 13,
   boxSizing: "border-box",
 };
 
+const selectStyle: React.CSSProperties = {
+  width: "100%",
+  height: 32,
+  padding: "0 10px",
+  background: "#17181D",
+  border: "1px solid #2A2C33",
+  borderRadius: 7,
+  color: "#F4F4F5",
+  fontSize: 12,
+  boxSizing: "border-box",
+};
+
+const commandBlockStyle: React.CSSProperties = {
+  padding: 14,
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 10,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
+
 const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 4,
-  fontSize: 11,
+  gap: 5,
+  fontSize: 10.5,
   color: "#9A9CA5",
 };
 
 const primaryButtonStyle: React.CSSProperties = {
-  padding: "8px 16px",
-  background: "#E23A57",
+  padding: "0 18px",
+  height: 40,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: ACCENT,
   border: "none",
-  borderRadius: 8,
-  color: "#fff",
-  fontSize: 13,
+  borderRadius: 9,
+  color: "#FFFFFF",
+  fontSize: 12.5,
   fontWeight: 700,
   cursor: "pointer",
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
   padding: "6px 12px",
-  background: "#1F222B",
+  background: "#1E2027",
   border: "1px solid #2A2C33",
-  borderRadius: 8,
+  borderRadius: 7,
   color: "#C4C5CC",
   fontSize: 12,
   cursor: "pointer",
@@ -361,19 +401,24 @@ const disabledButtonStyle: React.CSSProperties = {
 };
 
 const ghostButtonStyle: React.CSSProperties = {
-  padding: "8px 16px",
+  padding: "0 18px",
+  height: 40,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   background: "transparent",
   border: "1px solid #2A2C33",
-  borderRadius: 8,
+  borderRadius: 9,
   color: "#C4C5CC",
-  fontSize: 13,
+  fontSize: 12.5,
+  fontWeight: 700,
   cursor: "pointer",
 };
 
 const linkButtonStyle: React.CSSProperties = {
   background: "none",
   border: "none",
-  color: "#E23A57",
+  color: ACCENT,
   fontSize: 12,
   cursor: "pointer",
   padding: 0,
