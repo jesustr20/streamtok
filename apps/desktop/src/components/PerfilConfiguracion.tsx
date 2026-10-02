@@ -32,6 +32,9 @@ export function PerfilConfiguracion({
         setActiveProfileId(msg.activeProfileId);
       }
     });
+    // Snapshot bajo demanda: si esta barra se monta después de la conexión
+    // inicial, pide el estado actual (no lo recibió en `client-connected`).
+    client.send("profiles", { kind: "get-state" });
     return off;
   }, [client]);
 

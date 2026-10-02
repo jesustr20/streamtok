@@ -36,6 +36,9 @@ export function GestionarPerfiles({
         setError(msg.message);
       }
     });
+    // Snapshot bajo demanda: si esta pantalla se monta después de la conexión
+    // inicial, pide el estado actual (no lo recibió en `client-connected`).
+    client.send("profiles", { kind: "get-state" });
     return off;
   }, [client]);
 

@@ -188,6 +188,30 @@ describe("ProfilesController", () => {
     ws.close();
   });
 
+  it("get-state responde con el estado actual (snapshot bajo demanda)", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    seed(profilesPath, {
+      profiles: [
+        { id: "p1", name: "Uno", acciones: [], eventos: [] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
+      ],
+      activeProfileId: "p1",
+    });
+    server = new StreamTokWsServer(0);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    const stateAfter = once(ws, "profiles");
+    ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "get-state" } }));
+    const st = await stateAfter;
+    expect(st.kind).toBe("state");
+    expect(st.profiles).toHaveLength(2);
+    expect(st.activeProfileId).toBe("p1");
+
+    ws.close();
+  });
+
   it("duplica un perfil copiando sus acciones y eventos", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {

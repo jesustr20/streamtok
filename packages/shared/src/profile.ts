@@ -41,9 +41,12 @@ export type ProfileSummary = z.infer<typeof ProfileSummarySchema>;
  *  - `rename {id,name}`  renombrar.
  *  - `delete {id}`       borrar (se rechaza si es el último).
  *  - `set-active {id}`   marcar activo.
+ *  - `get-state`         pedir el estado actual (el sidecar responde `state`
+ *                        solo a ese socket; útil para una UI que se monta
+ *                        después de que el snapshot de conexión ya pasó).
  * Responses del sidecar:
- *  - `state {profiles, activeProfileId}` (broadcast en cada cambio y a clientes
- *    que conectan tarde).
+ *  - `state {profiles, activeProfileId}` (broadcast en cada cambio, a clientes
+ *    que conectan tarde, y en respuesta a `get-state`).
  *  - `error {message}` (solo al socket que pidió, para rechazos).
  */
 export const ProfilesMessageSchema = z.discriminatedUnion("kind", [
@@ -52,6 +55,7 @@ export const ProfilesMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("rename"), id: z.string(), name: z.string() }),
   z.object({ kind: z.literal("delete"), id: z.string() }),
   z.object({ kind: z.literal("set-active"), id: z.string() }),
+  z.object({ kind: z.literal("get-state") }),
   z.object({
     kind: z.literal("state"),
     profiles: z.array(ProfileSummarySchema),
