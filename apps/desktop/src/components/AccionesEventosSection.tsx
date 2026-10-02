@@ -68,7 +68,6 @@ export function AccionesEventosSection({
   const [habilitado, setHabilitado] = useState(true);
 
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (!client) return;
@@ -116,31 +115,18 @@ export function AccionesEventosSection({
 
   async function testAccion(accion: Accion) {
     if (!client) return;
-    if (accion.comandos.length === 0) {
-      setTestResult(`"${accion.nombre}" no tiene comandos.`);
-      return;
-    }
+    if (accion.comandos.length === 0) return;
     setTestingId(accion.id);
-    setTestResult(null);
-    const results: string[] = [];
     for (const c of accion.comandos) {
       try {
-        const resp = await client.sendManualCommand({
+        await client.sendManualCommand({
           action: c.modActionId,
           params: sanitizeUnknownParams(c.params),
         });
-        if (resp.kind === "ack") {
-          results.push(
-            resp.ack.ok ? `✓ ${c.modActionId}` : `✕ ${c.modActionId} — ${resp.ack.error ?? "sin detalle"}`,
-          );
-        } else {
-          results.push(`✕ ${c.modActionId} — ${resp.message}`);
-        }
-      } catch (err) {
-        results.push(`✕ ${c.modActionId} — ${(err as Error).message}`);
+      } catch {
+        // el feedback real es el comando ejecutado en el juego; no se muestra en la UI
       }
     }
-    setTestResult(results.join(" · "));
     setTestingId(null);
   }
 
@@ -223,22 +209,18 @@ export function AccionesEventosSection({
           </div>
         </div>
 
-        {testResult && (
-          <div style={testResultStyle}>{testResult}</div>
-        )}
-
         <div style={tableContainerStyle}>
-          <table style={{ ...tableStyle, minWidth: 820 }}>
+          <table style={{ ...tableStyle, minWidth: 940 }}>
             <colgroup>
-              <col style={{ width: 78 }} />
-              <col style={{ width: 150 }} />
-              <col style={{ width: 70 }} />
-              <col style={{ width: 80 }} />
-              <col style={{ width: 70 }} />
-              <col style={{ width: 60 }} />
-              <col style={{ width: 55 }} />
-              <col style={{ width: 55 }} />
-              <col style={{ width: 50 }} />
+              <col style={{ width: 88 }} />
+              <col style={{ width: 160 }} />
+              <col style={{ width: 84 }} />
+              <col style={{ width: 112 }} />
+              <col style={{ width: 88 }} />
+              <col style={{ width: 82 }} />
+              <col style={{ width: 64 }} />
+              <col style={{ width: 64 }} />
+              <col style={{ width: 56 }} />
               <col />
             </colgroup>
             <thead>
@@ -248,10 +230,10 @@ export function AccionesEventosSection({
                 <th style={thStyle}>Pantalla</th>
                 <th style={thStyle}>Duración (seg.)</th>
                 <th style={thStyle}>Puntos +/-</th>
-                <th style={thStyle}>Animación</th>
-                <th style={thStyle}>Imagen</th>
-                <th style={thStyle}>Sonido</th>
-                <th style={thStyle}>Video</th>
+                <th style={thCenterStyle}>Animación</th>
+                <th style={thCenterStyle}>Imagen</th>
+                <th style={thCenterStyle}>Sonido</th>
+                <th style={thCenterStyle}>Video</th>
                 <th style={thStyle}>Descripción</th>
               </tr>
             </thead>
@@ -291,10 +273,10 @@ export function AccionesEventosSection({
                     <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{a.pantalla ?? "—"}</td>
                     <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{a.duracionSeg}</td>
                     <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{a.puntos > 0 ? `+${a.puntos}` : a.puntos}</td>
-                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66" }}>{a.media.animacion ? "☑" : "☐"}</td>
-                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66" }}>{a.media.imagen ? "☑" : "☐"}</td>
-                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66" }}>{a.media.sonido ? "☑" : "☐"}</td>
-                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66" }}>{a.media.video ? "☑" : "☐"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66", textAlign: "center" }}>{a.media.animacion ? "☑" : "☐"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66", textAlign: "center" }}>{a.media.imagen ? "☑" : "☐"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66", textAlign: "center" }}>{a.media.sonido ? "☑" : "☐"}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#5B5D66", textAlign: "center" }}>{a.media.video ? "☑" : "☐"}</td>
                     <td style={{ ...tdStyle, fontSize: 11.5, color: "#9A9CA5" }}>{a.descripcion || "—"}</td>
                   </tr>
                 ))
@@ -334,15 +316,15 @@ export function AccionesEventosSection({
           <table style={tableStyle}>
             <colgroup>
               <col style={{ width: 56 }} />
-              <col style={{ width: 60 }} />
-              <col style={{ width: 80 }} />
+              <col style={{ width: 68 }} />
+              <col style={{ width: 84 }} />
               <col />
               <col />
             </colgroup>
             <thead>
               <tr style={headerRowStyle}>
                 <th style={thStyle} />
-                <th style={thStyle}>Activo</th>
+                <th style={thCenterStyle}>Activo</th>
                 <th style={thStyle}>Usuario</th>
                 <th style={thStyle}>Desencadenante</th>
                 <th style={thStyle}>Acción(es)</th>
@@ -368,7 +350,7 @@ export function AccionesEventosSection({
                         </button>
                       </div>
                     </td>
-                    <td style={tdStyle}>
+                    <td style={{ ...tdStyle, textAlign: "center" }}>
                       <button
                         type="button"
                         title={e.activo ? "Desactivar" : "Activar"}
@@ -550,15 +532,6 @@ const searchInputStyle: React.CSSProperties = {
   fontFamily: "'Manrope', sans-serif",
 };
 
-const testResultStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  background: "#0E0F12",
-  border: "1px solid #2A2C33",
-  borderRadius: 8,
-  fontSize: 12,
-  color: "#C4C5CC",
-};
-
 const tableContainerStyle: React.CSSProperties = {
   border: "1px solid #2A2C33",
   borderRadius: 10,
@@ -586,6 +559,11 @@ const thStyle: React.CSSProperties = {
   padding: "9px 12px",
   whiteSpace: "nowrap",
   boxSizing: "border-box",
+};
+
+const thCenterStyle: React.CSSProperties = {
+  ...thStyle,
+  textAlign: "center",
 };
 
 const tdStyle: React.CSSProperties = {
