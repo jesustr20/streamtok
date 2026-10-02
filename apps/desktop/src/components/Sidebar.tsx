@@ -6,19 +6,23 @@ type NavItem = {
   enabled: boolean;
 };
 
+/**
+ * Orden y etiquetas fieles a los .dc.html (Main/Mods/ModDetalle/ModPerfiles).
+ * Solo "Inicio" y "Juegos" navegan; el resto se ve deshabilitado con etiqueta
+ * "Próximamente".
+ */
 const NAV_ITEMS: NavItem[] = [
   { id: "inicio", label: "Inicio", enabled: true },
   { id: "live", label: "Live", enabled: false },
-  { id: "juegos", label: "Juegos", enabled: true },
   { id: "overlays", label: "Overlays", enabled: false },
-  { id: "tienda", label: "Tienda", enabled: false },
-  { id: "ajustes", label: "Ajustes", enabled: false },
+  { id: "simulador", label: "Simulador", enabled: false },
+  { id: "alertas", label: "Alertas", enabled: false },
+  { id: "puntos", label: "Puntos", enabled: false },
+  { id: "juegos", label: "Juegos", enabled: true },
+  { id: "suscripciones", label: "Suscripciones", enabled: false },
+  { id: "admin", label: "Admin", enabled: false },
 ];
 
-/**
- * Barra lateral de navegación. Por ahora solo "Inicio" y "Juegos" navegan;
- * el resto se ven pero deshabilitados con etiqueta "Próximamente" (issue #24).
- */
 const ACCENT = "#E23A57";
 
 export function Sidebar({ view, onNavigate }: { view: ViewId; onNavigate: (v: ViewId) => void }) {
@@ -52,13 +56,13 @@ export function Sidebar({ view, onNavigate }: { view: ViewId; onNavigate: (v: Vi
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {NAV_ITEMS.map((item) => {
-          const active = item.enabled && view === item.id;
-          const clickable = item.enabled;
+          const active =
+            item.enabled && (view === item.id || (view === "juego-detalle" && item.id === "juegos"));
           return (
             <button
               key={item.id}
               type="button"
-              disabled={!clickable}
+              disabled={!item.enabled}
               onClick={() => onNavigate(item.id as ViewId)}
               style={{
                 display: "flex",
@@ -73,7 +77,7 @@ export function Sidebar({ view, onNavigate }: { view: ViewId; onNavigate: (v: Vi
                 color: active ? "#FFFFFF" : "#9A9CA5",
                 fontSize: 14,
                 fontWeight: active ? 700 : 500,
-                cursor: clickable ? "pointer" : "default",
+                cursor: item.enabled ? "pointer" : "default",
               }}
             >
               <span
@@ -86,7 +90,7 @@ export function Sidebar({ view, onNavigate }: { view: ViewId; onNavigate: (v: Vi
                 }}
               />
               <span style={{ flex: 1 }}>{item.label}</span>
-              {!clickable && (
+              {!item.enabled && (
                 <span
                   style={{
                     fontSize: 9.5,

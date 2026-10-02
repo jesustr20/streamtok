@@ -180,7 +180,13 @@ export function AccionesEventosSection({
         <p style={sectionDescStyle}>
           Aquí puedes definir tus acciones y eventos personalizados (desencadenantes). Por
           ejemplo, puedes mostrar una alerta o ejecutar un comando de este mod con un regalo
-          específico. Para esto, primero debes definir la acción y luego el evento.
+          específico.
+          <br />
+          Para esto, primero debes definir la acción y luego el evento. Se requiere el{" "}
+          <a href="#overlay" style={{ color: "#5B7CFA", fontWeight: 600 }}>
+            Overlay de este mod
+          </a>{" "}
+          para ver las alertas en tu stream.
         </p>
       </div>
 
@@ -304,7 +310,8 @@ export function AccionesEventosSection({
           <h3 style={subTitleStyle}>Eventos</h3>
           <p style={subDescStyle}>
             Aquí puedes definir qué desencadenará tus acciones. Incluye los disparadores de
-            comunidad (seguir, compartir, SuperFan, likes) junto con cualquier otro evento.
+            comunidad (seguir, compartir, SuperFan, likes) junto con cualquier otro evento — todos
+            usan el mismo motor.
           </p>
         </div>
 

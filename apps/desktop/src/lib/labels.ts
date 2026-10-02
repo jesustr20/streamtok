@@ -14,8 +14,8 @@ export const QUIEN_OPTIONS: { value: EventoQuien; label: string }[] = [
   { value: "seguidor", label: QUIEN_LABELS.seguidor },
   { value: "suscriptor", label: QUIEN_LABELS.suscriptor },
   { value: "moderador", label: QUIEN_LABELS.moderador },
-  { value: "usuarioEspecifico", label: QUIEN_LABELS.usuarioEspecifico },
   { value: "donanteTop", label: QUIEN_LABELS.donanteTop },
+  { value: "usuarioEspecifico", label: QUIEN_LABELS.usuarioEspecifico },
 ];
 
 export const PORQUE_LABELS: Record<EventoPorque, string> = {
@@ -51,8 +51,8 @@ export const PORQUE_OPTIONS: { value: EventoPorque; label: string }[] = [
 ];
 
 export const MODO_DISPARO_LABELS: Record<EventoModoDisparo, string> = {
-  todas: "Desencadenar todas las acciones",
-  unaAlAzar: "Una al azar",
+  todas: "Desencadenar todas estas acciones",
+  unaAlAzar: "Desencadenar una de estas acciones (aleatoriamente)",
 };
 
 /**

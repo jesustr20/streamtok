@@ -8,6 +8,7 @@ import type {
 } from "@streamtok/shared";
 import {
   MODO_DISPARO_LABELS,
+  PORQUE_LABELS,
   PORQUE_OPTIONS,
   PROXIMAMENTE_PORQUE,
   QUIEN_OPTIONS,
@@ -182,7 +183,7 @@ export function EventoModal({
                   <span style={radioOuterStyle(quien === o.value)}>
                     <span style={radioInnerStyle(quien === o.value)} />
                   </span>
-                  <span style={{ fontSize: 13 }}>{o.label}</span>
+                  <span style={{ fontSize: 13, color: "#F4F4F5" }}>{o.label}</span>
                 </button>
               ))}
             </div>
@@ -200,6 +201,34 @@ export function EventoModal({
             </label>
           )}
 
+          <div>
+            <span style={questionLabelStyle}>¿Por qué se desencadenará el evento?</span>
+            <div style={radioListStyle}>
+              {PORQUE_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setPorque(o.value)}
+                  style={radioRowStyle}
+                >
+                  <span style={radioOuterStyle(porque === o.value)}>
+                    <span style={radioInnerStyle(porque === o.value)} />
+                  </span>
+                  <span style={{ fontSize: 13, color: "#F4F4F5" }}>
+                    {o.label}
+                    {PROXIMAMENTE_PORQUE.has(o.value) ? " (próximamente)" : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p style={{ margin: "8px 0 0", fontSize: 10.5, color: "#5B5D66" }}>
+              El campo de abajo cambia según lo elegido acá (ej. "regalo específico" pide el
+              regalo, "valor mínimo" pide un número).
+            </p>
+          </div>
+
+          {esProximamente && <div style={proximamenteNoteStyle}>{PROXIMAMENTE_NOTE}</div>}
+
           {quien === "donanteTop" && (
             <label style={labelStyle}>
               Número permitido de principales donantes
@@ -215,32 +244,11 @@ export function EventoModal({
             </label>
           )}
 
-          <div>
-            <span style={questionLabelStyle}>¿Por qué se desencadenará el evento?</span>
-            <div style={radioListStyle}>
-              {PORQUE_OPTIONS.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => setPorque(o.value)}
-                  style={radioRowStyle}
-                >
-                  <span style={radioOuterStyle(porque === o.value)}>
-                    <span style={radioInnerStyle(porque === o.value)} />
-                  </span>
-                  <span style={{ fontSize: 13 }}>
-                    {o.label}
-                    {PROXIMAMENTE_PORQUE.has(o.value) ? " (próximamente)" : ""}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {esProximamente && <div style={proximamenteNoteStyle}>{PROXIMAMENTE_NOTE}</div>}
-
           {hasCampos && (
             <div style={conditionalBlockStyle}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: "#5B7CFA", letterSpacing: "0.04em" }}>
+                CAMPOS DE ESTE TRIGGER — {PORQUE_LABELS[porque].toUpperCase()}
+              </span>
               {(porque === "unirse" || porque === "primeraActividad") && (
                 <label style={labelStyle}>
                   Nivel de equipo requerido
@@ -398,7 +406,7 @@ export function EventoModal({
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label style={{ fontSize: 11.5, color: "#9A9CA5" }}>
-              Acciones asociadas ({accionesIds.length})
+              Desencadenar todas estas acciones
             </label>
             <div style={chipsBoxStyle}>
               {accionesIds.length === 0 ? (
@@ -461,7 +469,7 @@ export function EventoModal({
             Cancelar
           </button>
           <button type="button" onClick={submit} style={primaryButtonStyle}>
-            {initial ? "Guardar cambios" : "Crear Evento"}
+            ✓ Guardar
           </button>
         </div>
       </div>
@@ -592,6 +600,7 @@ const radioRowStyle: React.CSSProperties = {
   padding: 0,
   cursor: "pointer",
   textAlign: "left",
+  color: "#F4F4F5",
 };
 
 function radioOuterStyle(sel: boolean): React.CSSProperties {
