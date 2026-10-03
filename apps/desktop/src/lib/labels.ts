@@ -1,4 +1,4 @@
-import type { Evento, EventoModoDisparo, EventoPorque, EventoQuien } from "@streamtok/shared";
+import type { Evento, EventoPorque, EventoQuien } from "@streamtok/shared";
 
 export const QUIEN_LABELS: Record<EventoQuien, string> = {
   todos: "Todos",
@@ -49,11 +49,6 @@ export const PORQUE_OPTIONS: { value: EventoPorque; label: string }[] = [
   { value: "stickerFanClub", label: PORQUE_LABELS.stickerFanClub },
   { value: "compraTiktokShop", label: PORQUE_LABELS.compraTiktokShop },
 ];
-
-export const MODO_DISPARO_LABELS: Record<EventoModoDisparo, string> = {
-  todas: "Desencadenar todas estas acciones",
-  unaAlAzar: "Desencadenar una de estas acciones (aleatoriamente)",
-};
 
 /**
  * Los dos `porque` que el motor todavía no puede detectar (ADR 0005). Son los

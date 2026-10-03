@@ -50,8 +50,8 @@ function evento(overrides: Partial<Evento> = {}): Evento {
     activo: true,
     quien: "todos",
     porque: "seguir",
-    modoDisparo: "todas",
-    accionesIds: ["a1"],
+    accionesTodas: ["a1"],
+    accionesAleatorias: [],
     ...overrides,
   };
 }
@@ -173,11 +173,11 @@ describe("AccionesEventosEngine — matching", () => {
     expect(bridge.calls.map((c) => c.action)).toEqual(["arena_join", "vehicle_spawn"]);
   });
 
-  it("modoDisparo unaAlAzar dispara exactamente una acción", async () => {
+  it("solo accionesAleatorias dispara exactamente una acción", async () => {
     const bridge = makeBridge();
     const engine = new AccionesEventosEngine(bridge);
     engine.setAcciones([accion({ id: "a1" }), accion({ id: "a2", nombre: "Otra" })]);
-    engine.setEventos([evento({ porque: "seguir", modoDisparo: "unaAlAzar", accionesIds: ["a1", "a2"] })]);
+    engine.setEventos([evento({ porque: "seguir", accionesTodas: [], accionesAleatorias: ["a1", "a2"] })]);
 
     await engine.handleEvent(followEvent());
 
@@ -189,7 +189,7 @@ describe("AccionesEventosEngine — matching", () => {
     const bridge = makeBridge();
     const engine = new AccionesEventosEngine(bridge);
     engine.setAcciones([]);
-    engine.setEventos([evento({ porque: "seguir", accionesIds: ["borrada"] })]);
+    engine.setEventos([evento({ porque: "seguir", accionesTodas: ["borrada"], accionesAleatorias: [] })]);
     const { entries } = collect(engine);
 
     await engine.handleEvent(followEvent());
@@ -355,6 +355,61 @@ describe("AccionesEventosEngine — quien con metadata (issue #23)", () => {
     await engine.handleEvent({ event: "join", username: "@fan", timestamp: 0 });
 
     expect(bridge.calls).toHaveLength(0);
+  });
+});
+
+describe("AccionesEventosEngine — accionesTodas / accionesAleatorias", () => {
+  it("solo accionesTodas: ejecuta todas", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ id: "a1" }), accion({ id: "a2", nombre: "Otra" })]);
+    engine.setEventos([evento({ accionesTodas: ["a1", "a2"], accionesAleatorias: [] })]);
+
+    await engine.handleEvent(followEvent());
+
+    expect(bridge.calls).toHaveLength(2);
+    expect(bridge.calls.map((c) => c.action)).toEqual(["arena_join", "arena_join"]);
+  });
+
+  it("solo accionesAleatorias: ejecuta exactamente una", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ id: "a1" }), accion({ id: "a2", nombre: "Otra" })]);
+    engine.setEventos([evento({ accionesTodas: [], accionesAleatorias: ["a1", "a2"] })]);
+
+    await engine.handleEvent(followEvent());
+
+    expect(bridge.calls).toHaveLength(1);
+    expect(bridge.calls[0].action).toBe("arena_join");
+  });
+
+  it("ambas: ejecuta todas las fijas más una aleatoria", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([
+      accion({ id: "a1" }),
+      accion({ id: "a2", nombre: "Otra" }),
+      accion({ id: "a3", nombre: "Tercera" }),
+    ]);
+    engine.setEventos([evento({ accionesTodas: ["a1", "a2"], accionesAleatorias: ["a3"] })]);
+
+    await engine.handleEvent(followEvent());
+
+    expect(bridge.calls).toHaveLength(3);
+    expect(bridge.calls.map((c) => c.action)).toEqual(["arena_join", "arena_join", "arena_join"]);
+  });
+
+  it("ambas vacías: no ejecuta nada", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ accionesTodas: [], accionesAleatorias: [] })]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent(followEvent());
+
+    expect(bridge.calls).toHaveLength(0);
+    expect(entries).toHaveLength(0);
   });
 });
 

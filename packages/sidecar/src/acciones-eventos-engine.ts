@@ -256,10 +256,10 @@ export class AccionesEventosEngine extends EventEmitter {
     evt: LiveEvent,
     opts: { onlyRepeat?: boolean } = {},
   ): Promise<boolean> {
-    const ids =
-      evento.modoDisparo === "unaAlAzar" && evento.accionesIds.length > 0
-        ? [pickRandom(evento.accionesIds)]
-        : evento.accionesIds;
+    const ids = [
+      ...evento.accionesTodas,
+      ...(evento.accionesAleatorias.length > 0 ? [pickRandom(evento.accionesAleatorias)] : []),
+    ];
 
     let fired = false;
     for (const accionId of ids) {

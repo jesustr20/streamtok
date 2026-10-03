@@ -83,9 +83,10 @@ export function validateAcciones(
 
 /**
  * Valida una lista de Eventos. Estructuralmente contra `EventoSchema` y aplica
- * defaults. No valida que `accionesIds` apunten a Acciones existentes: si un
- * Evento referencia una Acción borrada, el motor lo reporta en runtime como
- * `accion-no-encontrada` (no se rechaza el `set` completo por eso).
+ * defaults. No valida que `accionesTodas`/`accionesAleatorias` apunten a
+ * Acciones existentes: si un Evento referencia una Acción borrada, el motor lo
+ * reporta en runtime como `accion-no-encontrada` (no se rechaza el `set`
+ * completo por eso).
  */
 export function validateEventos(input: unknown): EventosValidationResult {
   const parsed = EventoSchema.array().safeParse(input);

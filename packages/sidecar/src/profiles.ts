@@ -57,7 +57,11 @@ function deepCopyAcciones(acciones: Accion[]): Accion[] {
 
 /** Copia profunda de eventos (para "duplicar perfil"). */
 function deepCopyEventos(eventos: Evento[]): Evento[] {
-  return eventos.map((e) => ({ ...e, accionesIds: [...e.accionesIds] }));
+  return eventos.map((e) => ({
+    ...e,
+    accionesTodas: [...e.accionesTodas],
+    accionesAleatorias: [...e.accionesAleatorias],
+  }));
 }
 
 export class ProfilesStore {

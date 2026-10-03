@@ -40,7 +40,7 @@ describe("mappingRuleToAccionEvento", () => {
     expect(accion.comandos).toEqual([{ modActionId: "arena_join", params: { character: "default" } }]);
     expect(evento.porque).toBe("regaloEspecifico");
     expect(evento.giftId).toBe("5655");
-    expect(evento.accionesIds).toEqual([accion.id]);
+    expect(evento.accionesTodas).toEqual([accion.id]);
     expect(evento.activo).toBe(true);
   });
 
@@ -92,8 +92,8 @@ describe("communityRulesToAccionesEventos", () => {
 
     // cada evento referencia su propia acción, presente en la lista
     for (const ev of eventos) {
-      expect(ev.accionesIds).toHaveLength(1);
-      expect(acciones.some((a) => a.id === ev.accionesIds[0])).toBe(true);
+      expect(ev.accionesTodas).toHaveLength(1);
+      expect(acciones.some((a) => a.id === ev.accionesTodas[0])).toBe(true);
     }
   });
 
