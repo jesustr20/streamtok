@@ -9,8 +9,10 @@ import { z } from "zod";
  */
 
 export const GiftCatalogEntrySchema = z.object({
-  /** id del regalo tal cual viene en `gift.id` del evento crudo (ej. "5487"). */
-  id: z.string(),
+  /** id del regalo tal cual viene en `gift.id` del evento crudo (ej. "5487").
+   * Opcional: los regalos sembrados desde el catálogo estático solo tienen
+   * nombre hasta que un evento real confirme su id. */
+  id: z.string().optional(),
   /** display name del regalo (ej. "Finger Heart"). */
   name: z.string(),
   /** URL principal de la imagen (gift.image.urlList[0]; fallback gift.icon.urlList[0]). */

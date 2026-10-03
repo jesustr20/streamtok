@@ -4,16 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocket } from "ws";
 import type { GiftCatalogEntry } from "@streamtok/shared";
-import { GiftCatalogController, GiftCatalogStore } from "../src/gift-catalog.js";
+import {
+  GiftCatalogController,
+  GiftCatalogStore,
+  normalizeGiftName,
+} from "../src/gift-catalog.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
 
 const rose: GiftCatalogEntry = { id: "5655", name: "Rose", imageUrl: "https://cdn/rose.png", cost: 1 };
-const heart: GiftCatalogEntry = {
-  id: "5487",
-  name: "Finger Heart",
-  imageUrl: "https://cdn/finger.png",
-  cost: 5,
-};
 
 function once(ws: WebSocket, channel: string): Promise<any> {
   return new Promise((resolve) => {
@@ -27,6 +25,15 @@ function once(ws: WebSocket, channel: string): Promise<any> {
   });
 }
 
+describe("normalizeGiftName", () => {
+  it("normaliza trim, mayúsculas y tildes", () => {
+    expect(normalizeGiftName("  Corazón  ")).toBe("corazon");
+    expect(normalizeGiftName("Finger Heart")).toBe("finger heart");
+    expect(normalizeGiftName("ÁÉÍÓÚ")).toBe("aeiou");
+    expect(normalizeGiftName("León")).toBe("leon");
+  });
+});
+
 describe("GiftCatalogStore", () => {
   let dir: string;
   afterEach(() => {
@@ -38,14 +45,29 @@ describe("GiftCatalogStore", () => {
     return join(dir, "gift-catalog.json");
   }
 
-  it("arranque sin archivo → catálogo vacío", () => {
-    expect(new GiftCatalogStore(tmpPath()).load()).toEqual([]);
+  it("arranque sin archivo → siembra desde el catálogo estático (sin id)", () => {
+    const entries = new GiftCatalogStore(tmpPath()).load();
+
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.every((e) => e.id === undefined)).toBe(true);
+
+    const finger = entries.find((e) => e.name === "Finger Heart");
+    expect(finger).toMatchObject({ cost: 5, imageUrl: expect.stringContaining("beetgames.com") });
+
+    const lion = entries.find((e) => e.name === "Lion");
+    expect(lion).toMatchObject({ cost: 29999 });
+  });
+
+  it("no resembrar si ya existe gift-catalog.json", async () => {
+    const path = tmpPath();
+    writeFileSync(path, JSON.stringify([rose]));
+    expect(new GiftCatalogStore(path).load()).toEqual([rose]);
   });
 
   it("round-trip: guardar y releer con otra instancia", async () => {
     const path = tmpPath();
-    await new GiftCatalogStore(path).save([rose, heart]);
-    expect(new GiftCatalogStore(path).load()).toEqual([rose, heart]);
+    await new GiftCatalogStore(path).save([rose]);
+    expect(new GiftCatalogStore(path).load()).toEqual([rose]);
   });
 
   it("JSON corrupto → catálogo vacío y avisa", () => {
@@ -76,7 +98,6 @@ describe("GiftCatalogController", () => {
     return new Promise((resolve) => server.on("listening", (port) => resolve(port)));
   }
 
-  /** Conecta y captura el estado inicial (snapshot de conexión). */
   async function connectAndCapture(port: number): Promise<{ ws: WebSocket; initialState: any }> {
     const ws = new WebSocket(`ws://localhost:${port}`);
     const firstMessage = once(ws, "gift-catalog");
@@ -87,9 +108,13 @@ describe("GiftCatalogController", () => {
     return { ws, initialState: await firstMessage };
   }
 
-  it("get-state responde el catálogo actual (snapshot bajo demanda)", async () => {
+  function seed(path: string, entries: GiftCatalogEntry[]) {
+    writeFileSync(path, JSON.stringify(entries));
+  }
+
+  it("get-state responde el catálogo actual", async () => {
     const path = tmpPath();
-    writeFileSync(path, JSON.stringify([rose]));
+    seed(path, [rose]);
     server = new StreamTokWsServer(0);
     new GiftCatalogController(server, new GiftCatalogStore(path));
     const port = await waitListening();
@@ -104,33 +129,97 @@ describe("GiftCatalogController", () => {
     ws.close();
   });
 
-  it("learn agrega (dedupe por id), emite state y persiste en disco", async () => {
+  it("match por id tiene prioridad sobre match por nombre", async () => {
     const path = tmpPath();
+    seed(path, [{ id: "5487", name: "Finger Heart", imageUrl: "https://cdn/real.png", cost: 5 }]);
     server = new StreamTokWsServer(0);
     const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
-    const port = await waitListening();
-    const { ws } = await connectAndCapture(port);
 
-    // 1er regalo: nuevo → agrega + emite state
-    const afterHeart = once(ws, "gift-catalog");
-    expect(controller.learn(heart)).toBe(true);
-    const st1 = await afterHeart;
-    expect(st1.gifts).toEqual([heart]);
+    // el evento real viene con el mismo id (aunque el nombre difiera en mayúsculas)
+    const changed = controller.learn({
+      id: "5487",
+      name: "FINGER HEART",
+      imageUrl: "https://cdn/otra.png",
+      cost: 5,
+    });
 
-    // duplicado: no agrega, no emite
-    expect(controller.learn(heart)).toBe(false);
-    expect(controller.getEntries()).toEqual([heart]);
+    expect(changed).toBe(false);
+    expect(controller.getEntries()).toEqual([
+      { id: "5487", name: "Finger Heart", imageUrl: "https://cdn/real.png", cost: 5 },
+    ]);
+  });
 
-    // 2do regalo: nuevo → agrega + emite state
-    const afterRose = once(ws, "gift-catalog");
-    expect(controller.learn(rose)).toBe(true);
-    const st2 = await afterRose;
-    expect(st2.gifts).toEqual([heart, rose]);
+  it("upgrade de entrada sembrada (sin id) cuando llega evento real con nombre coincidente", async () => {
+    const path = tmpPath();
+    seed(path, [{ name: "Finger Heart", imageUrl: "https://beetgames.com/finger.webp", cost: 5 }]);
+    server = new StreamTokWsServer(0);
+    const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
 
-    // persistido en disco (el save es fire-and-forget: esperamos un tick)
+    const changed = controller.learn({
+      id: "5487",
+      name: "Finger Heart",
+      imageUrl: "https://tiktokcdn.com/finger.png",
+      cost: 5,
+    });
+
+    expect(changed).toBe(true);
+    expect(controller.getEntries()).toEqual([
+      { id: "5487", name: "Finger Heart", imageUrl: "https://tiktokcdn.com/finger.png", cost: 5 },
+    ]);
+  });
+
+  it("matchea por nombre normalizado (mayúsculas/tildes)", async () => {
+    const path = tmpPath();
+    seed(path, [{ name: "Corazón", imageUrl: "https://beetgames.com/corazon.webp", cost: 1 }]);
+    server = new StreamTokWsServer(0);
+    const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
+
+    const changed = controller.learn({
+      id: "100",
+      name: "CORAZON",
+      imageUrl: "https://tiktokcdn.com/corazon.png",
+      cost: 1,
+    });
+
+    expect(changed).toBe(true);
+    expect(controller.getEntries()[0]).toMatchObject({ id: "100", name: "Corazón" });
+  });
+
+  it("agrega entrada nueva si no hay match ni por id ni por nombre", async () => {
+    const path = tmpPath();
+    seed(path, [rose]);
+    server = new StreamTokWsServer(0);
+    const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
+
+    const changed = controller.learn({
+      id: "9999",
+      name: "Galaxy",
+      imageUrl: "https://cdn/galaxy.png",
+      cost: 100,
+    });
+
+    expect(changed).toBe(true);
+    expect(controller.getEntries()).toEqual([
+      rose,
+      { id: "9999", name: "Galaxy", imageUrl: "https://cdn/galaxy.png", cost: 100 },
+    ]);
+  });
+
+  it("persiste el upgrade en disco", async () => {
+    const path = tmpPath();
+    seed(path, [{ name: "Finger Heart", imageUrl: "https://beetgames.com/finger.webp", cost: 5 }]);
+    server = new StreamTokWsServer(0);
+    new GiftCatalogController(server, new GiftCatalogStore(path)).learn({
+      id: "5487",
+      name: "Finger Heart",
+      imageUrl: "https://tiktokcdn.com/finger.png",
+      cost: 5,
+    });
+
     await new Promise((r) => setTimeout(r, 50));
-    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual([heart, rose]);
-
-    ws.close();
+    const onDisk = JSON.parse(readFileSync(path, "utf8")) as GiftCatalogEntry[];
+    expect(onDisk).toEqual([
+      { id: "5487", name: "Finger Heart", imageUrl: "https://tiktokcdn.com/finger.png", cost: 5 },
+    ]);
   });
 });

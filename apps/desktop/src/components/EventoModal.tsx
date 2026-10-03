@@ -64,7 +64,7 @@ export function EventoModal({
   const [valorMinimoMonedas, setValorMinimoMonedas] = useState<number>(
     initial?.valorMinimoMonedas ?? 1,
   );
-  const [giftId, setGiftId] = useState(initial?.giftId ?? "");
+  const [giftName, setGiftName] = useState(initial?.giftName ?? "");
   const [giftCatalog, setGiftCatalog] = useState<GiftCatalogEntry[]>([]);
   const [emoteId, setEmoteId] = useState(initial?.emoteId ?? "");
   const [stickerId, setStickerId] = useState(initial?.stickerId ?? "");
@@ -119,7 +119,7 @@ export function EventoModal({
         return;
       }
     }
-    if (porque === "regaloEspecifico" && !giftId) {
+    if (porque === "regaloEspecifico" && !giftName) {
       setError("Elige un regalo del catálogo.");
       return;
     }
@@ -135,6 +135,8 @@ export function EventoModal({
       setError("Indica el nombre del producto.");
       return;
     }
+
+    const selectedGift = giftCatalog.find((g) => g.name === giftName);
 
     const evento: Evento = {
       id: initial?.id ?? newId(),
@@ -153,11 +155,8 @@ export function EventoModal({
       comando: porque === "comando" ? comando.trim() : undefined,
       cantidadMinimaLikes: porque === "likes" ? numOr(cantidadMinimaLikes, 15) : undefined,
       valorMinimoMonedas: porque === "regaloValorMinimo" ? numOr(valorMinimoMonedas, 1) : undefined,
-      giftId: porque === "regaloEspecifico" ? giftId : undefined,
-      giftName:
-        porque === "regaloEspecifico"
-          ? (giftCatalog.find((g) => g.id === giftId)?.name ?? initial?.giftName ?? "")
-          : undefined,
+      giftId: porque === "regaloEspecifico" ? selectedGift?.id : undefined,
+      giftName: porque === "regaloEspecifico" ? giftName : undefined,
       emoteId: porque === "emoteSuscriptor" ? emoteId.trim() : undefined,
       stickerId: porque === "stickerFanClub" ? stickerId.trim() : undefined,
       nombreProductoContiene:
@@ -365,7 +364,7 @@ export function EventoModal({
                       modal para poder elegirlo.
                     </div>
                   ) : (
-                    <GiftPicker value={giftId} gifts={giftCatalog} onSelect={setGiftId} />
+                    <GiftPicker value={giftName} gifts={giftCatalog} onSelect={setGiftName} />
                   )}
                 </div>
               )}
@@ -505,10 +504,10 @@ function GiftPicker({
 }: {
   value: string;
   gifts: GiftCatalogEntry[];
-  onSelect: (id: string) => void;
+  onSelect: (name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = gifts.find((g) => g.id === value);
+  const selected = gifts.find((g) => g.name === value);
 
   return (
     <div style={{ position: "relative" }}>
@@ -532,13 +531,13 @@ function GiftPicker({
           <div style={{ position: "fixed", inset: 0, zIndex: 15 }} onClick={() => setOpen(false)} />
           <div style={giftDropdownStyle}>
             {gifts.map((g) => {
-              const isSelected = g.id === value;
+              const isSelected = g.name === value;
               return (
                 <button
-                  key={g.id}
+                  key={g.id ?? g.name}
                   type="button"
                   onClick={() => {
-                    onSelect(g.id);
+                    onSelect(g.name);
                     setOpen(false);
                   }}
                   style={{ ...giftOptionStyle, background: isSelected ? "#1E2027" : "transparent" }}
