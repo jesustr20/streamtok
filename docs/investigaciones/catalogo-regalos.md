@@ -206,6 +206,64 @@ const gifts = await c.fetchAvailableGifts();
 
 ---
 
+## Alternativa gratuita: datos embebidos en la página del LIVE
+
+Hipótesis a verificar: al abrir `tiktok.com/@usuario/live` el navegador pinta el panel de
+regalos con imágenes; si esos datos vinieran embebidos en el HTML (SSR), habría una vía
+gratuita sin pasar por el endpoint firmado de Euler.
+
+### 1. ¿El connector ya parsea un JSON embebido con regalos?
+
+No. Revisado el código real de `fetchRoomId()`:
+
+- La cadena de `fetchRoomId()` es `fetchRoomIdComposite` → (1º) `fetchRoomInfoFromHtmlRoute`
+  (`lib-DWhiWLli.js:1110-1118`).
+- `fetchRoomInfoFromHtmlRoute` hace scrape de `tiktok.com/@${uniqueId}/live`, extrae
+  `<script id="SIGI_STATE" type="application/json">…</script>` con la regex
+  `/<script id="SIGI_STATE" type="application\/json">(.*?)<\/script>/`
+  (`RoomInfoFromHtmlRouteConfig`, `lib-DWhiWLli.js:1074`) y **solo** devuelve
+  `sigiState.LiveRoom.liveRoomUserInfo` (`lib-DWhiWLli.js:1091`).
+- Ese `liveRoomUserInfo` está tipado como `{ user?: { roomId }, liveRoom?: { status, roomId } }`
+  (`dist/index-DcaLUrMQ.d.ts:1032-1034`). No hay ninguna extracción de lista de regalos.
+
+Conclusión: el connector extrae del HTML únicamente `roomId`/`status`; **no** parsea ni
+expone ningún catálogo de regalos desde el JSON embebido.
+
+### 2. Fetch manual a la página del LIVE
+
+Probé con `fetch` nativo de Node (sin pasar por el connector):
+
+- `https://www.tiktok.com/` → HTTP 200 pero es el **challenge del WAF**
+  (`SlardarWAF`, "Please wait…", `_wafchallengeid`), sin `SIGI_STATE` ni
+  `__UNIVERSAL_DATA_FOR_REHYDRATION__`.
+- `https://www.tiktok.com/live` (directorio de LIVES, lo que sí se deja servir) → ~231 KB y
+  SÍ trae `__UNIVERSAL_DATA_FOR_REHYDRATION__`, pero su contenido es:
+  - `webapp.app-context` (language, region, appId, nonce, botType, csrfToken, …)
+  - `webapp.biz-context` (config de player / live studio / live recharge, …)
+  - `webapp.i18n-translation` (strings de UI)
+  - `webapp.i18n.params`, `x-from-stack`
+
+  **No contiene ningún catálogo de regalos.** Búsqueda de claves relevantes:
+  `giftList`, `gift_list`, `availableGifts`, `giftPanel`, `gift_catalog`,
+  `diamondCount`, `diamond_count`, `coin_price`, `image_url` → todas **ausentes**.
+- `https://www.tiktok.com/@tiktok/live` (página de un usuario concreto) → challenge del WAF
+  (~1 KB, sin JSON). La página de un usuario en vivo **no se puede obtener de forma anónima**
+  (bloqueada por el WAF de TikTok).
+
+No tengo una cuenta LIVE real para probar la página de un usuario en vivo; además, esa
+página responde el challenge anti-bot a requests anónimos.
+
+### 3. Conclusión
+
+No encontré una vía gratuita de "datos embebidos en el HTML". Los indicios apuntan a que
+el catálogo de regalos **no** viene en el HTML server-rendered (el `SIGI_STATE` solo lleva
+info de sala/usuario, y el `__UNIVERSAL_DATA_FOR_REHYDRATION__` del directorio solo lleva
+config/i18n), sino que se carga del endpoint firmado `webcast/gift/list/` (la vía que
+Euler cobra con plan Business). **No hay JSON real de regalos que pegar** porque no se
+pudo extraer ninguno.
+
+---
+
 ## Limitaciones encontradas
 
 1. `fetchAvailableGifts()` devuelve **`any`**: no hay tipado del shape en el
