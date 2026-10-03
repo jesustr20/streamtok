@@ -15,6 +15,33 @@ async fn install_gta_v_mod(game_path: Option<String>) -> Result<InstallReport, S
     install_mod::run_install(game_path).await
 }
 
+/// Catálogo offline (ver ADR 0006): devuelve de inmediato lo que haya en
+/// cache (si hay) y, si GitHub es alcanzable, lo refresca con el último
+/// Release — el string más nuevo gana. El frontend valida el shape con
+/// `ModHelloPayloadSchema` antes de confiar en cualquiera de los dos.
+#[tauri::command]
+async fn get_action_catalog() -> Result<Option<String>, String> {
+    let cached = github_release::read_cached_catalog();
+
+    match github_release::fetch_latest_catalog().await {
+        Ok(fresh) => {
+            // Si falla el guardado no es fatal — igual devolvemos el fresh
+            // al frontend, solo no quedó cacheado para la próxima vez offline.
+            let _ = github_release::write_cached_catalog(&fresh);
+            Ok(Some(fresh))
+        }
+        Err(_) => Ok(cached), // sin red: lo que haya en cache, o None
+    }
+}
+
+/// El frontend llama esto cuando llega un `mod-hello` real por WS — ese
+/// payload en vivo siempre pisa el cache (ver ADR 0006), ya validado contra
+/// `ModHelloPayloadSchema` del lado TS antes de llegar acá.
+#[tauri::command]
+fn cache_action_catalog(catalog_json: String) -> Result<(), String> {
+    github_release::write_cached_catalog(&catalog_json)
+}
+
 #[tauri::command]
 fn find_gta_v_path() -> Option<String> {
     gta_locate::find_gta_v_install().map(|p| p.display().to_string())
@@ -104,6 +131,8 @@ fn main() {
             pick_gta_v_folder,
             get_mod_status,
             uninstall_gta_v_mod,
+            get_action_catalog,
+            cache_action_catalog,
         ])
         .run(tauri::generate_context!())
         .expect("error corriendo la app de StreamTok");

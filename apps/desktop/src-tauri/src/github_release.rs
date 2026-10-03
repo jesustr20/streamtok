@@ -106,3 +106,50 @@ pub fn cache_dir() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir)
         .join("StreamTok")
 }
+
+/// Ruta del catálogo de acciones cacheado localmente (ver ADR 0006). Es un
+/// cache reemplazable, no la fuente de verdad: la fuente real es el Release
+/// de GitHub y, mientras el mod esté conectado, el `mod-hello` en vivo.
+pub fn catalog_cache_path() -> PathBuf {
+    cache_dir().join("catalog.json")
+}
+
+/// Descarga el `catalog.json` publicado como asset del último Release
+/// (ver ADR 0006 — mismo repo/Release que `fetch_latest_dll`, no re-pega la
+/// request: el caller decide si también quiere el `.dll`). Devuelve el JSON
+/// crudo, sin parsear — la validación contra `ModHelloPayloadSchema` es en
+/// TS (`@streamtok/shared`), acá solo se transporta el string.
+pub async fn fetch_latest_catalog() -> Result<String, String> {
+    let client = http_client()?;
+    let release = fetch_latest_release(&client).await?;
+
+    let asset = release
+        .assets
+        .iter()
+        .find(|a| a.name == "catalog.json")
+        .ok_or_else(|| "La Release no tiene un asset catalog.json".to_string())?;
+
+    client
+        .get(&asset.browser_download_url)
+        .send()
+        .await
+        .map_err(|e| format!("No se pudo descargar catalog.json: {e}"))?
+        .text()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Lee el catálogo cacheado en disco, si existe (ver ADR 0006).
+pub fn read_cached_catalog() -> Option<String> {
+    std::fs::read_to_string(catalog_cache_path()).ok()
+}
+
+/// Pisa el cache en disco con un JSON de catálogo nuevo (viene de un Release
+/// recién bajado, o del `mod-hello` en vivo — ambos son fuente autoritativa,
+/// ver ADR 0006). El caller ya validó el shape en TS antes de llegar acá.
+pub fn write_cached_catalog(json: &str) -> Result<(), String> {
+    let dir = cache_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear el cache dir: {e}"))?;
+    std::fs::write(catalog_cache_path(), json)
+        .map_err(|e| format!("No se pudo escribir catalog.json en cache: {e}"))
+}
