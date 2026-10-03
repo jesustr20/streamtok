@@ -51,8 +51,8 @@ function evento(overrides: Partial<Evento> = {}): Evento {
     activo: true,
     quien: "todos",
     porque: "seguir",
-    modoDisparo: "todas",
-    accionesIds: ["a1"],
+    accionesTodas: ["a1"],
+    accionesAleatorias: [],
     ...overrides,
   };
 }
@@ -94,9 +94,34 @@ describe("validateEventos", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("rechaza accionesIds vacío", () => {
-    const result = validateEventos([evento({ accionesIds: [] })]);
-    expect(result.ok).toBe(false);
+  it("acepta un evento con ambas listas de acciones vacías", () => {
+    const result = validateEventos([evento({ accionesTodas: [], accionesAleatorias: [] })]);
+    expect(result.ok).toBe(true);
+  });
+
+  it("migra eventos viejos (modoDisparo + accionesIds) a accionesTodas/accionesAleatorias", () => {
+    const viejoTodas = {
+      id: "e-old",
+      activo: true,
+      quien: "todos",
+      porque: "seguir",
+      modoDisparo: "todas",
+      accionesIds: ["a1", "a2"],
+    };
+    const r1 = validateEventos([viejoTodas]);
+    expect(r1.ok).toBe(true);
+    if (r1.ok) {
+      expect(r1.eventos[0].accionesTodas).toEqual(["a1", "a2"]);
+      expect(r1.eventos[0].accionesAleatorias).toEqual([]);
+    }
+
+    const viejoAleatorio = { ...viejoTodas, modoDisparo: "unaAlAzar" };
+    const r2 = validateEventos([viejoAleatorio]);
+    expect(r2.ok).toBe(true);
+    if (r2.ok) {
+      expect(r2.eventos[0].accionesTodas).toEqual([]);
+      expect(r2.eventos[0].accionesAleatorias).toEqual(["a1", "a2"]);
+    }
   });
 
   it("porque comando requiere un comando que empiece con ! o /", () => {

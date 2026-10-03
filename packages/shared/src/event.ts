@@ -33,9 +33,6 @@ export const EventoPorqueSchema = z.enum([
 ]);
 export type EventoPorque = z.infer<typeof EventoPorqueSchema>;
 
-export const EventoModoDisparoSchema = z.enum(["todas", "unaAlAzar"]);
-export type EventoModoDisparo = z.infer<typeof EventoModoDisparoSchema>;
-
 const baseSchema = z.object({
   id: z.string(),
   activo: z.boolean(),
@@ -53,11 +50,29 @@ const baseSchema = z.object({
   emoteId: z.string().optional(),
   stickerId: z.string().optional(),
   nombreProductoContiene: z.string().optional(),
-  modoDisparo: EventoModoDisparoSchema,
-  accionesIds: z.array(z.string()).min(1),
+  /** Acciones que se disparan TODAS al coincidir el evento. */
+  accionesTodas: z.array(z.string()).default([]),
+  /** Acciones de las que se dispara UNA al azar (si no está vacío). */
+  accionesAleatorias: z.array(z.string()).default([]),
 });
 
-export const EventoSchema = baseSchema.superRefine((evt, ctx) => {
+/**
+ * Migra Eventos persistidos con el schema viejo (`modoDisparo` + `accionesIds`)
+ * al nuevo (`accionesTodas` + `accionesAleatorias`). Idempotente.
+ */
+function migrateEventoAcciones(input: unknown): unknown {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return input;
+  const obj = input as Record<string, unknown>;
+  if ("accionesTodas" in obj || "accionesAleatorias" in obj) return input;
+  if (!Array.isArray(obj.accionesIds)) return input;
+  const { modoDisparo, accionesIds, ...rest } = obj;
+  if (modoDisparo === "unaAlAzar") {
+    return { ...rest, accionesTodas: [], accionesAleatorias: accionesIds };
+  }
+  return { ...rest, accionesTodas: accionesIds, accionesAleatorias: [] };
+}
+
+export const EventoSchema = z.preprocess(migrateEventoAcciones, baseSchema.superRefine((evt, ctx) => {
   // --- matriz de `quien` ---
   if (evt.quien === "usuarioEspecifico" && !evt.usuarioEspecifico) {
     ctx.addIssue({
@@ -146,7 +161,7 @@ export const EventoSchema = baseSchema.superRefine((evt, ctx) => {
       break;
     }
   }
-});
+}));
 export type Evento = z.infer<typeof EventoSchema>;
 
 /**

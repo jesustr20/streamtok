@@ -26,8 +26,8 @@ const evento1: Evento = {
   activo: true,
   quien: "todos",
   porque: "seguir",
-  modoDisparo: "todas",
-  accionesIds: ["a1"],
+  accionesTodas: ["a1"],
+  accionesAleatorias: [],
 };
 
 function once(ws: WebSocket, channel: string): Promise<any> {

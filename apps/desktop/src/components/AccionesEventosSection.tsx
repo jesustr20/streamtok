@@ -31,13 +31,18 @@ function accionNamesFor(acciones: Accion[], ids: string[]): string {
     .join(", ");
 }
 
+/** Todas las acciones referenciadas por un Evento (fijas + aleatorias). */
+function eventoAccionesIds(e: Evento): string[] {
+  return [...e.accionesTodas, ...e.accionesAleatorias];
+}
+
 function eventoSearchText(e: Evento, acciones: Accion[]): string {
   return [
     describeQuien(e),
     PORQUE_LABELS[e.porque],
     e.usuarioEspecifico ?? "",
     e.comando ?? "",
-    accionNamesFor(acciones, e.accionesIds),
+    accionNamesFor(acciones, eventoAccionesIds(e)),
   ]
     .join(" ")
     .toLowerCase();
@@ -376,7 +381,7 @@ export function AccionesEventosSection({
                     </td>
                     <td style={{ ...tdStyle, fontSize: 12, color: "#9A9CA5" }}>{describeQuien(e)}</td>
                     <td style={{ ...tdStyle, fontSize: 12.5, fontWeight: 600 }}>{PORQUE_LABELS[e.porque]}</td>
-                    <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{accionNamesFor(acciones, e.accionesIds)}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{accionNamesFor(acciones, eventoAccionesIds(e))}</td>
                   </tr>
                 ))
               )}

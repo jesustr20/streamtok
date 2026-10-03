@@ -45,8 +45,8 @@ function whenToEvento(when: MappingRule["when"], accionesIds: string[]): Evento 
     id: nanoid(),
     activo: true,
     quien: "todos" as const,
-    modoDisparo: "todas" as const,
-    accionesIds,
+    accionesTodas: accionesIds,
+    accionesAleatorias: [],
   };
 
   switch (when.event) {
@@ -142,8 +142,8 @@ export function communityRulesToAccionesEventos(
       quien: "todos",
       porque: COMMUNITY_PORQUE[kind],
       ...(kind === "like" ? { cantidadMinimaLikes: slot.everyNLikes ?? 1 } : {}),
-      modoDisparo: "todas",
-      accionesIds: [accion.id],
+      accionesTodas: [accion.id],
+      accionesAleatorias: [],
     };
     acciones.push(accion);
     eventos.push(evento);

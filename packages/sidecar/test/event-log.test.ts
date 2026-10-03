@@ -63,7 +63,7 @@ describe("AccionesEventosEngine — emisión de event-log", () => {
   it("emite fired con accionId/eventoId al disparar", async () => {
     const engine = new AccionesEventosEngine(makeBridge());
     engine.setAcciones([{ id: "a1", nombre: "A", descripcion: "", duracionSeg: 0, puntos: 0, pantalla: null, media: { animacion: false, imagen: false, sonido: false, video: false }, comandos: [{ modActionId: "arena_join", params: {} }], repetirConComboDeRegalos: false }]);
-    engine.setEventos([{ id: "e1", activo: true, quien: "todos", porque: "seguir", modoDisparo: "todas", accionesIds: ["a1"] }]);
+    engine.setEventos([{ id: "e1", activo: true, quien: "todos", porque: "seguir", accionesTodas: ["a1"], accionesAleatorias: [] }]);
     const { entries } = collect(engine);
 
     await engine.handleEvent({ event: "follow", username: "@fan", timestamp: 0 });

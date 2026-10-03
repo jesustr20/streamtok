@@ -2,14 +2,12 @@ import { useEffect, useState } from "react";
 import type {
   Accion,
   Evento,
-  EventoModoDisparo,
   EventoPorque,
   EventoQuien,
   GiftCatalogEntry,
   GiftCatalogMessage,
 } from "@streamtok/shared";
 import {
-  MODO_DISPARO_LABELS,
   PORQUE_LABELS,
   PORQUE_OPTIONS,
   PROXIMAMENTE_PORQUE,
@@ -71,9 +69,10 @@ export function EventoModal({
   const [nombreProductoContiene, setNombreProductoContiene] = useState(
     initial?.nombreProductoContiene ?? "",
   );
-  const [modoDisparo, setModoDisparo] = useState<EventoModoDisparo>(initial?.modoDisparo ?? "todas");
-  const [accionesIds, setAccionesIds] = useState<string[]>(initial?.accionesIds ?? []);
-  const [accionSearch, setAccionSearch] = useState("");
+  const [accionesTodas, setAccionesTodas] = useState<string[]>(initial?.accionesTodas ?? []);
+  const [accionesAleatorias, setAccionesAleatorias] = useState<string[]>(
+    initial?.accionesAleatorias ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -89,18 +88,26 @@ export function EventoModal({
     return off;
   }, [client]);
 
-  const filteredAcciones = acciones.filter((a) =>
-    a.nombre.toLowerCase().includes(accionSearch.toLowerCase()),
-  );
+  function addAccionTodas(id: string) {
+    setAccionesTodas((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }
 
-  function toggleAccion(id: string) {
-    setAccionesIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  function removeAccionTodas(id: string) {
+    setAccionesTodas((prev) => prev.filter((x) => x !== id));
+  }
+
+  function addAccionAleatoria(id: string) {
+    setAccionesAleatorias((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }
+
+  function removeAccionAleatoria(id: string) {
+    setAccionesAleatorias((prev) => prev.filter((x) => x !== id));
   }
 
   function submit() {
     setError(null);
 
-    if (accionesIds.length === 0) {
+    if (accionesTodas.length === 0 && accionesAleatorias.length === 0) {
       setError("Selecciona al menos una Acción.");
       return;
     }
@@ -143,8 +150,8 @@ export function EventoModal({
       activo: initial?.activo ?? true,
       quien,
       porque,
-      modoDisparo,
-      accionesIds,
+      accionesTodas,
+      accionesAleatorias,
       usuarioEspecifico: quien === "usuarioEspecifico" ? usuarioEspecifico.trim() : undefined,
       numeroDonantesTop: quien === "donanteTop" ? numOr(numeroDonantesTop, 3) : undefined,
       nivelEquipoRequerido:
@@ -412,69 +419,36 @@ export function EventoModal({
             </div>
           )}
 
-          <label style={labelStyle}>
-            Modo de disparo
-            <select
-              style={selectStyle}
-              value={modoDisparo}
-              onChange={(e) => setModoDisparo(e.target.value as EventoModoDisparo)}
-            >
-              <option value="todas">{MODO_DISPARO_LABELS.todas}</option>
-              <option value="unaAlAzar">{MODO_DISPARO_LABELS.unaAlAzar}</option>
-            </select>
-          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 11.5, color: "#9A9CA5" }}>
+                Desencadenar todas estas acciones
+              </label>
+              <AccionCombo
+                selected={accionesTodas}
+                acciones={acciones}
+                onAdd={addAccionTodas}
+                onRemove={removeAccionTodas}
+                emptyText="Agrega las acciones que se ejecutarán todas."
+              />
+            </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 11.5, color: "#9A9CA5" }}>
-              Desencadenar todas estas acciones
-            </label>
-            <div style={chipsBoxStyle}>
-              {accionesIds.length === 0 ? (
-                <span style={{ color: "#5B5D66", fontSize: 12.5 }}>Buscar acción...</span>
-              ) : (
-                accionesIds.map((id) => {
-                  const a = acciones.find((x) => x.id === id);
-                  return (
-                    <span key={id} style={chipStyle}>
-                      {a?.nombre ?? id}
-                      <button type="button" onClick={() => toggleAccion(id)} style={chipRemoveStyle}>
-                        ✕
-                      </button>
-                    </span>
-                  );
-                })
-              )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 11.5, color: "#9A9CA5" }}>
+                Desencadenar una de estas acciones (aleatoriamente)
+              </label>
+              <AccionCombo
+                selected={accionesAleatorias}
+                acciones={acciones}
+                onAdd={addAccionAleatoria}
+                onRemove={removeAccionAleatoria}
+                emptyText="Agrega las acciones entre las que se elegirá una al azar."
+              />
             </div>
           </div>
 
-          <input
-            style={inputStyle}
-            value={accionSearch}
-            placeholder="Buscar acciones…"
-            onChange={(e) => setAccionSearch(e.target.value)}
-          />
-
-          {acciones.length === 0 ? (
+          {acciones.length === 0 && (
             <div style={noteStyle}>No hay Acciones creadas todavía. Crea una Acción primero.</div>
-          ) : filteredAcciones.length === 0 ? (
-            <div style={noteStyle}>Sin resultados.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
-              {filteredAcciones.map((a) => {
-                const selected = accionesIds.includes(a.id);
-                return (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => toggleAccion(a.id)}
-                    style={actionListItemStyle(selected)}
-                  >
-                    <input type="checkbox" checked={selected} readOnly style={{ pointerEvents: "none" }} />
-                    {a.nombre}
-                  </button>
-                );
-              })}
-            </div>
           )}
 
           {error && (
@@ -492,6 +466,78 @@ export function EventoModal({
             ✓ Guardar
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AccionCombo({
+  selected,
+  acciones,
+  onAdd,
+  onRemove,
+  emptyText,
+}: {
+  selected: string[];
+  acciones: Accion[];
+  onAdd: (id: string) => void;
+  onRemove: (id: string) => void;
+  emptyText: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const available = acciones.filter((a) => !selected.includes(a.id));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={chipsBoxStyle}>
+        {selected.length === 0 ? (
+          <span style={{ color: "#5B5D66", fontSize: 12.5 }}>{emptyText}</span>
+        ) : (
+          selected.map((id) => {
+            const a = acciones.find((x) => x.id === id);
+            return (
+              <span key={id} style={chipStyle}>
+                {a?.nombre ?? id}
+                <button type="button" onClick={() => onRemove(id)} style={chipRemoveStyle}>
+                  ✕
+                </button>
+              </span>
+            );
+          })
+        )}
+      </div>
+
+      <div style={{ position: "relative" }}>
+        <button type="button" onClick={() => setOpen((o) => !o)} style={accionComboButtonStyle}>
+          <span style={{ flex: 1, textAlign: "left", fontSize: 12.5 }}>+ Agregar acción</span>
+          <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>
+        </button>
+        {open && (
+          <>
+            <div style={{ position: "fixed", inset: 0, zIndex: 15 }} onClick={() => setOpen(false)} />
+            <div style={accionComboDropdownStyle}>
+              {available.length === 0 ? (
+                <span style={{ padding: "8px 10px", fontSize: 12, color: "#5B5D66" }}>
+                  No hay más acciones para agregar.
+                </span>
+              ) : (
+                available.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => {
+                      onAdd(a.id);
+                      setOpen(false);
+                    }}
+                    style={accionComboOptionStyle}
+                  >
+                    {a.nombre}
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -649,18 +695,6 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-const selectStyle: React.CSSProperties = {
-  width: "100%",
-  height: 32,
-  padding: "0 10px",
-  background: "#0E0F12",
-  border: "1px solid #2A2C33",
-  borderRadius: 7,
-  color: "#F4F4F5",
-  fontSize: 12,
-  boxSizing: "border-box",
-};
-
 const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -761,21 +795,51 @@ const chipRemoveStyle: React.CSSProperties = {
   padding: 0,
 };
 
-function actionListItemStyle(selected: boolean): React.CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    textAlign: "left",
-    padding: "8px 10px",
-    background: selected ? "#1E2027" : "#17181D",
-    border: `1px solid ${selected ? "#5B7CFA" : "#2A2C33"}`,
-    borderRadius: 8,
-    color: selected ? "#F4F4F5" : "#C4C5CC",
-    fontSize: 12.5,
-    cursor: "pointer",
-  };
-}
+const accionComboButtonStyle: React.CSSProperties = {
+  width: "100%",
+  height: 32,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "0 10px",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 7,
+  cursor: "pointer",
+  color: "#F4F4F5",
+  boxSizing: "border-box",
+};
+
+const accionComboDropdownStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 4px)",
+  left: 0,
+  right: 0,
+  zIndex: 16,
+  display: "flex",
+  flexDirection: "column",
+  maxHeight: 220,
+  overflowY: "auto",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 8,
+  boxShadow: "0 12px 32px #00000080",
+  padding: 4,
+  boxSizing: "border-box",
+};
+
+const accionComboOptionStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  padding: "7px 8px",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+  textAlign: "left",
+  color: "#C4C5CC",
+  fontSize: 12.5,
+  background: "none",
+};
 
 const noteStyle: React.CSSProperties = {
   fontSize: 10.5,
