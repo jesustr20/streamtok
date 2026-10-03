@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   Accion,
   Evento,
   EventoModoDisparo,
   EventoPorque,
   EventoQuien,
+  GiftCatalogEntry,
+  GiftCatalogMessage,
 } from "@streamtok/shared";
 import {
   MODO_DISPARO_LABELS,
@@ -13,6 +15,7 @@ import {
   PROXIMAMENTE_PORQUE,
   QUIEN_OPTIONS,
 } from "../lib/labels";
+import type { SidecarClient } from "../lib/ws-client";
 
 function newId(): string {
   return crypto.randomUUID();
@@ -36,11 +39,13 @@ export function EventoModal({
   initial,
   onSave,
   onClose,
+  client,
 }: {
   acciones: Accion[];
   initial: Evento | null;
   onSave: (evento: Evento) => void;
   onClose: () => void;
+  client: SidecarClient | null;
 }) {
   const [quien, setQuien] = useState<EventoQuien>(initial?.quien ?? "todos");
   const [usuarioEspecifico, setUsuarioEspecifico] = useState(initial?.usuarioEspecifico ?? "");
@@ -59,7 +64,8 @@ export function EventoModal({
   const [valorMinimoMonedas, setValorMinimoMonedas] = useState<number>(
     initial?.valorMinimoMonedas ?? 1,
   );
-  const [giftName, setGiftName] = useState(initial?.giftName ?? "");
+  const [giftId, setGiftId] = useState(initial?.giftId ?? "");
+  const [giftCatalog, setGiftCatalog] = useState<GiftCatalogEntry[]>([]);
   const [emoteId, setEmoteId] = useState(initial?.emoteId ?? "");
   const [stickerId, setStickerId] = useState(initial?.stickerId ?? "");
   const [nombreProductoContiene, setNombreProductoContiene] = useState(
@@ -69,6 +75,19 @@ export function EventoModal({
   const [accionesIds, setAccionesIds] = useState<string[]>(initial?.accionesIds ?? []);
   const [accionSearch, setAccionSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!client) return;
+    const off = client.on((evt) => {
+      if (evt.channel !== "gift-catalog") return;
+      const msg = evt.payload as GiftCatalogMessage;
+      if (msg.kind === "state") setGiftCatalog(msg.gifts);
+    });
+    // Snapshot bajo demanda (patrón get-state, como profiles): el modal puede
+    // montarse después de que el snapshot de conexión ya pasó.
+    client.send("gift-catalog", { kind: "get-state" });
+    return off;
+  }, [client]);
 
   const filteredAcciones = acciones.filter((a) =>
     a.nombre.toLowerCase().includes(accionSearch.toLowerCase()),
@@ -100,8 +119,8 @@ export function EventoModal({
         return;
       }
     }
-    if (porque === "regaloEspecifico" && !giftName.trim()) {
-      setError("Escribe el nombre exacto del regalo.");
+    if (porque === "regaloEspecifico" && !giftId) {
+      setError("Elige un regalo del catálogo.");
       return;
     }
     if (porque === "emoteSuscriptor" && !emoteId.trim()) {
@@ -134,8 +153,11 @@ export function EventoModal({
       comando: porque === "comando" ? comando.trim() : undefined,
       cantidadMinimaLikes: porque === "likes" ? numOr(cantidadMinimaLikes, 15) : undefined,
       valorMinimoMonedas: porque === "regaloValorMinimo" ? numOr(valorMinimoMonedas, 1) : undefined,
-      giftId: porque === "regaloEspecifico" ? giftName.trim() : undefined,
-      giftName: porque === "regaloEspecifico" ? giftName.trim() : undefined,
+      giftId: porque === "regaloEspecifico" ? giftId : undefined,
+      giftName:
+        porque === "regaloEspecifico"
+          ? (giftCatalog.find((g) => g.id === giftId)?.name ?? initial?.giftName ?? "")
+          : undefined,
       emoteId: porque === "emoteSuscriptor" ? emoteId.trim() : undefined,
       stickerId: porque === "stickerFanClub" ? stickerId.trim() : undefined,
       nombreProductoContiene:
@@ -335,18 +357,17 @@ export function EventoModal({
               )}
 
               {porque === "regaloEspecifico" && (
-                <label style={labelStyle}>
-                  Regalo
-                  <input
-                    style={inputStyle}
-                    value={giftName}
-                    placeholder="Nombre exacto del regalo"
-                    onChange={(e) => setGiftName(e.target.value)}
-                  />
-                  <span style={noteStyle}>
-                    Catálogo real de regalos pendiente — por ahora escribe el nombre exacto del regalo.
-                  </span>
-                </label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <label style={{ fontSize: 10.5, color: "#9A9CA5" }}>Regalo</label>
+                  {giftCatalog.length === 0 ? (
+                    <div style={giftEmptyStyle}>
+                      Aún no hay regalos aprendidos. Envía un regalo en vivo y vuelve a abrir este
+                      modal para poder elegirlo.
+                    </div>
+                  ) : (
+                    <GiftPicker value={giftId} gifts={giftCatalog} onSelect={setGiftId} />
+                  )}
+                </div>
               )}
 
               {porque === "emoteSuscriptor" && (
@@ -473,6 +494,77 @@ export function EventoModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function GiftPicker({
+  value,
+  gifts,
+  onSelect,
+}: {
+  value: string;
+  gifts: GiftCatalogEntry[];
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = gifts.find((g) => g.id === value);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} style={giftPickerButtonStyle}>
+        {selected ? (
+          <>
+            <img src={selected.imageUrl} alt="" referrerPolicy="no-referrer" style={giftThumbStyle} />
+            <span style={giftPickerLabelStyle}>{selected.name}</span>
+            <span style={giftCostStyle}>{selected.cost} 🪙</span>
+          </>
+        ) : (
+          <span style={{ flex: 1, textAlign: "left", fontSize: 12.5, color: "#5B5D66" }}>
+            Elegir regalo…
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>
+      </button>
+
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 15 }} onClick={() => setOpen(false)} />
+          <div style={giftDropdownStyle}>
+            {gifts.map((g) => {
+              const isSelected = g.id === value;
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(g.id);
+                    setOpen(false);
+                  }}
+                  style={{ ...giftOptionStyle, background: isSelected ? "#1E2027" : "transparent" }}
+                >
+                  <img src={g.imageUrl} alt="" referrerPolicy="no-referrer" style={giftThumbStyle} />
+                  <span
+                    style={{
+                      flex: 1,
+                      textAlign: "left",
+                      fontSize: 12.5,
+                      color: isSelected ? "#F4F4F5" : "#C4C5CC",
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {g.name}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>{g.cost} 🪙</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -728,4 +820,82 @@ const ghostButtonStyle: React.CSSProperties = {
   fontSize: 12.5,
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const giftPickerButtonStyle: React.CSSProperties = {
+  width: "100%",
+  height: 36,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "0 10px",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 8,
+  cursor: "pointer",
+  color: "#F4F4F5",
+  boxSizing: "border-box",
+};
+
+const giftThumbStyle: React.CSSProperties = {
+  width: 20,
+  height: 20,
+  borderRadius: 4,
+  objectFit: "cover",
+  flexShrink: 0,
+};
+
+const giftPickerLabelStyle: React.CSSProperties = {
+  flex: 1,
+  textAlign: "left",
+  fontSize: 12.5,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const giftCostStyle: React.CSSProperties = {
+  fontSize: 11.5,
+  color: "#9A9CA5",
+  whiteSpace: "nowrap",
+};
+
+const giftDropdownStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 4px)",
+  left: 0,
+  right: 0,
+  zIndex: 16,
+  display: "flex",
+  flexDirection: "column",
+  maxHeight: 220,
+  overflowY: "auto",
+  background: "#0E0F12",
+  border: "1px solid #2A2C33",
+  borderRadius: 8,
+  boxShadow: "0 12px 32px #00000080",
+  padding: 4,
+  boxSizing: "border-box",
+};
+
+const giftOptionStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "7px 8px",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+  textAlign: "left",
+};
+
+const giftEmptyStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  background: "#0E0F12",
+  border: "1px dashed #2A2C33",
+  borderRadius: 8,
+  fontSize: 11.5,
+  color: "#5B5D66",
+  lineHeight: 1.5,
 };

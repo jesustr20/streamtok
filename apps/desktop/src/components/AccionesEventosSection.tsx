@@ -406,6 +406,7 @@ export function AccionesEventosSection({
           initial={eventoModal.initial}
           onSave={saveEvento}
           onClose={() => setEventoModal(null)}
+          client={client}
         />
       )}
     </div>

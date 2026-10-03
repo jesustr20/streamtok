@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EmoteScene } from "tiktok-live-connector";
-import { mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
+import { extractGiftCatalogEntry, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
 
 describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", () => {
   it("normaliza un comentario plano a un LiveEvent válido", () => {
@@ -160,5 +160,80 @@ describe("TikTokLiveSource", () => {
     expect(events).toHaveLength(1);
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({ level: "warn" });
+  });
+
+  it("ingest emite giftCatalogEntry para un gift con id/nombre/imagen/costo", () => {
+    const source = new TikTokLiveSource("alguien");
+    const entries: unknown[] = [];
+    source.on("giftCatalogEntry", (e) => entries.push(e));
+
+    source.ingest("gift", {
+      user: { displayId: "fan", nickname: "Fan" },
+      giftId: "5487",
+      gift: {
+        id: "5487",
+        name: "Finger Heart",
+        diamondCount: 5,
+        image: { urlList: ["https://cdn/finger.png"] },
+        icon: { urlList: ["https://cdn/finger-icon.png"] },
+      },
+      repeatEnd: 1,
+    });
+
+    expect(entries).toEqual([
+      { id: "5487", name: "Finger Heart", imageUrl: "https://cdn/finger.png", cost: 5 },
+    ]);
+  });
+});
+
+describe("extractGiftCatalogEntry", () => {
+  it("extrae id/nombre/imagen/costo del gift crudo", () => {
+    expect(
+      extractGiftCatalogEntry({
+        giftId: "5487",
+        gift: {
+          id: "5487",
+          name: "Finger Heart",
+          diamondCount: 5,
+          image: { urlList: ["https://cdn/finger.png"] },
+          icon: { urlList: ["https://cdn/finger-icon.png"] },
+        },
+      }),
+    ).toEqual({
+      id: "5487",
+      name: "Finger Heart",
+      imageUrl: "https://cdn/finger.png",
+      cost: 5,
+    });
+  });
+
+  it("usa gift.icon.urlList[0] como fallback si image viene vacío", () => {
+    expect(
+      extractGiftCatalogEntry({
+        gift: {
+          id: "5487",
+          name: "Finger Heart",
+          diamondCount: 5,
+          image: { urlList: [] },
+          icon: { urlList: ["https://cdn/finger-icon.png"] },
+        },
+      })?.imageUrl,
+    ).toBe("https://cdn/finger-icon.png");
+  });
+
+  it("devuelve null si falta id, nombre, imagen o costo", () => {
+    expect(extractGiftCatalogEntry({})).toBeNull();
+    expect(
+      extractGiftCatalogEntry({ gift: { name: "X", diamondCount: 1, image: { urlList: ["u"] } } }),
+    ).toBeNull(); // sin id
+    expect(
+      extractGiftCatalogEntry({ gift: { id: "1", diamondCount: 1, image: { urlList: ["u"] } } }),
+    ).toBeNull(); // sin nombre
+    expect(
+      extractGiftCatalogEntry({ gift: { id: "1", name: "X", image: { urlList: ["u"] } } }),
+    ).toBeNull(); // sin costo
+    expect(
+      extractGiftCatalogEntry({ gift: { id: "1", name: "X", diamondCount: 1 } }),
+    ).toBeNull(); // sin imagen (ni image ni icon)
   });
 });

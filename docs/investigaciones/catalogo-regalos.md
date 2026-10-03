@@ -264,6 +264,43 @@ pudo extraer ninguno.
 
 ---
 
+## Evento de regalo crudo (confirmado en vivo)
+
+Confirmado con una corrida real en vivo: el evento crudo `WebcastGiftMessage`
+**sí trae la imagen del regalo**. Campos relevantes para el catálogo:
+
+```json
+{
+  "gift": {
+    "id": "5487",
+    "name": "Finger Heart",
+    "diamondCount": 5,
+    "image": {
+      "urlList": [
+        "https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/a4c4dc437fd3a6632aba149769491f49.png~tplv-obj.png",
+        "https://p19-webcast.tiktokcdn.com/img/maliva/webcast-va/a4c4dc437fd3a6632aba149769491f49.png~tplv-obj.png"
+      ]
+    },
+    "icon": {
+      "urlList": [ "...mismo patrón que image..." ]
+    }
+  }
+}
+```
+
+Notas confirmadas:
+
+- `gift.image.urlList` trae varias URLs de la misma imagen (CDN `p16`/`p19`).
+- `gift.icon.urlList` trae el **mismo patrón**, como alternativa/fallback si
+  `gift.image` viniera vacío.
+- `gift.diamondCount` es el costo base del regalo en monedas (ej. 5).
+
+**Convención adoptada para el catálogo aprendido:** usar `gift.image.urlList[0]`
+como URL principal y `gift.icon.urlList[0]` como fallback si `image` viene vacío
+(implementado en `extractGiftCatalogEntry`, `packages/sidecar/src/tiktok-source.ts`).
+
+---
+
 ## Limitaciones encontradas
 
 1. `fetchAvailableGifts()` devuelve **`any`**: no hay tipado del shape en el

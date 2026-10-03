@@ -1,5 +1,10 @@
-import type { LiveEvent } from "@streamtok/shared";
+import type { GiftCatalogEntry, LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
+import {
+  GiftCatalogController,
+  GiftCatalogStore,
+  defaultGiftCatalogFilePath,
+} from "./gift-catalog.js";
 import { ModBridge } from "./mod-bridge.js";
 import { registerManualCommand } from "./manual-command.js";
 import {
@@ -55,6 +60,21 @@ profilesController.on("log", (entry) => {
 });
 
 // ---------------------------------------------------------------------------
+// Catálogo de regalos aprendido (issue #35). Se llena de forma incremental con
+// los regalos que llegan por eventos reales del LIVE y se sirve a la UI por el
+// canal `gift-catalog` (patrón get-state como `profiles`).
+// ---------------------------------------------------------------------------
+const giftCatalogController = new GiftCatalogController(
+  server,
+  new GiftCatalogStore(defaultGiftCatalogFilePath()),
+);
+giftCatalogController.on("log", (entry) => {
+  const tag = `[gift-catalog:${entry.level}]`;
+  // eslint-disable-next-line no-console
+  console.log(tag, entry.message, entry.details ?? "");
+});
+
+// ---------------------------------------------------------------------------
 // Canal "manual-command" (UI → sidecar): dispara un mod-command puntual (botón
 // "Probar acción" de la UI) reusando ModBridge.sendCommand. No toca el
 // protocolo del mod.
@@ -98,6 +118,9 @@ if (tiktokUsername) {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
     });
+  });
+  tiktok.on("giftCatalogEntry", (entry: GiftCatalogEntry) => {
+    giftCatalogController.learn(entry);
   });
   tiktok.on("connected", () => engine.resetSession());
   tiktok.start().catch((err) => {
