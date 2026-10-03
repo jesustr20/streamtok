@@ -2,6 +2,7 @@ import type {
   AccionesMessage,
   EventLogMessage,
   EventosMessage,
+  GiftCatalogMessage,
   ManualCommandRequest,
   ManualCommandResponse,
   ModAckPayload,
@@ -17,6 +18,7 @@ export type SidecarEvent =
   | { channel: "event-log"; payload: EventLogMessage }
   | { channel: "manual-command"; payload: ManualCommandResponse }
   | { channel: "profiles"; payload: ProfilesMessage }
+  | { channel: "gift-catalog"; payload: GiftCatalogMessage }
   | { channel: string; payload: unknown };
 
 type Listener = (evt: SidecarEvent) => void;

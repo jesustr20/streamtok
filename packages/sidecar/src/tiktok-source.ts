@@ -5,7 +5,7 @@ import {
   TikTokLiveConnection,
   WebcastEvent,
 } from "tiktok-live-connector";
-import { LiveEventSchema, type LiveEvent } from "@streamtok/shared";
+import { LiveEventSchema, type GiftCatalogEntry, type LiveEvent } from "@streamtok/shared";
 
 /**
  * tiktok-live-connector@2.5.0 declara `TikTokLiveConnection` como un
@@ -152,6 +152,32 @@ function mapGift(raw: RawRecord): LiveEvent | null {
   });
 }
 
+/** Elige la URL de imagen del regalo: `gift.image.urlList[0]`, con fallback a
+ * `gift.icon.urlList[0]` si `image` viniera vacío (issue #35). */
+function pickGiftImageUrl(gift: RawRecord): string | undefined {
+  const firstUrl = (list: unknown): string | undefined =>
+    Array.isArray(list) ? list.find((u): u is string => typeof u === "string" && u.length > 0) : undefined;
+  const image = asRecord(gift.image);
+  const icon = asRecord(gift.icon);
+  return firstUrl(image.urlList) ?? firstUrl(icon.urlList);
+}
+
+/** Extrae del evento crudo de regalo la entrada del catálogo (id, nombre,
+ * imagen, costo). Devuelve null si falta algún campo obligatorio. */
+export function extractGiftCatalogEntry(raw: unknown): GiftCatalogEntry | null {
+  const msg = asRecord(raw);
+  const gift = asRecord(msg.gift);
+  const id = typeof gift.id === "string" && gift.id.length > 0 ? gift.id : undefined;
+  const name = typeof gift.name === "string" && gift.name.length > 0 ? gift.name : undefined;
+  const imageUrl = pickGiftImageUrl(gift);
+  const cost =
+    typeof gift.diamondCount === "number" && Number.isFinite(gift.diamondCount)
+      ? gift.diamondCount
+      : undefined;
+  if (!id || !name || !imageUrl || cost === undefined) return null;
+  return { id, name, imageUrl, cost };
+}
+
 function mapUserEvent(
   event: "like" | "join" | "follow" | "share" | "subscribe",
   raw: RawRecord,
@@ -231,6 +257,12 @@ export class TikTokLiveSource extends EventEmitter {
   /** Normaliza y re-emite un evento crudo. Expuesto para poder probar el
    * mapeo + logging sin abrir una conexión real. */
   ingest(kind: TiktokEventKind, raw: unknown): LiveEvent | null {
+    // Aprende el catálogo de regalos incrementalmente (issue #35): si el evento
+    // crudo trae id/nombre/imagen/costo, se emite aparte para el GiftCatalog.
+    if (kind === "gift") {
+      const entry = extractGiftCatalogEntry(raw);
+      if (entry) this.emit("giftCatalogEntry", entry);
+    }
     const evt = mapTiktokEvent(kind, raw);
     if (evt) {
       this.emit("event", evt);
