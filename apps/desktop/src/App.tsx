@@ -1,4 +1,5 @@
-import type { ModHelloPayload } from "@streamtok/shared";
+import { ModHelloPayloadSchema, type ModHelloPayload } from "@streamtok/shared";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { GestionarPerfiles } from "./components/GestionarPerfiles";
 import { InicioView } from "./components/InicioView";
@@ -11,8 +12,30 @@ export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles
 
 export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
+  // "live" = viene de un mod-hello real por WS ahora mismo; "cached" = del
+  // catalog.json offline (disco/último Release), sin el mod abierto. Ver
+  // ADR 0006 — el cache siempre es reemplazable, nunca fuente de verdad.
+  const [catalogSource, setCatalogSource] = useState<"live" | "cached" | null>(null);
   const [client, setClient] = useState<SidecarClient | null>(null);
   const [view, setView] = useState<ViewId>("inicio");
+
+  useEffect(() => {
+    // Catálogo offline: se pide apenas arranca la app, independientemente
+    // de si el mod está corriendo. Si el payload no calza con el schema del
+    // contrato, se descarta en vez de mostrar algo corrupto (ADR 0006).
+    (async () => {
+      try {
+        const raw = await invoke<string | null>("get_action_catalog");
+        if (!raw) return;
+        const parsed = ModHelloPayloadSchema.parse(JSON.parse(raw));
+        setCatalog((current) => current ?? parsed);
+        setCatalogSource((current) => current ?? "cached");
+      } catch {
+        // Sin red y sin cache previo, o JSON que no calza con el contrato:
+        // seguimos sin catálogo hasta que conecte el mod en vivo.
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const c = new SidecarClient();
@@ -21,7 +44,12 @@ export function App() {
     // aparte inventados para la UI (ver mod-bridge.ts).
     const off = c.on((evt) => {
       if (evt.channel === "mod-hello") {
-        setCatalog(evt.payload as ModHelloPayload);
+        const payload = evt.payload as ModHelloPayload;
+        setCatalog(payload);
+        setCatalogSource("live");
+        // El mod-hello en vivo es la fuente más autoritativa que hay — pisa
+        // el cache en disco sin esperar al próximo Release (ADR 0006).
+        void invoke("cache_action_catalog", { catalogJson: JSON.stringify(payload) });
       }
     });
     return () => {
@@ -59,6 +87,7 @@ export function App() {
         {view === "juego-detalle" && (
           <ModDetalle
             catalog={catalog}
+            catalogSource={catalogSource}
             client={client}
             onBack={() => setView("juegos")}
             onGestionarPerfiles={() => setView("gestionar-perfiles")}

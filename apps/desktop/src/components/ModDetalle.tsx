@@ -27,11 +27,15 @@ type SectionRef = (typeof JUMPS)[number]["ref"];
  */
 export function ModDetalle({
   catalog,
+  catalogSource,
   client,
   onBack,
   onGestionarPerfiles,
 }: {
   catalog: ModHelloPayload | null;
+  /** "live" = mod-hello real por WS ahora mismo; "cached" = catálogo offline
+   * (disco/último Release), sin el mod abierto. Ver ADR 0006. */
+  catalogSource?: "live" | "cached" | null;
   client: SidecarClient | null;
   onBack: () => void;
   onGestionarPerfiles: () => void;
@@ -117,6 +121,21 @@ export function ModDetalle({
             >
               ⚡ {comandos} {comandos === 1 ? "comando disponible" : "comandos disponibles"}
             </div>
+            {catalogSource === "cached" && (
+              <div
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  background: "#0E0F12",
+                  border: "1px solid #2A2C33",
+                  fontSize: 12,
+                  color: "#9A9CA5",
+                }}
+                title="Catálogo offline: se actualiza solo al conectar el mod o al salir una Release nueva."
+              >
+                ⟲ catálogo offline v{catalog?.version}
+              </div>
+            )}
             <div
               style={{
                 padding: "6px 12px",
