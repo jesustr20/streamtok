@@ -61,8 +61,13 @@ async fn get_mod_status(game_path: Option<String>) -> Result<ModStatus, String> 
     // vez de tirar un error que bloquee toda la sección.
     let latest_version = github_release::fetch_latest_version().await.ok();
 
-    let update_available = match (&installed_version, &latest_version) {
-        (Some(current), Some(latest)) => current != latest,
+    // Si está instalado pero no hay marcador (instalación hecha antes de que
+    // existiera `.streamtok-version`), no sabemos qué versión es: lo tratamos
+    // como "hay actualización" para que el usuario pueda reinstalar y dejar
+    // el marcador escrito.
+    let update_available = match (installed, &installed_version, &latest_version) {
+        (true, Some(current), Some(latest)) => current != latest,
+        (true, None, Some(_)) => true,
         _ => false,
     };
 
