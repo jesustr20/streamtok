@@ -60,6 +60,49 @@ MenuEnabled=false\n\
 HealthTiers=25,50,75,100\n"
 }
 
+/// Ruta del marcador de versión instalada — archivo propio nuestro (no del
+/// mod), escrito junto al `.dll` en cada instalación/actualización para que
+/// la app sepa qué versión hay sin tener que leerla del binario.
+fn version_marker_path(scripts_dir: &Path) -> PathBuf {
+    scripts_dir.join(".streamtok-version")
+}
+
+pub fn installed_dll_path(game_path: &Path) -> PathBuf {
+    game_path.join("scripts").join("StreamTok.GtaV.dll")
+}
+
+/// Versión instalada actualmente, si la hay (lee el marcador escrito en el
+/// último `run_install`). `None` tanto si nunca se instaló como si el
+/// marcador se perdió — en ese caso `installed_dll_path` sigue siendo la
+/// señal real de "¿está instalado?".
+pub fn installed_version(game_path: &Path) -> Option<String> {
+    std::fs::read_to_string(version_marker_path(&game_path.join("scripts")))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Desinstala el mod: borra la DLL y nuestro marcador de versión.
+///
+/// Deliberadamente NO toca `StreamTok.GtaV.ini` — es config del usuario
+/// (ej. `MenuEnabled`, `HealthTiers`) y borrarla de paso sería una sorpresa
+/// desagradable si luego vuelve a instalar.
+pub fn run_uninstall(game_path: &Path) -> Result<(), String> {
+    let scripts_dir = game_path.join("scripts");
+    let dll_path = installed_dll_path(game_path);
+
+    if dll_path.is_file() {
+        std::fs::remove_file(&dll_path)
+            .map_err(|e| format!("No se pudo borrar StreamTok.GtaV.dll: {e}"))?;
+    }
+
+    // Best-effort: si el marcador no existe o no se puede borrar, no es un
+    // error real — el mod ya quedó desinstalado (lo que importa es la DLL).
+    let _ = std::fs::remove_file(version_marker_path(&scripts_dir));
+
+    Ok(())
+}
+
 /// Punto de entrada llamado desde el comando de Tauri.
 pub async fn run_install(explicit_game_path: Option<String>) -> Result<InstallReport, String> {
     let mut warnings = Vec::new();
@@ -166,6 +209,11 @@ pub async fn run_install(explicit_game_path: Option<String>) -> Result<InstallRe
             }
         }
     };
+
+    // Best-effort: si falla, no es grave — get_mod_status simplemente no va
+    // a poder comparar versión instalada vs última hasta la próxima vez que
+    // esto corra bien.
+    let _ = std::fs::write(version_marker_path(&scripts_dir), &fetched.version);
 
     Ok(InstallReport {
         game_path: Some(game_path.display().to_string()),
