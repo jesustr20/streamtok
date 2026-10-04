@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import type { GiftCatalogMessage } from "@streamtok/shared";
+import type { GiftCatalogEntry, GiftCatalogMessage } from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
+import { GiftPicker } from "./GiftPicker";
 
 const ACCENT = "#E23A57";
 
@@ -25,7 +26,7 @@ const SIM_BOTONES = [
  */
 export function SimularEventos({ client }: { client: SidecarClient | null }) {
   const [testUser, setTestUser] = useState("StreamTok_Test");
-  const [gifts, setGifts] = useState<string[]>([]);
+  const [gifts, setGifts] = useState<GiftCatalogEntry[]>([]);
   const [gift, setGift] = useState("");
 
   useEffect(() => {
@@ -34,9 +35,10 @@ export function SimularEventos({ client }: { client: SidecarClient | null }) {
       if (evt.channel !== "gift-catalog") return;
       const msg = evt.payload as GiftCatalogMessage;
       if (msg.kind === "state") {
-        const names = msg.gifts.map((g) => g.name);
-        setGifts(names);
-        setGift((current) => (current && names.includes(current) ? current : (names[0] ?? "")));
+        setGifts(msg.gifts);
+        setGift((current) =>
+          current && msg.gifts.some((g) => g.name === current) ? current : (msg.gifts[0]?.name ?? ""),
+        );
       }
     });
     // Snapshot bajo demanda: si este panel se monta después de la conexión
@@ -46,12 +48,18 @@ export function SimularEventos({ client }: { client: SidecarClient | null }) {
   }, [client]);
 
   function simulate(event: string, giftName?: string) {
+    // Un regalo simulado lleva el costo y el ID reales del catálogo (igual
+    // que uno en vivo con repeatCount 1), para que los eventos de "regalo
+    // específico" (por ID) y de "valor mínimo de monedas" se evalúen bien.
+    const selected = giftName ? gifts.find((g) => g.name === giftName) : undefined;
+    const numericId = selected?.id !== undefined && /^\d+$/.test(selected.id) ? Number(selected.id) : undefined;
     client?.send("live-event", {
       event,
       username: testUser,
       nickname: testUser,
       giftName,
-      coins: giftName ? 1 : undefined,
+      giftId: numericId,
+      coins: giftName ? (selected?.cost ?? 1) : undefined,
       text: event === "comment" ? "!prueba" : undefined,
       repeatEnd: true,
       timestamp: Date.now(),
@@ -129,34 +137,8 @@ export function SimularEventos({ client }: { client: SidecarClient | null }) {
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 8 }}>
-        <select
-          value={gift}
-          onChange={(e) => setGift(e.target.value)}
-          style={{
-            flex: 1,
-            height: 36,
-            background: "#0E0F12",
-            border: "1px solid #2A2C33",
-            borderRadius: 8,
-            color: "#F4F4F5",
-            padding: "0 10px",
-            fontSize: 12,
-            outline: "none",
-            fontFamily: "'Manrope', sans-serif",
-            boxSizing: "border-box",
-          }}
-        >
-          {gifts.length === 0 ? (
-            <option value="">Sin catálogo de regalos todavía</option>
-          ) : (
-            gifts.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))
-          )}
-        </select>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <GiftPicker value={gift} gifts={gifts} onSelect={setGift} />
         <button
           type="button"
           disabled={!gift}
