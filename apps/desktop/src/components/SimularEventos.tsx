@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { GiftCatalogMessage } from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
 
 const ACCENT = "#E23A57";
@@ -12,16 +13,37 @@ const SIM_BOTONES = [
   { label: "Simular Fan Lvl", event: "join" },
 ] as const;
 
-const GIFTS = ["Rose", "Galaxy", "Lion"];
-
 /**
  * Panel "Simular Eventos" (ModDetalle.dc.html): usuario de prueba + grid de
  * botones de simulación + selector de regalo. Envía `live-event` por el canal
  * WS del sidecar (el mismo motor que procesa los eventos reales del LIVE).
+ *
+ * El selector de regalo sale del catálogo persistido (canal WS
+ * `gift-catalog`, issue #35) — disponible desde el primer arranque (semilla
+ * estática) sin necesitar estar en vivo, y se actualiza solo si llega un
+ * regalo nuevo/confirmado mientras el panel está abierto.
  */
 export function SimularEventos({ client }: { client: SidecarClient | null }) {
   const [testUser, setTestUser] = useState("StreamTok_Test");
-  const [gift, setGift] = useState("Rose");
+  const [gifts, setGifts] = useState<string[]>([]);
+  const [gift, setGift] = useState("");
+
+  useEffect(() => {
+    if (!client) return;
+    const off = client.on((evt) => {
+      if (evt.channel !== "gift-catalog") return;
+      const msg = evt.payload as GiftCatalogMessage;
+      if (msg.kind === "state") {
+        const names = msg.gifts.map((g) => g.name);
+        setGifts(names);
+        setGift((current) => (current && names.includes(current) ? current : (names[0] ?? "")));
+      }
+    });
+    // Snapshot bajo demanda: si este panel se monta después de la conexión
+    // inicial, pide el estado actual (no lo recibió en `client-connected`).
+    client.send("gift-catalog", { kind: "get-state" });
+    return off;
+  }, [client]);
 
   function simulate(event: string, giftName?: string) {
     client?.send("live-event", {
@@ -125,12 +147,19 @@ export function SimularEventos({ client }: { client: SidecarClient | null }) {
             boxSizing: "border-box",
           }}
         >
-          {GIFTS.map((g) => (
-            <option key={g}>{g}</option>
-          ))}
+          {gifts.length === 0 ? (
+            <option value="">Sin catálogo de regalos todavía</option>
+          ) : (
+            gifts.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))
+          )}
         </select>
         <button
           type="button"
+          disabled={!gift}
           onClick={() => simulate("gift", gift)}
           style={{
             padding: "0 14px",
