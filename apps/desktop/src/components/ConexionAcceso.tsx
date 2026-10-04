@@ -21,25 +21,48 @@ interface InstallReport {
   warnings: string[];
 }
 
+interface ModStatus {
+  game_path: string | null;
+  installed: boolean;
+  installed_version: string | null;
+  latest_version: string | null;
+  update_available: boolean;
+}
+
 /**
  * Sección "Conexión y Acceso" (ModDetalle.dc.html): indicador de instalación
  * (detecta la carpeta de GTA V), botones Instalar/Actualizar/Borrar y aviso de
  * error si la carpeta no es válida.
+ *
+ * Los tres botones reflejan el estado real del mod (consultado con
+ * `get_mod_status`, que compara la versión instalada contra la última
+ * Release), en vez de estar siempre activos/inactivos sin importar si el mod
+ * ya está puesto o no:
+ *  - "Instalar Mod": solo si NO está instalado.
+ *  - "Actualizar mod": solo si está instalado Y hay una versión más nueva.
+ *  - "Borrar mod": solo si está instalado; pide una segunda confirmación en
+ *    el propio botón antes de borrar (sin agregar una librería de diálogos
+ *    nueva para algo tan simple).
  */
 export function ConexionAcceso() {
-  const [gamePath, setGamePath] = useState<string | null>(null);
-  const [detected, setDetected] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<ModStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(true);
   const [running, setRunning] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [invalidFolder, setInvalidFolder] = useState<string | null>(null);
   const [missingDeps, setMissingDeps] = useState<MissingDependency[]>([]);
 
+  function refreshStatus(gamePath?: string | null) {
+    setLoadingStatus(true);
+    invoke<ModStatus>("get_mod_status", { gamePath: gamePath ?? null })
+      .then(setStatus)
+      .catch(() => setStatus(null))
+      .finally(() => setLoadingStatus(false));
+  }
+
   useEffect(() => {
-    invoke<string | null>("find_gta_v_path")
-      .then((p) => {
-        setGamePath(p);
-        setDetected(p !== null);
-      })
-      .catch(() => setDetected(false));
+    refreshStatus();
   }, []);
 
   async function runInstall() {
@@ -48,17 +71,38 @@ export function ConexionAcceso() {
     setMissingDeps([]);
     try {
       const result = await invoke<InstallReport>("install_gta_v_mod", { gamePath: null });
-      if (result.game_path) {
-        setGamePath(result.game_path);
-        setDetected(true);
-      }
       setMissingDeps(result.missing_dependencies);
+      refreshStatus(result.game_path);
     } catch (e) {
       setInvalidFolder(String(e));
     } finally {
       setRunning(false);
     }
   }
+
+  async function runUninstall() {
+    if (!status?.game_path) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setUninstalling(true);
+    try {
+      await invoke("uninstall_gta_v_mod", { gamePath: status.game_path });
+      refreshStatus(status.game_path);
+    } catch (e) {
+      setInvalidFolder(String(e));
+    } finally {
+      setUninstalling(false);
+      setConfirmDelete(false);
+    }
+  }
+
+  const detected = status?.installed ?? false;
+  const gamePath = status?.game_path ?? null;
+  const canInstall = !detected && !running;
+  const canUpdate = detected && (status?.update_available ?? false) && !running;
+  const canDelete = detected && !uninstalling;
 
   return (
     <div
@@ -102,9 +146,15 @@ export function ConexionAcceso() {
           }}
         />
         <span style={{ fontSize: 12.5, color: "#C4C5CC" }}>
-          {detected ? (
+          {loadingStatus ? (
+            "Comprobando instalación…"
+          ) : detected ? (
             <>
-              Instalado en: <b style={{ color: "#F4F4F5" }}>{gamePath}</b>
+              Instalado{status?.installed_version ? ` (v${status.installed_version})` : ""} en:{" "}
+              <b style={{ color: "#F4F4F5" }}>{gamePath}</b>
+              {status?.update_available && status?.latest_version && (
+                <span style={{ color: "#F5A623" }}> — hay una nueva versión v{status.latest_version}</span>
+              )}
             </>
           ) : (
             "No se detectó la carpeta de GTA V todavía."
@@ -116,64 +166,69 @@ export function ConexionAcceso() {
         <button
           type="button"
           onClick={runInstall}
-          disabled={running}
+          disabled={!canInstall}
           style={{
             padding: "0 18px",
             height: 42,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: ACCENT,
-            color: "#FFFFFF",
+            background: canInstall ? ACCENT : "#1E2027",
+            color: canInstall ? "#FFFFFF" : "#5B5D66",
             borderRadius: 10,
             fontSize: 13,
             fontWeight: 700,
             border: "none",
-            cursor: running ? "default" : "pointer",
+            cursor: canInstall ? "pointer" : "default",
             opacity: running ? 0.7 : 1,
           }}
         >
-          {running ? "Instalando…" : "⇩ Instalar Mod"}
+          {running ? "Instalando…" : detected ? "✓ Mod instalado" : "⇩ Instalar Mod"}
         </button>
         <button
           type="button"
           onClick={runInstall}
-          disabled={running}
+          disabled={!canUpdate}
           style={{
             padding: "0 18px",
             height: 42,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "#1E2027",
-            color: "#5B5D66",
+            background: canUpdate ? ACCENT : "#1E2027",
+            color: canUpdate ? "#FFFFFF" : "#5B5D66",
             borderRadius: 10,
             fontSize: 13,
             fontWeight: 700,
             border: "none",
-            cursor: running ? "default" : "pointer",
+            cursor: canUpdate ? "pointer" : "default",
+            opacity: running ? 0.7 : 1,
           }}
         >
-          Actualizar mod
+          {running ? "Actualizando…" : canUpdate ? "⇪ Actualizar mod" : "Actualizado"}
         </button>
         <button
           type="button"
+          onClick={runUninstall}
+          onBlur={() => setConfirmDelete(false)}
+          disabled={!canDelete}
           style={{
             padding: "0 18px",
             height: 42,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "transparent",
+            background: confirmDelete ? "#E5484D" : "transparent",
             border: "1px solid #3A2020",
-            color: "#E5484D",
+            color: confirmDelete ? "#FFFFFF" : canDelete ? "#E5484D" : "#5B5D66",
             borderRadius: 10,
             fontSize: 13,
             fontWeight: 700,
-            cursor: "pointer",
+            cursor: canDelete ? "pointer" : "default",
+            opacity: canDelete ? 1 : 0.6,
           }}
         >
-          Borrar mod
+          {uninstalling ? "Borrando…" : confirmDelete ? "¿Seguro? Click de nuevo" : "Borrar mod"}
         </button>
       </div>
 

@@ -29,16 +29,12 @@ pub struct FetchedDll {
     pub bytes: Vec<u8>,
 }
 
-/// Descarga el Release más reciente y devuelve los bytes de
-/// `scripts\StreamTok.GtaV.dll` ya extraídos del zip.
-pub async fn fetch_latest_dll() -> Result<FetchedDll, String> {
-    let client = reqwest::Client::builder()
-        .user_agent("StreamTok-Desktop")
-        .build()
-        .map_err(|e| e.to_string())?;
-
+/// Consulta `/releases/latest` (sin descargar ningún asset) — compartido por
+/// `fetch_latest_dll` y `fetch_latest_version`, para no repetir la misma
+/// llamada en dos lados.
+async fn fetch_latest_release(client: &reqwest::Client) -> Result<GithubRelease, String> {
     let api_url = format!("https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest");
-    let release: GithubRelease = client
+    client
         .get(&api_url)
         .send()
         .await
@@ -47,7 +43,29 @@ pub async fn fetch_latest_dll() -> Result<FetchedDll, String> {
         .map_err(|e| format!("GitHub respondió con error: {e}"))?
         .json()
         .await
-        .map_err(|e| format!("Respuesta de GitHub inesperada: {e}"))?;
+        .map_err(|e| format!("Respuesta de GitHub inesperada: {e}"))
+}
+
+fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent("StreamTok-Desktop")
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+/// Solo el tag de la última Release (sin `v` al inicio), para comparar contra
+/// la versión instalada sin tener que bajar el `.zip` completo.
+pub async fn fetch_latest_version() -> Result<String, String> {
+    let client = http_client()?;
+    let release = fetch_latest_release(&client).await?;
+    Ok(release.tag_name.trim_start_matches('v').to_string())
+}
+
+/// Descarga el Release más reciente y devuelve los bytes de
+/// `scripts\StreamTok.GtaV.dll` ya extraídos del zip.
+pub async fn fetch_latest_dll() -> Result<FetchedDll, String> {
+    let client = http_client()?;
+    let release = fetch_latest_release(&client).await?;
 
     let asset = release
         .assets
