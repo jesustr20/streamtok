@@ -81,9 +81,13 @@ function extractUserFlags(raw: RawRecord): {
 } {
   const user = asRecord(raw.user);
   const userAttr = asRecord(user.userAttr);
+  // `userIdentity` (en el mensaje, no en `user`) es la señal fiable respecto al
+  // streamer: en grabaciones reales `user.isFollower` llega en false aunque el
+  // usuario sí lo siga.
+  const identity = asRecord(raw.userIdentity);
   const flags: { isFollower?: boolean; isSubscriber?: boolean; isModerator?: boolean } = {};
-  if (user.isFollower === true) flags.isFollower = true;
-  if (user.isSubscribe === true) flags.isSubscriber = true;
+  if (user.isFollower === true || identity.isFollowerOfAnchor === true) flags.isFollower = true;
+  if (user.isSubscribe === true || identity.isSubscriberOfAnchor === true) flags.isSubscriber = true;
   if (userAttr.isAdmin === true || userAttr.isSuperAdmin === true) flags.isModerator = true;
   return flags;
 }
