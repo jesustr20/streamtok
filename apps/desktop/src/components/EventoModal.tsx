@@ -56,6 +56,7 @@ export function EventoModal({
   const [nivelPuntosRequerido, setNivelPuntosRequerido] = useState<number>(
     initial?.nivelPuntosRequerido ?? 0,
   );
+  const [nivelMinimo, setNivelMinimo] = useState<number>(initial?.nivelMinimo ?? 1);
   const [comando, setComando] = useState(initial?.comando ?? "");
   const [cantidadMinimaLikes, setCantidadMinimaLikes] = useState<number>(
     initial?.cantidadMinimaLikes ?? 15,
@@ -160,6 +161,10 @@ export function EventoModal({
           ? numOr(nivelEquipoRequerido, 0)
           : undefined,
       nivelPuntosRequerido: porque === "comando" ? numOr(nivelPuntosRequerido, 0) : undefined,
+      nivelMinimo:
+        porque === "subeNivelFan" || porque === "subeNivelDonador"
+          ? Math.max(1, Math.floor(numOr(nivelMinimo, 1)))
+          : undefined,
       comando: porque === "comando" ? comando.trim() : undefined,
       cantidadMinimaLikes: porque === "likes" ? numOr(cantidadMinimaLikes, 15) : undefined,
       valorMinimoMonedas: porque === "regaloValorMinimo" ? numOr(valorMinimoMonedas, 1) : undefined,
@@ -185,7 +190,9 @@ export function EventoModal({
     porque === "regaloEspecifico" ||
     porque === "emoteSuscriptor" ||
     porque === "stickerFanClub" ||
-    porque === "compraTiktokShop";
+    porque === "compraTiktokShop" ||
+    porque === "subeNivelFan" ||
+    porque === "subeNivelDonador";
 
   return (
     <div style={overlayStyle}>
@@ -403,6 +410,23 @@ export function EventoModal({
                   />
                   <span style={noteStyle}>
                     Catálogo real de stickers pendiente — por ahora escribe el sticker exacto.
+                  </span>
+                </label>
+              )}
+
+              {(porque === "subeNivelFan" || porque === "subeNivelDonador") && (
+                <label style={labelStyle}>
+                  {porque === "subeNivelFan" ? "Nivel de fan mínimo" : "Nivel de donador mínimo"}
+                  <input
+                    type="number"
+                    style={inputStyle}
+                    value={Number.isFinite(nivelMinimo) ? nivelMinimo : ""}
+                    min={1}
+                    onChange={(e) => setNivelMinimo(e.target.value === "" ? NaN : Number(e.target.value))}
+                  />
+                  <span style={noteStyle}>
+                    Se dispara cuando el usuario sube a este nivel o más. Con 1 se dispara en cualquier
+                    subida. La primera vez que se ve a un usuario no cuenta como subida.
                   </span>
                 </label>
               )}

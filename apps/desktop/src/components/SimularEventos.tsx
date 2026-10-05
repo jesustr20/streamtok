@@ -45,8 +45,9 @@ export interface ConnectedAccount {
  *   Eventos (no hay catálogo de emotes).
  * - Debajo se muestra el resultado de la última prueba (qué evento/acción se
  *   disparó o por qué no), tomado del canal `event-log` del sidecar.
- * - Los niveles (Fan/Donor) siguen deshabilitados: el contrato
- *   (`live-event.ts`) no tiene un evento de nivel.
+ * - Level up (Fan / Donor): manda `fanLevelUp` / `donorLevelUp` con el nivel
+ *   anterior y el nuevo (ADR 0007), igual que el sidecar al detectar una subida
+ *   real. Solo se puede simular una subida (nuevo > anterior).
  *
  * `account` es la cuenta conectada en Inicio; hoy esa conexión no tiene
  * backend, así que normalmente llega `null` y se muestra "Sin cuenta
@@ -70,6 +71,8 @@ export function SimularEventos({
     subscriber: [],
     fanClub: [],
   });
+  const [fanLevels, setFanLevels] = useState({ previous: 1, next: 2 });
+  const [donorLevels, setDonorLevels] = useState({ previous: 1, next: 2 });
   const [results, setResults] = useState<EventLogEntry[]>([]);
   // Solo se muestran las entradas que llegan después de pulsar un botón.
   const watching = useRef(false);
@@ -159,6 +162,18 @@ export function SimularEventos({
     if (!id) return;
     begin();
     send("emote", { emoteId: id, emoteScene });
+  }
+
+  function simulateLevelUp(kind: "fanLevelUp" | "donorLevelUp") {
+    const lv = kind === "fanLevelUp" ? fanLevels : donorLevels;
+    const previousLevel = Math.max(0, Math.floor(lv.previous) || 0);
+    const newLevel = Math.max(0, Math.floor(lv.next) || 0);
+    begin();
+    send(kind, {
+      previousLevel,
+      newLevel,
+      ...(kind === "fanLevelUp" ? { fanLevel: newLevel } : { userLevel: newLevel }),
+    });
   }
 
   const canSend = client !== null;
@@ -325,26 +340,51 @@ export function SimularEventos({
         )}
       </div>
 
-      {/* niveles (próximamente: el contrato no tiene evento de nivel) */}
+      {/* niveles: Anterior → Nuevo (el motor los recibe como fanLevelUp / donorLevelUp) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "#5B5D66", letterSpacing: "0.08em" }}>
-          LEVEL UP · PRÓXIMAMENTE
+          LEVEL UP
         </span>
-        <Row>
-          <div style={{ position: "relative", flex: 1, minWidth: 0, opacity: 0.6 }}>
-            <input type="number" disabled value={1} readOnly style={{ ...inputStyle, paddingRight: 70 }} />
-            <span style={inputSuffixStyle}>Anterior</span>
-          </div>
-          <ActionButton label="Simular Fan Lvl" disabled />
-        </Row>
-        <Row>
-          <div style={{ position: "relative", flex: 1, minWidth: 0, opacity: 0.6 }}>
-            <input type="number" disabled value={2} readOnly style={{ ...inputStyle, paddingRight: 70 }} />
-            <span style={inputSuffixStyle}>Nuevo</span>
-          </div>
-          <ActionButton label="Simular Donor Lvl" disabled />
-        </Row>
+        {(
+          [
+            ["fanLevelUp", "Simular Fan Lvl", fanLevels, setFanLevels],
+            ["donorLevelUp", "Simular Donor Lvl", donorLevels, setDonorLevels],
+          ] as const
+        ).map(([kind, label, lv, setLv]) => (
+          <Row key={kind}>
+            <LevelInput value={lv.previous} suffix="Anterior" onChange={(n) => setLv({ ...lv, previous: n })} />
+            <LevelInput value={lv.next} suffix="Nuevo" onChange={(n) => setLv({ ...lv, next: n })} />
+            <ActionButton
+              label={label}
+              onClick={() => simulateLevelUp(kind)}
+              disabled={!canSend || lv.next <= lv.previous}
+            />
+          </Row>
+        ))}
       </div>
+    </div>
+  );
+}
+
+function LevelInput({
+  value,
+  suffix,
+  onChange,
+}: {
+  value: number;
+  suffix: string;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+      <input
+        type="number"
+        min={0}
+        value={Number.isFinite(value) ? value : ""}
+        onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))}
+        style={{ ...inputStyle, paddingRight: 70 }}
+      />
+      <span style={inputSuffixStyle}>{suffix}</span>
     </div>
   );
 }

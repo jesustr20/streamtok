@@ -142,6 +142,14 @@ describe("validateEventos", () => {
     ).toBe(true);
   });
 
+  it("porque subeNivelFan / subeNivelDonador son válidos, con o sin nivelMinimo", () => {
+    for (const porque of ["subeNivelFan", "subeNivelDonador"] as const) {
+      expect(validateEventos([evento({ porque })]).ok).toBe(true);
+      expect(validateEventos([evento({ porque, nivelMinimo: 10 })]).ok).toBe(true);
+    }
+    expect(validateEventos([evento({ porque: "subeNivelFan", nivelMinimo: 0 })]).ok).toBe(false);
+  });
+
   it("porque emoteSuscriptor requiere emoteId", () => {
     expect(validateEventos([evento({ porque: "emoteSuscriptor" })]).ok).toBe(false);
     expect(

@@ -30,6 +30,9 @@ export const EventoPorqueSchema = z.enum([
   "emoteSuscriptor",
   "stickerFanClub",
   "compraTiktokShop",
+  // Al subir de nivel (ADR 0007).
+  "subeNivelFan",
+  "subeNivelDonador",
 ]);
 export type EventoPorque = z.infer<typeof EventoPorqueSchema>;
 
@@ -41,6 +44,8 @@ const baseSchema = z.object({
   numeroDonantesTop: z.number().optional(),
   porque: EventoPorqueSchema,
   nivelEquipoRequerido: z.number().optional(),
+  /** `subeNivelFan` / `subeNivelDonador`: solo dispara si el nivel nuevo es >= este valor (default 1). */
+  nivelMinimo: z.number().int().positive().optional(),
   nivelPuntosRequerido: z.number().optional(),
   comando: z.string().optional(),
   cantidadMinimaLikes: z.number().optional(),
@@ -152,6 +157,10 @@ export const EventoSchema = z.preprocess(migrateEventoAcciones, baseSchema.super
       }
       break;
     }
+    case "subeNivelFan":
+    case "subeNivelDonador":
+      // nivelMinimo opcional (default 1)
+      break;
     case "compraTiktokShop": {
       if (!evt.nombreProductoContiene) {
         ctx.addIssue({

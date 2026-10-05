@@ -14,6 +14,10 @@ export const LiveEventType = z.enum([
   "join",
   "subscribe",
   "emote",
+  // Subida de nivel (ADR 0007): no existe como mensaje de TikTok; el sidecar la
+  // deduce al ver que el nivel de un usuario aumentó respecto al último visto.
+  "fanLevelUp",
+  "donorLevelUp",
 ]);
 export type LiveEventTypeT = z.infer<typeof LiveEventType>;
 
@@ -44,6 +48,17 @@ export const LiveEventSchema = z.object({
   // Evento `emote`: id del emote/sticker y su escena (suscriptor vs fan club).
   emoteId: z.string().optional(),
   emoteScene: LiveEventEmoteScene.optional(),
+  // Niveles del usuario (ADR 0007). Solo presentes si TikTok los reporta en las
+  // insignias del mensaje; ausencia = desconocido.
+  /** Nivel de usuario de TikTok (nivel de donador). */
+  userLevel: z.number().int().nonnegative().optional(),
+  /** Nivel del Fan Club del streamer. */
+  fanLevel: z.number().int().nonnegative().optional(),
+  /** Puesto en el ranking de donantes de la sala (1 = primero). */
+  topGifterRank: z.number().int().positive().optional(),
+  // Eventos `fanLevelUp` / `donorLevelUp`: nivel antes y después de la subida.
+  previousLevel: z.number().int().nonnegative().optional(),
+  newLevel: z.number().int().nonnegative().optional(),
 });
 export type LiveEvent = z.infer<typeof LiveEventSchema>;
 

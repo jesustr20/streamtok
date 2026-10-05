@@ -1,3 +1,4 @@
+import { LevelTracker } from "./level-tracker.js";
 import { EventEmitter } from "node:events";
 import {
   ControlEvent,
@@ -74,10 +75,51 @@ function extractUserIdentity(raw: RawRecord): { username: string | null; nicknam
  * incluye cada bandera cuando la fuente la afirma explícitamente (`true`);
  * ausencia = desconocido = ese `quien` no coincidirá. Ver ADR 0005.
  */
+/**
+ * Niveles del usuario desde `user.badgeList[]` (ADR 0007). Cada insignia lleva
+ * un `sceneType`: 8 = nivel de usuario/donador, 10 = nivel del Fan Club,
+ * 6 = ranking de donantes de la sala ("No. 3"). El nivel va en
+ * `privilegeLogExtra.level` (string) o, si falta, en `combine.str`. Nivel 0 o
+ * texto sin número = desconocido (no se incluye).
+ */
+export function extractLevels(raw: unknown): {
+  userLevel?: number;
+  fanLevel?: number;
+  topGifterRank?: number;
+} {
+  const list = asRecord(asRecord(raw).user).badgeList;
+  const out: { userLevel?: number; fanLevel?: number; topGifterRank?: number } = {};
+  if (!Array.isArray(list)) return out;
+  const toPositiveInt = (value: unknown): number | undefined => {
+    const n = typeof value === "number" ? value : typeof value === "string" ? Number.parseInt(value, 10) : NaN;
+    return Number.isInteger(n) && n > 0 ? n : undefined;
+  };
+  for (const item of list) {
+    const badge = asRecord(item);
+    const combine = asRecord(badge.combine);
+    const scene = Number(badge.sceneType);
+    if (scene === 8 || scene === 10) {
+      const level = toPositiveInt(asRecord(badge.privilegeLogExtra).level) ?? toPositiveInt(combine.str);
+      if (level === undefined) continue;
+      if (scene === 8) out.userLevel = level;
+      else out.fanLevel = level;
+    } else if (scene === 6) {
+      const text = asRecord(combine.text).defaultPattern;
+      const match = typeof text === "string" ? /(\d+)/.exec(text) : null;
+      const rank = match ? toPositiveInt(match[1]) : undefined;
+      if (rank !== undefined) out.topGifterRank = rank;
+    }
+  }
+  return out;
+}
+
 function extractUserFlags(raw: RawRecord): {
   isFollower?: boolean;
   isSubscriber?: boolean;
   isModerator?: boolean;
+  userLevel?: number;
+  fanLevel?: number;
+  topGifterRank?: number;
 } {
   const user = asRecord(raw.user);
   const userAttr = asRecord(user.userAttr);
@@ -85,7 +127,7 @@ function extractUserFlags(raw: RawRecord): {
   // streamer: en grabaciones reales `user.isFollower` llega en false aunque el
   // usuario sí lo siga.
   const identity = asRecord(raw.userIdentity);
-  const flags: { isFollower?: boolean; isSubscriber?: boolean; isModerator?: boolean } = {};
+  const flags: ReturnType<typeof extractUserFlags> = { ...extractLevels(raw) };
   if (user.isFollower === true || identity.isFollowerOfAnchor === true) flags.isFollower = true;
   if (user.isSubscribe === true || identity.isSubscriberOfAnchor === true) flags.isSubscriber = true;
   if (userAttr.isAdmin === true || userAttr.isSuperAdmin === true) flags.isModerator = true;
@@ -283,6 +325,7 @@ export function mapTiktokEvent(kind: TiktokEventKind, raw: unknown): LiveEvent |
 
 export class TikTokLiveSource extends EventEmitter {
   private connection: TikTokLiveConnection | null = null;
+  private readonly levels = new LevelTracker();
 
   /** `recorder` (opcional) graba cada mensaje crudo del LIVE para análisis
    * posterior (ver event-recorder.ts); no afecta al mapeo ni al motor. */
@@ -317,10 +360,33 @@ export class TikTokLiveSource extends EventEmitter {
         message: `Evento "${kind}" de TikTok descartado (sin remitente, streak intermedio o malformado)`,
       });
     }
+    this.detectLevelUps(raw);
     return evt;
   }
 
+  /** Subidas de nivel (ADR 0007): se compara contra el último nivel visto del
+   * usuario, aunque el mensaje en sí se haya descartado (ej. regalo en combo). */
+  private detectLevelUps(raw: unknown): void {
+    const msg = asRecord(raw);
+    const { username, nickname } = extractUserIdentity(msg);
+    if (!username) return;
+    const levels = extractLevels(msg);
+    for (const change of this.levels.observe(username, levels)) {
+      const evt = finalize({
+        event: change.kind,
+        username,
+        nickname,
+        timestamp: Date.now(),
+        previousLevel: change.previousLevel,
+        newLevel: change.newLevel,
+        ...levels,
+      });
+      if (evt) this.emit("event", evt);
+    }
+  }
+
   async start(): Promise<void> {
+    this.levels.reset();
     const connection = new TikTokLiveConnection(this.username, {});
     this.connection = connection;
     const events = connection as unknown as TiktokConnectionHandle;
