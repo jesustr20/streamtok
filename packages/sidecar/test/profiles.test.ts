@@ -264,6 +264,34 @@ describe("ProfilesController", () => {
     ws.close();
   });
 
+  it("get-state también devuelve las acciones y eventos del perfil activo (UI que se monta tarde)", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    seed(profilesPath, {
+      profiles: [
+        { id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
+      ],
+      activeProfileId: "p1",
+    });
+    server = new StreamTokWsServer(0);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    // La pantalla de Juegos se monta después de la conexión inicial y se perdió
+    // los `update` de acciones/eventos: pide el snapshot por `profiles`.
+    const acciones = once(ws, "acciones");
+    const eventos = once(ws, "eventos");
+    const state = once(ws, "profiles");
+    ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "get-state" } }));
+
+    expect((await state).activeProfileId).toBe("p1");
+    expect(await acciones).toMatchObject({ kind: "update", acciones: [{ id: "a1" }] });
+    expect(await eventos).toMatchObject({ kind: "update", eventos: [{ id: "e1" }] });
+
+    ws.close();
+  });
+
   it("duplica un perfil copiando sus acciones y eventos", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {

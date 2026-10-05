@@ -350,7 +350,12 @@ export class ProfilesController extends EventEmitter {
       case "get-state":
         // Snapshot bajo demanda: una UI que se monta después de la conexión
         // inicial pide el estado actual (no lo recibió en `client-connected`).
+        // Incluye las acciones y eventos del perfil activo: las pantallas que
+        // los muestran no tienen un `get-state` propio y, si se montan tarde
+        // (el usuario estaba en Inicio al conectar), se los habrían perdido.
         this.sendStateTo(socket);
+        this.sendAccionesTo(socket);
+        this.sendEventosTo(socket);
         break;
       default:
         // "state"/"error" los emite el sidecar; se ignoran entrantes.
