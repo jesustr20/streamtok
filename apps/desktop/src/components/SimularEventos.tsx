@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import type { GiftCatalogEntry, GiftCatalogMessage } from "@streamtok/shared";
+import { useEffect, useRef, useState } from "react";
+import type {
+  EventLogEntry,
+  EventLogMessage,
+  EventosMessage,
+  GiftCatalogEntry,
+  GiftCatalogMessage,
+} from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
 import { GiftPicker } from "./GiftPicker";
 
@@ -10,6 +16,9 @@ const TEST_USER = "StreamTok_Test";
 
 /** Tope de likes por click, para no inundar el motor con un número sin querer. */
 const MAX_LIKES = 500;
+
+/** Cuántas líneas de resultado se muestran como máximo por prueba. */
+const MAX_RESULTS = 4;
 
 /** Cuenta de TikTok conectada, para mostrarla arriba del panel. */
 export interface ConnectedAccount {
@@ -28,8 +37,16 @@ export interface ConnectedAccount {
  * - Chat: manda el texto tal cual (para probar comandos "!palabra").
  * - Regalo: sale del catálogo persistido (canal WS `gift-catalog`, issue #35),
  *   disponible sin estar en vivo, con el costo y el ID reales del regalo.
- * - Emote y niveles (Fan/Donor) quedan deshabilitados: no hay catálogo de
- *   emotes ni un evento de nivel en el contrato (`live-event.ts`).
+ * - Roles del usuario de prueba (Seguidor / Suscriptor / Moderador): se
+ *   agregan a TODO evento simulado, para poder probar Eventos cuyo "¿Quién
+ *   puede desencadenar?" no es "Todos". (Donante principal sale solo: el motor
+ *   acumula las monedas de los regalos simulados.)
+ * - Emote / Sticker: el id se escribe o se elige de los que ya usan tus
+ *   Eventos (no hay catálogo de emotes).
+ * - Debajo se muestra el resultado de la última prueba (qué evento/acción se
+ *   disparó o por qué no), tomado del canal `event-log` del sidecar.
+ * - Los niveles (Fan/Donor) siguen deshabilitados: el contrato
+ *   (`live-event.ts`) no tiene un evento de nivel.
  *
  * `account` es la cuenta conectada en Inicio; hoy esa conexión no tiene
  * backend, así que normalmente llega `null` y se muestra "Sin cuenta
@@ -46,6 +63,16 @@ export function SimularEventos({
   const [gift, setGift] = useState("");
   const [likes, setLikes] = useState(20);
   const [comment, setComment] = useState("");
+  const [roles, setRoles] = useState({ isFollower: false, isSubscriber: false, isModerator: false });
+  const [emoteId, setEmoteId] = useState("");
+  const [emoteScene, setEmoteScene] = useState<"subscriber" | "fanClub">("subscriber");
+  const [knownEmotes, setKnownEmotes] = useState<{ subscriber: string[]; fanClub: string[] }>({
+    subscriber: [],
+    fanClub: [],
+  });
+  const [results, setResults] = useState<EventLogEntry[]>([]);
+  // Solo se muestran las entradas que llegan después de pulsar un botón.
+  const watching = useRef(false);
 
   useEffect(() => {
     if (!client) return;
@@ -65,11 +92,38 @@ export function SimularEventos({
     return off;
   }, [client]);
 
+  useEffect(() => {
+    if (!client) return;
+    const off = client.on((evt) => {
+      if (evt.channel === "eventos") {
+        const msg = evt.payload as EventosMessage;
+        if (msg.kind !== "update") return;
+        const uniq = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))];
+        setKnownEmotes({
+          subscriber: uniq(msg.eventos.filter((e) => e.porque === "emoteSuscriptor").map((e) => e.emoteId)),
+          fanClub: uniq(msg.eventos.filter((e) => e.porque === "stickerFanClub").map((e) => e.stickerId)),
+        });
+      } else if (evt.channel === "event-log") {
+        const msg = evt.payload as EventLogMessage;
+        if (msg.kind !== "append" || !watching.current) return;
+        setResults((prev) => [...prev, msg.entry].slice(-MAX_RESULTS));
+      }
+    });
+    return off;
+  }, [client]);
+
+  /** Cada prueba (click) empieza un resultado nuevo. */
+  function begin() {
+    watching.current = true;
+    setResults([]);
+  }
+
   function send(event: string, extra: Record<string, unknown> = {}) {
     client?.send("live-event", {
       event,
       username: account?.handle ?? TEST_USER,
       nickname: account?.name ?? TEST_USER,
+      ...roles,
       repeatEnd: true,
       timestamp: Date.now(),
       ...extra,
@@ -77,6 +131,7 @@ export function SimularEventos({
   }
 
   function simulateLikes() {
+    begin();
     const n = Math.min(MAX_LIKES, Math.max(1, Math.floor(likes) || 1));
     for (let i = 0; i < n; i++) send("like");
   }
@@ -84,12 +139,14 @@ export function SimularEventos({
   function simulateChat() {
     const text = comment.trim();
     if (!text) return;
+    begin();
     send("comment", { text });
   }
 
   function simulateGift() {
     const selected = gifts.find((g) => g.name === gift);
     if (!selected) return;
+    begin();
     // Un regalo simulado lleva el costo y el ID reales del catálogo (igual
     // que uno en vivo con repeatCount 1), para que los eventos de "regalo
     // específico" (por ID) y de "valor mínimo de monedas" se evalúen bien.
@@ -97,7 +154,16 @@ export function SimularEventos({
     send("gift", { giftName: selected.name, giftId: numericId, coins: selected.cost });
   }
 
+  function simulateEmote() {
+    const id = emoteId.trim();
+    if (!id) return;
+    begin();
+    send("emote", { emoteId: id, emoteScene });
+  }
+
   const canSend = client !== null;
+  const suggestions = knownEmotes[emoteScene];
+  const lastResult = results[results.length - 1];
 
   return (
     <div
@@ -137,6 +203,25 @@ export function SimularEventos({
         </div>
       </div>
 
+      {/* roles del usuario de prueba */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 11.5, color: "#9A9CA5", marginRight: 2 }}>El usuario de prueba es:</span>
+        {(
+          [
+            ["isFollower", "Seguidor"],
+            ["isSubscriber", "Suscriptor"],
+            ["isModerator", "Moderador"],
+          ] as const
+        ).map(([key, label]) => (
+          <RoleChip
+            key={key}
+            label={label}
+            active={roles[key]}
+            onClick={() => setRoles((r) => ({ ...r, [key]: !r[key] }))}
+          />
+        ))}
+      </div>
+
       {/* pestaña de plataforma (por ahora solo TikTok) */}
       <div style={{ borderBottom: "1px solid #2A2C33" }}>
         <span style={tabStyle}>TikTok</span>
@@ -144,10 +229,10 @@ export function SimularEventos({
 
       {/* eventos generales */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-        <SimButton label="Share" onClick={() => send("share")} disabled={!canSend} />
-        <SimButton label="Follow" onClick={() => send("follow")} disabled={!canSend} />
-        <SimButton label="Suscripción" onClick={() => send("subscribe")} disabled={!canSend} />
-        <SimButton label="Unirse" onClick={() => send("join")} disabled={!canSend} />
+        <SimButton label="Share" onClick={() => { begin(); send("share"); }} disabled={!canSend} />
+        <SimButton label="Follow" onClick={() => { begin(); send("follow"); }} disabled={!canSend} />
+        <SimButton label="Suscripción" onClick={() => { begin(); send("subscribe"); }} disabled={!canSend} />
+        <SimButton label="Unirse" onClick={() => { begin(); send("join"); }} disabled={!canSend} />
       </div>
 
       {/* likes */}
@@ -193,16 +278,52 @@ export function SimularEventos({
         <ActionButton label="Simular Gift" onClick={simulateGift} disabled={!canSend || !gift} primary />
       </Row>
 
-      {/* emote (próximamente: no hay catálogo de emotes) */}
+      {/* emote / sticker */}
       <Row>
-        <div
-          title="Los emotes se conocen solo desde eventos reales de un LIVE; todavía no hay catálogo."
-          style={{ ...inputStyle, flex: 1, display: "flex", alignItems: "center", color: "#5B5D66", opacity: 0.6 }}
+        <select
+          value={emoteScene}
+          onChange={(e) => setEmoteScene(e.target.value as "subscriber" | "fanClub")}
+          style={{ ...inputStyle, width: 176, flexShrink: 0 }}
         >
-          Elige un emote
-        </div>
-        <ActionButton label="Simular Emote" disabled />
+          <option value="subscriber">Emote de suscriptor</option>
+          <option value="fanClub">Sticker club de fans</option>
+        </select>
+        <input
+          type="text"
+          list="simular-emotes"
+          value={emoteId}
+          placeholder={emoteScene === "subscriber" ? "ID del emote…" : "ID del sticker…"}
+          onChange={(e) => setEmoteId(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") simulateEmote();
+          }}
+          style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+        />
+        <datalist id="simular-emotes">
+          {suggestions.map((id) => (
+            <option key={id} value={id} />
+          ))}
+        </datalist>
+        <ActionButton label="Simular Emote" onClick={simulateEmote} disabled={!canSend || !emoteId.trim()} />
       </Row>
+
+      {/* resultado de la última prueba */}
+      <div style={resultBoxStyle}>
+        {lastResult ? (
+          results.map((r) => (
+            <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+              <span style={{ color: r.status === "fired" ? "#34D399" : "#F5A524", fontWeight: 700 }}>
+                {r.status === "fired" ? "✓ Disparó" : "• No disparó"}
+              </span>
+              <span style={{ color: "#C4C5CC" }}>{r.message}</span>
+            </div>
+          ))
+        ) : (
+          <span style={{ color: "#5B5D66" }}>
+            Aquí verás qué evento y acción se disparó con tu última prueba (o por qué no).
+          </span>
+        )}
+      </div>
 
       {/* niveles (próximamente: el contrato no tiene evento de nivel) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -225,6 +346,29 @@ export function SimularEventos({
         </Row>
       </div>
     </div>
+  );
+}
+
+function RoleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        height: 26,
+        padding: "0 11px",
+        borderRadius: 13,
+        fontSize: 11.5,
+        fontWeight: 700,
+        cursor: "pointer",
+        background: active ? ACCENT : "#0E0F12",
+        color: active ? "#FFFFFF" : "#9A9CA5",
+        border: active ? "1px solid transparent" : "1px solid #2A2C33",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -305,6 +449,19 @@ function ActionButton({
     </button>
   );
 }
+
+const resultBoxStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  padding: "10px 14px",
+  minHeight: 38,
+  background: "#0E0F12",
+  border: "1px dashed #2A2C33",
+  borderRadius: 10,
+  fontSize: 12,
+  boxSizing: "border-box",
+};
 
 const accountBoxStyle: React.CSSProperties = {
   display: "flex",

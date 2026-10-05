@@ -121,11 +121,13 @@ export const EventoSchema = z.preprocess(migrateEventoAcciones, baseSchema.super
       // valorMinimoMonedas opcional (default 1)
       break;
     case "regaloEspecifico": {
-      if (!evt.giftId) {
+      // Los regalos sembrados del catálogo estático aún no tienen id (solo
+      // nombre): el motor ya empareja por id O por nombre.
+      if (!evt.giftId && !evt.giftName) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["giftId"],
-          message: 'porque "regaloEspecifico" requiere "giftId".',
+          message: 'porque "regaloEspecifico" requiere "giftId" o "giftName".',
         });
       }
       break;
