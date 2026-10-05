@@ -32,7 +32,7 @@ interface ModStatus {
 /**
  * Sección "Conexión y Acceso" (ModDetalle.dc.html): indicador de instalación
  * (detecta la carpeta de GTA V), botones Instalar/Actualizar/Borrar y aviso de
- * error si la carpeta no es válida.
+ * error si falla la instalación o el borrado.
  *
  * Los tres botones reflejan el estado real del mod (consultado con
  * `get_mod_status`, que compara la versión instalada contra la última
@@ -50,7 +50,7 @@ export function ConexionAcceso() {
   const [running, setRunning] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [invalidFolder, setInvalidFolder] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<{ title: string; message: string } | null>(null);
   const [missingDeps, setMissingDeps] = useState<MissingDependency[]>([]);
 
   function refreshStatus(gamePath?: string | null) {
@@ -67,14 +67,14 @@ export function ConexionAcceso() {
 
   async function runInstall() {
     setRunning(true);
-    setInvalidFolder(null);
+    setActionError(null);
     setMissingDeps([]);
     try {
       const result = await invoke<InstallReport>("install_gta_v_mod", { gamePath: null });
       setMissingDeps(result.missing_dependencies);
       refreshStatus(result.game_path);
     } catch (e) {
-      setInvalidFolder(String(e));
+      setActionError({ title: "No se pudo instalar el mod", message: String(e) });
     } finally {
       setRunning(false);
     }
@@ -91,7 +91,7 @@ export function ConexionAcceso() {
       await invoke("uninstall_gta_v_mod", { gamePath: status.game_path });
       refreshStatus(status.game_path);
     } catch (e) {
-      setInvalidFolder(String(e));
+      setActionError({ title: "No se pudo borrar el mod", message: String(e) });
     } finally {
       setUninstalling(false);
       setConfirmDelete(false);
@@ -232,7 +232,7 @@ export function ConexionAcceso() {
         </button>
       </div>
 
-      {invalidFolder && (
+      {actionError && (
         <div
           style={{
             display: "flex",
@@ -247,11 +247,9 @@ export function ConexionAcceso() {
           <span style={{ fontSize: 14, lineHeight: 1.3 }}>⚠</span>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: "#F5A9AD" }}>
-              Esta carpeta no parece ser GTA V
+              {actionError.title}
             </span>
-            <span style={{ fontSize: 12, color: "#C97A7E" }}>
-              {invalidFolder} Verifica que elegiste la carpeta correcta e intenta instalar de nuevo.
-            </span>
+            <span style={{ fontSize: 12, color: "#C97A7E" }}>{actionError.message}</span>
           </div>
         </div>
       )}
