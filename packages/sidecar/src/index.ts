@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import type { GiftCatalogEntry, LiveEvent } from "@streamtok/shared";
+import type { LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
-import { createRecorderFromEnv } from "./event-recorder.js";
+import { EventRecorder, maxBytesFromEnv } from "./event-recorder.js";
 import {
   GiftCatalogController,
   GiftCatalogStore,
@@ -15,6 +15,7 @@ import {
   ProfilesStore,
   defaultProfilesFilePath,
 } from "./profiles.js";
+import { TiktokConnectionController } from "./tiktok-connection.js";
 import { TikTokLiveSource } from "./tiktok-source.js";
 import { StreamTokWsServer } from "./ws-server.js";
 
@@ -98,59 +99,51 @@ server.onChannel("live-event", (payload) => {
   });
 });
 
-// TODO(ui): arrancar/parar esta conexión cuando el usuario pulse
-// "Conectar al LIVE" desde la UI (hoy solo arranca en el boot vía env).
-
 // ---------------------------------------------------------------------------
-// Conexión real a TikTok LIVE. Por ahora arranca en el boot leyendo el
-// username de TIKTOK_USERNAME (sin UI, eso es otro issue). Los eventos
-// normalizados alimentan a `engine.handleEvent` exactamente igual que los
-// que llegan por el canal "live-event" del Simulador. Si el LIVE no está
-// disponible no se cae el proceso: se loguea y se sigue.
+// Conexión real a TikTok LIVE. La UI (pantalla Inicio) la arranca/para por el
+// canal "tiktok-connection". Los eventos normalizados alimentan a
+// `engine.handleEvent` exactamente igual que los que llegan por el canal
+// "live-event" del Simulador, y los regalos alimentan el catálogo aprendido.
+// Cada conexión graba TODOS los mensajes crudos en un archivo aparte
+// (recordings/, ver event-recorder.ts). Si el LIVE no está disponible no se
+// cae el proceso: la UI recibe el error por el canal.
 // ---------------------------------------------------------------------------
-const tiktokUsername = process.env.TIKTOK_USERNAME?.trim();
-if (tiktokUsername) {
-  // Grabación opt-in de TODO lo que llega del LIVE (STREAMTOK_RECORD=1), en un
-  // archivo aparte del catálogo de regalos, para analizar qué datos entrega
-  // TikTok (niveles, batallas, likes…). Ver event-recorder.ts.
-  const recorder = createRecorderFromEnv(process.env, {
-    dir: join(appDataDir(), "recordings"),
-    label: tiktokUsername,
-    // eslint-disable-next-line no-console
-    onLog: (message) => console.log("[recorder]", message),
-  });
-  if (recorder) {
-    // eslint-disable-next-line no-console
-    console.log("[recorder] Grabando eventos crudos en", recorder.filePath);
-    const flushAndExit = () => {
-      recorder.close().finally(() => process.exit(0));
-    };
-    process.once("SIGINT", flushAndExit);
-    process.once("SIGTERM", flushAndExit);
-  }
-  const tiktok = new TikTokLiveSource(tiktokUsername, recorder ?? undefined);
-  tiktok.on("log", (entry) => {
-    const tag = `[tiktok:${entry.level}]`;
-    // eslint-disable-next-line no-console
-    console.log(tag, entry.message, entry.details ?? "");
-  });
-  tiktok.on("event", (evt) => {
+const tiktokConnection = new TiktokConnectionController(server, {
+  createRecorder: (username) =>
+    new EventRecorder({
+      dir: join(appDataDir(), "recordings"),
+      label: username,
+      maxBytes: maxBytesFromEnv(process.env),
+      // eslint-disable-next-line no-console
+      onLog: (message) => console.log("[recorder]", message),
+    }),
+  createSource: (username, recorder) => new TikTokLiveSource(username, recorder),
+  onEvent: (evt) => {
     engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
     });
-  });
-  tiktok.on("giftCatalogEntry", (entry: GiftCatalogEntry) => {
-    giftCatalogController.learn(entry);
-  });
-  tiktok.on("connected", () => engine.resetSession());
-  tiktok.start().catch((err) => {
-    // eslint-disable-next-line no-console
-    console.error(`No se pudo conectar al LIVE de TikTok (@${tiktokUsername}):`, err?.message ?? err);
-  });
-} else {
+  },
+  onGift: (entry) => giftCatalogController.learn(entry),
+  onConnected: () => engine.resetSession(),
+});
+tiktokConnection.on("log", (entry) => {
+  const tag = `[tiktok:${entry.level}]`;
   // eslint-disable-next-line no-console
-  console.log("TIKTOK_USERNAME no configurado: no se conecta a TikTok LIVE (solo Simulador).");
+  console.log(tag, entry.message, entry.details ?? "");
+});
+
+// Cierra la grabación completa al terminar el proceso (Ctrl+C / cierre de la app).
+const shutdown = () => {
+  tiktokConnection.disconnect().finally(() => process.exit(0));
+};
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
+
+// Opcional (sin UI, p. ej. para pruebas): conectar al arrancar.
+const tiktokUsername = process.env.TIKTOK_USERNAME?.trim();
+if (tiktokUsername) {
+  void tiktokConnection.connect(tiktokUsername);
 }
 
 export { modBridge, server, engine };

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRecorderFromEnv, EventRecorder } from "../src/event-recorder.js";
+import { EventRecorder, maxBytesFromEnv } from "../src/event-recorder.js";
 import { TikTokLiveSource } from "../src/tiktok-source.js";
 
 describe("EventRecorder", () => {
@@ -107,27 +107,24 @@ describe("EventRecorder", () => {
   });
 });
 
-describe("createRecorderFromEnv", () => {
-  it("devuelve null si STREAMTOK_RECORD no está activo", () => {
-    expect(createRecorderFromEnv({}, { dir: "/tmp/x" })).toBeNull();
-    expect(createRecorderFromEnv({ STREAMTOK_RECORD: "0" }, { dir: "/tmp/x" })).toBeNull();
-    expect(createRecorderFromEnv({ STREAMTOK_RECORD: "" }, { dir: "/tmp/x" })).toBeNull();
+describe("maxBytesFromEnv", () => {
+  it("sin variable o inválida → undefined (tope por defecto)", () => {
+    expect(maxBytesFromEnv({})).toBeUndefined();
+    expect(maxBytesFromEnv({ STREAMTOK_RECORD_MAX_MB: "" })).toBeUndefined();
+    expect(maxBytesFromEnv({ STREAMTOK_RECORD_MAX_MB: "abc" })).toBeUndefined();
+    expect(maxBytesFromEnv({ STREAMTOK_RECORD_MAX_MB: "-5" })).toBeUndefined();
   });
 
-  it("devuelve una grabadora con 1, true o yes", () => {
-    for (const v of ["1", "true", "TRUE", "yes"]) {
-      expect(createRecorderFromEnv({ STREAMTOK_RECORD: v }, { dir: "/tmp/x" })).toBeInstanceOf(EventRecorder);
-    }
-  });
-
-  it("STREAMTOK_RECORD_MAX_MB define el tope en MB", async () => {
+  it("STREAMTOK_RECORD_MAX_MB define el tope en bytes", async () => {
+    expect(maxBytesFromEnv({ STREAMTOK_RECORD_MAX_MB: "2" })).toBe(2 * 1024 * 1024);
     const dir = mkdtempSync(join(tmpdir(), "streamtok-recorder-env-"));
     try {
       const logs: string[] = [];
-      const rec = createRecorderFromEnv(
-        { STREAMTOK_RECORD: "1", STREAMTOK_RECORD_MAX_MB: "0.0001" }, // ~104 bytes
-        { dir, onLog: (m) => logs.push(m) },
-      )!;
+      const rec = new EventRecorder({
+        dir,
+        maxBytes: maxBytesFromEnv({ STREAMTOK_RECORD_MAX_MB: "0.0001" }), // ~104 bytes
+        onLog: (m) => logs.push(m),
+      });
       rec.record("e", { relleno: "x".repeat(500) });
       await rec.close();
       expect(logs.some((m) => m.includes("tope"))).toBe(true);

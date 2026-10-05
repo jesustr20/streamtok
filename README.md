@@ -42,39 +42,32 @@ Con la app de escritorio real (botón de instalar mod, mod de GTA V conectado)
 pnpm desktop     # pnpm tauri dev
 ```
 
-Para conectar tu LIVE real de TikTok en vez de solo el Simulador:
+Para conectar tu LIVE real de TikTok en vez de solo el Simulador: abre la app,
+ve a **Inicio**, escribe el usuario (con o sin `@`) y pulsa **Conectar** (el
+sidecar debe estar corriendo; con `pnpm desktop` ya lo está). Debes estar en
+vivo en TikTok. Alternativa sin UI: `TIKTOK_USERNAME=tu_usuario pnpm sidecar`.
 
-```bash
-TIKTOK_USERNAME=tu_usuario pnpm sidecar
-```
+### Grabación de los eventos crudos del LIVE
 
-### Grabar los eventos crudos de un LIVE (opcional)
+Cada vez que te conectas, el sidecar guarda **todo** lo que llega del LIVE, sin
+filtrar (incluye lo que la app todavía no usa: niveles, donadores, batallas,
+ranking, likes…), en un archivo aparte del catálogo de regalos. Sirve para
+conectarte a cualquier LIVE — por ejemplo uno de batallas, con muchas
+donaciones — y recopilar datos reales para decidir después qué se agrega a la app.
 
-Para descubrir qué datos entrega TikTok (niveles, donadores, likes, batallas…)
-puedes grabar **todo** lo que llega, sin filtrar, en un archivo aparte del
-catálogo de regalos. Sirve conectado a cualquier LIVE, por ejemplo uno de
-batallas con muchas donaciones:
-
-```bash
-# Git Bash / Linux / macOS
-STREAMTOK_RECORD=1 TIKTOK_USERNAME=usuario_del_live pnpm sidecar
-
-# PowerShell
-$env:STREAMTOK_RECORD="1"; $env:TIKTOK_USERNAME="usuario_del_live"; pnpm sidecar
-```
-
-- Se crea un archivo `.jsonl` por sesión en la carpeta `recordings/` de los
-  datos de la app (la ruta sale en el log: `[recorder] Grabando eventos crudos en …`).
-  Cada línea es `{ "t": <ms>, "type": "WebcastGiftMessage", "event": { … } }`
-  con el mensaje decodificado completo, incluidos los tipos que la app todavía
-  no usa.
-- Al llegar al tope (500 MB por defecto) deja de grabar y avisa; cámbialo con
-  `STREAMTOK_RECORD_MAX_MB`. Un LIVE de batallas puede generar varios GB por hora.
-- Termina con Ctrl+C para que el archivo se cierre completo.
+- Un archivo `.jsonl` por conexión en la carpeta `recordings/` de los datos de
+  la app. La ruta y el contador de mensajes se ven en **Inicio** mientras
+  estás conectado. Cada línea es
+  `{ "t": <ms>, "type": "WebcastGiftMessage", "event": { … } }` con el mensaje
+  decodificado completo.
+- Se cierra al pulsar **Desconectar**, al terminar el LIVE o al cerrar el sidecar.
+- Tope por archivo: 500 MB por defecto (al llegar deja de grabar y avisa en el
+  log del sidecar); cámbialo con la variable `STREAMTOK_RECORD_MAX_MB`. Un LIVE
+  de batallas puede generar varios GB por hora.
 - Los mensajes incluyen datos públicos de los viewers (handles, nombres, ids,
   avatares): el archivo queda solo en tu máquina, no lo subas al repo.
-- Mientras grabas, los eventos del LIVE también llegan a tus Eventos
-  configurados: usa un perfil vacío o deja el juego cerrado.
+- Mientras estás conectado, los eventos del LIVE también llegan a tus Eventos
+  configurados: usa un perfil vacío o deja el juego cerrado si solo quieres grabar.
 
 ## Protocolo con el mod (fijo, no se negocia sin ADR)
 
@@ -101,6 +94,7 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
 | `acciones` | Acciones (qué pasa) del perfil activo — ADR 0004 |
 | `eventos` | Eventos (qué lo dispara) del perfil activo — ADR 0004 |
 | `event-log` | Log en vivo (no persistente) de qué disparó o descartó el motor y por qué |
+| `tiktok-connection` | Conectar/desconectar el LIVE de TikTok desde Inicio + estado y grabación |
 
 ## Qué ya funciona
 
@@ -188,12 +182,3 @@ pnpm --filter @streamtok/sidecar exec tsc --noEmit -p .
 pnpm --filter @streamtok/sidecar test
 pnpm --filter @streamtok/desktop exec tsc -p tsconfig.json --noEmit
 ```
-EOF
-
-git add README.md
-git commit -m "docs: actualizar README con el estado real del proyecto (stack, canales WS, features, pendientes)"
-git push -u origin docs-readme-actualizado
-
-gh pr create \
-  --title "docs: actualizar README con el estado real del proyecto" \
-  --body "El README seguía describiendo el scaffold inicial (\"falta conectar tiktok-live-connector\", \"falta persistir reglas\", etc.) — todo eso ya está hecho. Actualizado con: stack completo, tabla de canales WS propios de la app, cómo correr el proyecto (con y sin Windows), qué ya funciona (issues #2 al #17), qué falta, y enlaces a los 3 ADRs."

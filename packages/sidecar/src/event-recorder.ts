@@ -10,8 +10,8 @@ import { join } from "node:path";
  * y decidir después qué se normaliza al contrato. Es independiente del
  * catálogo de regalos (gift-catalog.ts), que solo aprende regalos.
  *
- * Es opt-in (ver `createRecorderFromEnv`) y nunca debe romper el pipeline en
- * vivo: cualquier fallo se reporta por `onLog` y se sigue.
+ * Se crea una por cada conexión al LIVE (ver tiktok-connection.ts) y nunca
+ * debe romper el pipeline en vivo: cualquier fallo se reporta por `onLog` y se sigue.
  *
  * Privacidad: los mensajes incluyen datos públicos de viewers (handles,
  * nicknames, ids, avatares). El archivo queda solo en la máquina del usuario,
@@ -115,17 +115,10 @@ export class EventRecorder {
 }
 
 /**
- * Crea la grabadora solo si `STREAMTOK_RECORD` es 1/true/yes. El tope se puede
- * cambiar con `STREAMTOK_RECORD_MAX_MB`.
+ * Tope en bytes definido por `STREAMTOK_RECORD_MAX_MB` (MB, admite decimales);
+ * `undefined` si no está definido o es inválido (se usa el tope por defecto).
  */
-export function createRecorderFromEnv(
-  env: NodeJS.ProcessEnv,
-  opts: { dir: string; label?: string; onLog?: (message: string) => void },
-): EventRecorder | null {
-  const flag = env.STREAMTOK_RECORD?.trim().toLowerCase();
-  if (flag !== "1" && flag !== "true" && flag !== "yes") return null;
-
+export function maxBytesFromEnv(env: NodeJS.ProcessEnv): number | undefined {
   const maxMb = Number(env.STREAMTOK_RECORD_MAX_MB);
-  const maxBytes = Number.isFinite(maxMb) && maxMb > 0 ? Math.floor(maxMb * 1024 * 1024) : undefined;
-  return new EventRecorder({ ...opts, maxBytes });
+  return Number.isFinite(maxMb) && maxMb > 0 ? Math.floor(maxMb * 1024 * 1024) : undefined;
 }

@@ -319,6 +319,8 @@ export class TikTokLiveSource extends EventEmitter {
         level: "warn",
         message: `Desconectado del LIVE de TikTok (${code}${reason ? `: ${reason}` : ""})`,
       });
+      // Avisa a quien controle la conexión (UI) de que el LIVE se cortó.
+      this.emit("disconnected", code);
     });
 
     await connection.connect();

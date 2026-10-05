@@ -80,7 +80,7 @@ export function App() {
           minWidth: 0,
         }}
       >
-        {view === "inicio" && <InicioView onGoJuegos={() => setView("juegos")} />}
+        {view === "inicio" && <InicioView client={client} onGoJuegos={() => setView("juegos")} />}
         {view === "juegos" && (
           <ModsLibrary catalog={catalog} onOpenMod={() => setView("juego-detalle")} />
         )}
