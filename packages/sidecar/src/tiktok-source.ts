@@ -6,6 +6,7 @@ import {
   WebcastEvent,
 } from "tiktok-live-connector";
 import { LiveEventSchema, type GiftCatalogEntry, type LiveEvent } from "@streamtok/shared";
+import type { EventRecorder } from "./event-recorder.js";
 
 /**
  * tiktok-live-connector@2.5.0 declara `TikTokLiveConnection` como un
@@ -250,8 +251,19 @@ export function mapTiktokEvent(kind: TiktokEventKind, raw: unknown): LiveEvent |
 export class TikTokLiveSource extends EventEmitter {
   private connection: TikTokLiveConnection | null = null;
 
-  constructor(private readonly username: string) {
+  /** `recorder` (opcional) graba cada mensaje crudo del LIVE para análisis
+   * posterior (ver event-recorder.ts); no afecta al mapeo ni al motor. */
+  constructor(
+    private readonly username: string,
+    private readonly recorder?: Pick<EventRecorder, "record">,
+  ) {
     super();
+  }
+
+  /** Graba un mensaje decodificado tal cual llegó (sin normalizar). Expuesto
+   * para poder probarlo sin abrir una conexión real. */
+  recordRaw(type: string, event: unknown): void {
+    this.recorder?.record(type, event);
   }
 
   /** Normaliza y re-emite un evento crudo. Expuesto para poder probar el
@@ -288,6 +300,12 @@ export class TikTokLiveSource extends EventEmitter {
     events.on(WebcastEvent.SHARE, (data) => this.ingest("share", data));
     events.on(WebcastEvent.SUB_NOTIFY, (data) => this.ingest("subNotify", data));
     events.on(WebcastEvent.EMOTE, (data) => this.ingest("emote", data));
+
+    // Todos los mensajes decodificados (también los que la app aún no mapea:
+    // niveles, batallas, ranking…), solo si hay grabadora activa.
+    if (this.recorder) {
+      events.on(ControlEvent.DECODED_DATA, (type: string, event: unknown) => this.recordRaw(type, event));
+    }
 
     events.on(ControlEvent.ERROR, (err) => {
       this.emit("log", {

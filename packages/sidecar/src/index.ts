@@ -1,10 +1,13 @@
+import { join } from "node:path";
 import type { GiftCatalogEntry, LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
+import { createRecorderFromEnv } from "./event-recorder.js";
 import {
   GiftCatalogController,
   GiftCatalogStore,
   defaultGiftCatalogFilePath,
 } from "./gift-catalog.js";
+import { appDataDir } from "./mapping-rules.js";
 import { ModBridge } from "./mod-bridge.js";
 import { registerManualCommand } from "./manual-command.js";
 import {
@@ -107,7 +110,25 @@ server.onChannel("live-event", (payload) => {
 // ---------------------------------------------------------------------------
 const tiktokUsername = process.env.TIKTOK_USERNAME?.trim();
 if (tiktokUsername) {
-  const tiktok = new TikTokLiveSource(tiktokUsername);
+  // Grabación opt-in de TODO lo que llega del LIVE (STREAMTOK_RECORD=1), en un
+  // archivo aparte del catálogo de regalos, para analizar qué datos entrega
+  // TikTok (niveles, batallas, likes…). Ver event-recorder.ts.
+  const recorder = createRecorderFromEnv(process.env, {
+    dir: join(appDataDir(), "recordings"),
+    label: tiktokUsername,
+    // eslint-disable-next-line no-console
+    onLog: (message) => console.log("[recorder]", message),
+  });
+  if (recorder) {
+    // eslint-disable-next-line no-console
+    console.log("[recorder] Grabando eventos crudos en", recorder.filePath);
+    const flushAndExit = () => {
+      recorder.close().finally(() => process.exit(0));
+    };
+    process.once("SIGINT", flushAndExit);
+    process.once("SIGTERM", flushAndExit);
+  }
+  const tiktok = new TikTokLiveSource(tiktokUsername, recorder ?? undefined);
   tiktok.on("log", (entry) => {
     const tag = `[tiktok:${entry.level}]`;
     // eslint-disable-next-line no-console

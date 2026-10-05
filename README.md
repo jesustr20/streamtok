@@ -48,6 +48,34 @@ Para conectar tu LIVE real de TikTok en vez de solo el Simulador:
 TIKTOK_USERNAME=tu_usuario pnpm sidecar
 ```
 
+### Grabar los eventos crudos de un LIVE (opcional)
+
+Para descubrir qué datos entrega TikTok (niveles, donadores, likes, batallas…)
+puedes grabar **todo** lo que llega, sin filtrar, en un archivo aparte del
+catálogo de regalos. Sirve conectado a cualquier LIVE, por ejemplo uno de
+batallas con muchas donaciones:
+
+```bash
+# Git Bash / Linux / macOS
+STREAMTOK_RECORD=1 TIKTOK_USERNAME=usuario_del_live pnpm sidecar
+
+# PowerShell
+$env:STREAMTOK_RECORD="1"; $env:TIKTOK_USERNAME="usuario_del_live"; pnpm sidecar
+```
+
+- Se crea un archivo `.jsonl` por sesión en la carpeta `recordings/` de los
+  datos de la app (la ruta sale en el log: `[recorder] Grabando eventos crudos en …`).
+  Cada línea es `{ "t": <ms>, "type": "WebcastGiftMessage", "event": { … } }`
+  con el mensaje decodificado completo, incluidos los tipos que la app todavía
+  no usa.
+- Al llegar al tope (500 MB por defecto) deja de grabar y avisa; cámbialo con
+  `STREAMTOK_RECORD_MAX_MB`. Un LIVE de batallas puede generar varios GB por hora.
+- Termina con Ctrl+C para que el archivo se cierre completo.
+- Los mensajes incluyen datos públicos de los viewers (handles, nombres, ids,
+  avatares): el archivo queda solo en tu máquina, no lo subas al repo.
+- Mientras grabas, los eventos del LIVE también llegan a tus Eventos
+  configurados: usa un perfil vacío o deja el juego cerrado.
+
 ## Protocolo con el mod (fijo, no se negocia sin ADR)
 
 El comportamiento del mod está descrito en un contrato externo al repo (no
