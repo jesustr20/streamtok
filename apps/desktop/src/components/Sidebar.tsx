@@ -1,4 +1,5 @@
 import type { TiktokConnectionState } from "@streamtok/shared";
+import { useState } from "react";
 import type { ViewId } from "../App";
 import { useTiktokConnection } from "../lib/use-tiktok-connection";
 import type { SidecarClient } from "../lib/ws-client";
@@ -44,9 +45,16 @@ export function Sidebar({
   client: SidecarClient | null;
   onNavigate: (v: ViewId) => void;
 }) {
-  const { conn, lastUsername } = useTiktokConnection(client);
-  const account = conn.username ?? lastUsername;
+  const { conn, account: remembered } = useTiktokConnection(client);
+  // Mientras hay conexión manda lo que reporta el sidecar; si no, la última cuenta recordada.
+  const username = conn.username ?? remembered?.username;
+  const nickname = conn.nickname ?? (conn.username ? undefined : remembered?.nickname);
+  const avatarUrl = conn.avatarUrl ?? (conn.username ? undefined : remembered?.avatarUrl);
   const status = STATUS[conn.status];
+  const displayName = username ? `@${username}` : "Sin cuenta";
+  // Si la foto falla (URL vencida), se recuerda cuál falló para volver a la inicial.
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
+  const showPhoto = !!avatarUrl && failedAvatar !== avatarUrl;
 
   return (
     <aside
@@ -88,47 +96,69 @@ export function Sidebar({
           width: "100%",
           textAlign: "left",
           padding: "10px 12px",
-          borderRadius: 12,
+          borderRadius: 14,
           background: "#17181D",
           border: "1px solid #2A2C33",
           cursor: "pointer",
           color: "inherit",
         }}
       >
-        <div
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: "50%",
-            background: account ? ACCENT : "#23252C",
-            color: "#FFFFFF",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 14,
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
-          {account ? account.charAt(0).toUpperCase() : "?"}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+        <div style={{ position: "relative", width: 40, height: 40, flexShrink: 0 }}>
+          {showPhoto ? (
+            <img
+              src={avatarUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+              onError={() => setFailedAvatar(avatarUrl ?? null)}
+              style={{ width: 40, height: 40, borderRadius: 11, objectFit: "cover", display: "block" }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 11,
+                background: username ? ACCENT : "#23252C",
+                color: "#FFFFFF",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 16,
+                fontWeight: 700,
+              }}
+            >
+              {(username ?? nickname)?.charAt(0).toUpperCase() ?? "?"}
+            </div>
+          )}
           <span
             style={{
-              fontSize: 13,
+              position: "absolute",
+              right: -3,
+              bottom: -3,
+              width: 12,
+              height: 12,
+              borderRadius: "50%",
+              background: status.color,
+              border: "2px solid #17181D",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+          <span
+            title={nickname}
+            style={{
+              fontSize: 13.5,
               fontWeight: 700,
-              color: account ? "#F4F4F5" : "#9A9CA5",
+              color: username ? "#F4F4F5" : "#9A9CA5",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            {account ? `@${account}` : "Sin cuenta"}
+            {displayName}
           </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "#9A9CA5" }}>
-            <span
-              style={{ width: 7, height: 7, borderRadius: "50%", background: status.color, flexShrink: 0 }}
-            />
+          <span style={{ fontSize: 11.5, color: status.color === "#34D399" ? status.color : "#9A9CA5" }}>
             {status.label}
           </span>
         </div>

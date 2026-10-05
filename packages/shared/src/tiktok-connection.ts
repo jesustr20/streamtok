@@ -22,6 +22,10 @@ export const TiktokConnectionStateSchema = z.object({
   status: TiktokConnectionStatusSchema,
   /** LIVE al que se está conectando / conectado (sin @). */
   username: z.string().optional(),
+  /** Nombre visible del dueño del LIVE (si TikTok lo entregó). */
+  nickname: z.string().optional(),
+  /** URL de la foto de perfil del dueño del LIVE (si TikTok la entregó). */
+  avatarUrl: z.string().optional(),
   /** Archivo donde se graban los eventos crudos de esta conexión. */
   recordingPath: z.string().optional(),
   /** Mensajes crudos grabados en esta conexión. */

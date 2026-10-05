@@ -9,6 +9,12 @@ class FakeSource extends EventEmitter implements LiveSource {
   started = false;
   stopped = false;
   failWith: Error | null = null;
+  host: { nickname?: string; avatarUrl?: string } | null = null;
+  hostThrows = false;
+  getHostProfile() {
+    if (this.hostThrows) throw new Error("boom");
+    return this.host;
+  }
   constructor(readonly username: string) {
     super();
   }
@@ -96,6 +102,36 @@ describe("TiktokConnectionController", () => {
     (sources[0] as any).recorder.record("WebcastLikeMessage", { n: 1 });
     expect(recorders[0].records).toEqual([["WebcastLikeMessage", { n: 1 }]]);
     expect(onConnected).toHaveBeenCalledTimes(1);
+  });
+
+  it("incluye nickname y foto del dueño si la fuente los entrega", async () => {
+    const orig = controller as any;
+    orig.deps.createSource = (username: string) => {
+      const s = new FakeSource(username);
+      s.host = { nickname: "Matt Keelan", avatarUrl: "https://cdn/a.jpg" };
+      sources.push(s);
+      return s;
+    };
+    await controller.connect("mattkeelan");
+    expect(controller.getState()).toMatchObject({
+      status: "connected",
+      nickname: "Matt Keelan",
+      avatarUrl: "https://cdn/a.jpg",
+    });
+  });
+
+  it("sin perfil o si getHostProfile falla, igual queda connected (sin nickname/avatar)", async () => {
+    await controller.connect("a");
+    expect(controller.getState().nickname).toBeUndefined();
+    expect(controller.getState().avatarUrl).toBeUndefined();
+    (controller as any).deps.createSource = (username: string) => {
+      const s = new FakeSource(username);
+      s.hostThrows = true;
+      sources.push(s);
+      return s;
+    };
+    await controller.connect("b");
+    expect(controller.getState()).toMatchObject({ status: "connected", username: "b" });
   });
 
   it("username vacío → error sin crear fuente", async () => {
