@@ -1,4 +1,7 @@
+import type { TiktokConnectionState } from "@streamtok/shared";
 import type { ViewId } from "../App";
+import { useTiktokConnection } from "../lib/use-tiktok-connection";
+import type { SidecarClient } from "../lib/ws-client";
 
 type NavItem = {
   id: string;
@@ -25,7 +28,26 @@ const NAV_ITEMS: NavItem[] = [
 
 const ACCENT = "#E23A57";
 
-export function Sidebar({ view, onNavigate }: { view: ViewId; onNavigate: (v: ViewId) => void }) {
+const STATUS: Record<TiktokConnectionState["status"], { color: string; label: string }> = {
+  idle: { color: "#5B5D66", label: "Desconectado" },
+  connecting: { color: "#F5A524", label: "Conectando…" },
+  connected: { color: "#34D399", label: "Conectado" },
+  error: { color: "#E5484D", label: "Desconectado" },
+};
+
+export function Sidebar({
+  view,
+  client,
+  onNavigate,
+}: {
+  view: ViewId;
+  client: SidecarClient | null;
+  onNavigate: (v: ViewId) => void;
+}) {
+  const { conn, lastUsername } = useTiktokConnection(client);
+  const account = conn.username ?? lastUsername;
+  const status = STATUS[conn.status];
+
   return (
     <aside
       style={{
@@ -53,6 +75,64 @@ export function Sidebar({ view, onNavigate }: { view: ViewId; onNavigate: (v: Vi
           StreamTok
         </span>
       </div>
+
+      {/* cuenta de TikTok + estado de la conexión; lleva a Inicio para conectar */}
+      <button
+        type="button"
+        onClick={() => onNavigate("inicio")}
+        title={conn.status === "connected" ? "Conectado al LIVE" : "Ir a Inicio para conectar"}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          width: "100%",
+          textAlign: "left",
+          padding: "10px 12px",
+          borderRadius: 12,
+          background: "#17181D",
+          border: "1px solid #2A2C33",
+          cursor: "pointer",
+          color: "inherit",
+        }}
+      >
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            background: account ? ACCENT : "#23252C",
+            color: "#FFFFFF",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 14,
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {account ? account.charAt(0).toUpperCase() : "?"}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: account ? "#F4F4F5" : "#9A9CA5",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {account ? `@${account}` : "Sin cuenta"}
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "#9A9CA5" }}>
+            <span
+              style={{ width: 7, height: 7, borderRadius: "50%", background: status.color, flexShrink: 0 }}
+            />
+            {status.label}
+          </span>
+        </div>
+      </button>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {NAV_ITEMS.map((item) => {
