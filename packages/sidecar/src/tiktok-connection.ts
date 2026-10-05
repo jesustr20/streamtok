@@ -12,6 +12,8 @@ import type { StreamTokWsServer } from "./ws-server.js";
 export interface LiveSource extends EventEmitter {
   start(): Promise<void>;
   stop(): Promise<void>;
+  /** Nombre y foto del dueño del LIVE, si la fuente puede darlos. */
+  getHostProfile?(): { nickname?: string; avatarUrl?: string } | null;
 }
 
 /** Lo que el controlador necesita de `EventRecorder`. */
@@ -121,7 +123,20 @@ export class TiktokConnectionController extends EventEmitter {
     }
     if (!current()) return;
     this.deps.onConnected();
-    this.setState({ status: "connected", username, recordingPath: recorder.filePath, recordedEvents: count });
+    let host: { nickname?: string; avatarUrl?: string } | null = null;
+    try {
+      host = source.getHostProfile?.() ?? null;
+    } catch {
+      host = null; // el perfil es decorativo: nunca debe tumbar la conexión
+    }
+    this.setState({
+      status: "connected",
+      username,
+      ...(host?.nickname ? { nickname: host.nickname } : {}),
+      ...(host?.avatarUrl ? { avatarUrl: host.avatarUrl } : {}),
+      recordingPath: recorder.filePath,
+      recordedEvents: count,
+    });
     this.timer = setInterval(() => {
       if (this.state.recordedEvents !== this.lastBroadcastCount) this.broadcastState();
     }, STATE_REFRESH_MS);

@@ -179,6 +179,35 @@ export function extractGiftCatalogEntry(raw: unknown): GiftCatalogEntry | null {
   return { id, name, imageUrl, cost };
 }
 
+export interface HostProfile {
+  nickname?: string;
+  avatarUrl?: string;
+}
+
+/**
+ * Saca nombre y foto del dueño del LIVE desde `roomInfo` (respuesta cruda de
+ * TikTok). La forma exacta no está garantizada, así que se prueban las
+ * variantes conocidas (snake_case / camelCase, con o sin `data`) y se devuelve
+ * null si no hay nada utilizable.
+ */
+export function extractHostProfile(roomInfo: unknown): HostProfile | null {
+  const root = asRecord(roomInfo);
+  const owner = asRecord(asRecord(root.data).owner);
+  const fallbackOwner = asRecord(root.owner);
+  const o = Object.keys(owner).length > 0 ? owner : fallbackOwner;
+  const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : undefined);
+  const nickname = str(o.nickname) ?? str(o.display_id) ?? str(o.displayId);
+  let avatarUrl: string | undefined;
+  for (const key of ["avatar_thumb", "avatarThumb", "avatar_medium", "avatarMedium", "avatar_large", "avatarLarge"]) {
+    const img = asRecord(o[key]);
+    const list = img.url_list ?? img.urlList;
+    avatarUrl = Array.isArray(list) ? list.find((u): u is string => typeof u === "string" && u.length > 0) : undefined;
+    if (avatarUrl) break;
+  }
+  if (!nickname && !avatarUrl) return null;
+  return { ...(nickname ? { nickname } : {}), ...(avatarUrl ? { avatarUrl } : {}) };
+}
+
 function mapUserEvent(
   event: "like" | "join" | "follow" | "share" | "subscribe",
   raw: RawRecord,
@@ -326,6 +355,21 @@ export class TikTokLiveSource extends EventEmitter {
     await connection.connect();
     this.emit("connected");
     this.emit("log", { level: "info", message: `Conectado al LIVE de TikTok (@${this.username})` });
+  }
+
+  /** Perfil del dueño del LIVE según `roomInfo`; null si no está disponible. */
+  getHostProfile(): HostProfile | null {
+    const info = (this.connection as unknown as { roomInfo?: unknown } | null)?.roomInfo;
+    const profile = extractHostProfile(info);
+    if (!profile) {
+      const keys = Object.keys(asRecord(info));
+      const dataKeys = Object.keys(asRecord(asRecord(info).data));
+      this.emit("log", {
+        level: "warn",
+        message: `No se encontró el perfil del dueño en roomInfo (claves: ${keys.join(",") || "ninguna"}; data: ${dataKeys.join(",") || "ninguna"})`,
+      });
+    }
+    return profile;
   }
 
   async stop(): Promise<void> {

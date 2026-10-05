@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EmoteScene } from "tiktok-live-connector";
-import { extractGiftCatalogEntry, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
+import { extractGiftCatalogEntry, extractHostProfile, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
 
 describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", () => {
   it("normaliza un comentario plano a un LiveEvent válido", () => {
@@ -235,5 +235,48 @@ describe("extractGiftCatalogEntry", () => {
     expect(
       extractGiftCatalogEntry({ gift: { id: "1", name: "X", diamondCount: 1 } }),
     ).toBeNull(); // sin imagen (ni image ni icon)
+  });
+});
+
+describe("extractHostProfile", () => {
+  it("lee nombre y foto del dueño en roomInfo.data.owner (formato snake_case de TikTok)", () => {
+    const info = {
+      data: {
+        status: 2,
+        owner: {
+          nickname: "Matt Keelan",
+          display_id: "mattkeelan",
+          avatar_thumb: { url_list: ["https://cdn/a-thumb.jpg", "https://cdn/b.jpg"] },
+        },
+      },
+    };
+    expect(extractHostProfile(info)).toEqual({ nickname: "Matt Keelan", avatarUrl: "https://cdn/a-thumb.jpg" });
+  });
+
+  it("acepta roomInfo.owner y claves camelCase (urlList)", () => {
+    const info = { owner: { nickname: "Ana", avatarMedium: { urlList: ["https://cdn/m.jpg"] } } };
+    expect(extractHostProfile(info)).toEqual({ nickname: "Ana", avatarUrl: "https://cdn/m.jpg" });
+  });
+
+  it("prefiere la foto pequeña pero cae a otra si falta", () => {
+    const info = { data: { owner: { nickname: "X", avatar_large: { url_list: ["https://cdn/l.jpg"] } } } };
+    expect(extractHostProfile(info)).toEqual({ nickname: "X", avatarUrl: "https://cdn/l.jpg" });
+  });
+
+  it("solo nombre o solo foto también sirven", () => {
+    expect(extractHostProfile({ data: { owner: { nickname: "Solo" } } })).toEqual({ nickname: "Solo" });
+    expect(extractHostProfile({ data: { owner: { avatar_thumb: { url_list: ["https://cdn/x.jpg"] } } } })).toEqual({
+      avatarUrl: "https://cdn/x.jpg",
+    });
+  });
+
+  it("devuelve null con datos ausentes o de forma inesperada", () => {
+    for (const bad of [null, undefined, "x", 3, {}, { data: {} }, { data: { owner: {} } }, { data: { owner: { nickname: "" } } }]) {
+      expect(extractHostProfile(bad)).toBeNull();
+    }
+  });
+
+  it("ignora URLs que no son strings", () => {
+    expect(extractHostProfile({ data: { owner: { avatar_thumb: { url_list: [null, 5] } } } })).toBeNull();
   });
 });

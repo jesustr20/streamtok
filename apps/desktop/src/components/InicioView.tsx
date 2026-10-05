@@ -1,5 +1,6 @@
-import type { TiktokConnectionMessage, TiktokConnectionState } from "@streamtok/shared";
+import type { TiktokConnectionState } from "@streamtok/shared";
 import { useEffect, useState } from "react";
+import { useTiktokConnection } from "../lib/use-tiktok-connection";
 import type { SidecarClient } from "../lib/ws-client";
 
 const ACCENT = "#E23A57";
@@ -26,22 +27,13 @@ export function InicioView({
 }) {
   const [tab, setTab] = useState<Tab>("gratuita");
   const [username, setUsername] = useState("");
-  const [conn, setConn] = useState<TiktokConnectionState>({ status: "idle", recordedEvents: 0 });
+  const { conn, lastUsername } = useTiktokConnection(client);
 
+  // Prellena el usuario: el de la conexión activa o, si no hay, el último usado.
   useEffect(() => {
-    if (!client) return;
-    const off = client.on((evt) => {
-      if (evt.channel !== "tiktok-connection") return;
-      const msg = evt.payload as TiktokConnectionMessage;
-      if (msg.kind !== "state") return;
-      setConn(msg.state);
-      // Si la app se abre con una conexión ya activa, muestra su usuario.
-      if (msg.state.username) setUsername((current) => current || msg.state.username!);
-    });
-    // Snapshot bajo demanda (el estado inicial puede haber llegado antes de montar).
-    client.send("tiktok-connection", { kind: "get-state" });
-    return off;
-  }, [client]);
+    const known = conn.username ?? lastUsername;
+    if (known) setUsername((current) => current || known);
+  }, [conn.username, lastUsername]);
 
   const busy = conn.status === "connecting";
   const connected = conn.status === "connected";

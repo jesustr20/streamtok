@@ -68,7 +68,7 @@ export function App() {
         fontFamily: "'Manrope', sans-serif",
       }}
     >
-      <Sidebar view={view} onNavigate={setView} />
+      <Sidebar view={view} client={client} onNavigate={setView} />
 
       <main
         style={{
