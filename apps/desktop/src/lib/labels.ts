@@ -32,6 +32,8 @@ export const PORQUE_LABELS: Record<EventoPorque, string> = {
   emoteSuscriptor: "Enviando un emote de suscriptor",
   stickerFanClub: "Enviando un sticker del club de fans",
   compraTiktokShop: "Comprar un producto en TikTok Shop",
+  subeNivelFan: "Subiendo de nivel de fan (club de fans)",
+  subeNivelDonador: "Subiendo de nivel de donador",
 };
 
 export const PORQUE_OPTIONS: { value: EventoPorque; label: string }[] = [
@@ -48,6 +50,8 @@ export const PORQUE_OPTIONS: { value: EventoPorque; label: string }[] = [
   { value: "emoteSuscriptor", label: PORQUE_LABELS.emoteSuscriptor },
   { value: "stickerFanClub", label: PORQUE_LABELS.stickerFanClub },
   { value: "compraTiktokShop", label: PORQUE_LABELS.compraTiktokShop },
+  { value: "subeNivelFan", label: PORQUE_LABELS.subeNivelFan },
+  { value: "subeNivelDonador", label: PORQUE_LABELS.subeNivelDonador },
 ];
 
 /**

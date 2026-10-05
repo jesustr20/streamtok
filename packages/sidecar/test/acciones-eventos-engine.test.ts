@@ -432,3 +432,75 @@ describe("computeGifterRank", () => {
     expect(computeGifterRank(new Map([["a", 100]]), "b")).toBeNull();
   });
 });
+
+describe("AccionesEventosEngine — niveles (ADR 0007)", () => {
+  async function run(ev: Partial<Evento>, live: LiveEvent) {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento(ev)]);
+    await engine.handleEvent(live);
+    return bridge.calls.length;
+  }
+
+  it("subeNivelFan dispara con fanLevelUp (nivelMinimo por defecto 1)", async () => {
+    const live: LiveEvent = { event: "fanLevelUp", username: "@ana", previousLevel: 1, newLevel: 2, timestamp: 0 };
+    expect(await run({ porque: "subeNivelFan" }, live)).toBe(1);
+  });
+
+  it("subeNivelFan no dispara con donorLevelUp ni con otros eventos", async () => {
+    expect(await run({ porque: "subeNivelFan" }, { event: "donorLevelUp", username: "@ana", newLevel: 8, timestamp: 0 })).toBe(0);
+    expect(await run({ porque: "subeNivelFan" }, followEvent())).toBe(0);
+  });
+
+  it("subeNivelDonador dispara con donorLevelUp y respeta nivelMinimo", async () => {
+    const up = (newLevel: number): LiveEvent => ({ event: "donorLevelUp", username: "@ana", previousLevel: newLevel - 1, newLevel, timestamp: 0 });
+    expect(await run({ porque: "subeNivelDonador" }, up(2))).toBe(1);
+    expect(await run({ porque: "subeNivelDonador", nivelMinimo: 10 }, up(9))).toBe(0);
+    expect(await run({ porque: "subeNivelDonador", nivelMinimo: 10 }, up(10))).toBe(1);
+  });
+
+  it("subeNivel sin newLevel (dato ausente) con nivelMinimo > 1 no dispara", async () => {
+    expect(await run({ porque: "subeNivelDonador", nivelMinimo: 5 }, { event: "donorLevelUp", username: "@ana", timestamp: 0 })).toBe(0);
+  });
+
+  it("nivelEquipoRequerido se compara con fanLevel en unirse", async () => {
+    const join = (fanLevel?: number): LiveEvent => ({ event: "join", username: "@ana", fanLevel, timestamp: 0 });
+    const ev = { porque: "unirse", nivelEquipoRequerido: 5 } as const;
+    expect(await run(ev, join(6))).toBe(1);
+    expect(await run(ev, join(5))).toBe(1);
+    expect(await run(ev, join(3))).toBe(0);
+    expect(await run(ev, join(undefined))).toBe(0); // desconocido = no coincide
+  });
+
+  it("nivelEquipoRequerido 0 (o ausente) no filtra: se comporta como antes", async () => {
+    const join: LiveEvent = { event: "join", username: "@ana", timestamp: 0 };
+    expect(await run({ porque: "unirse", nivelEquipoRequerido: 0 }, join)).toBe(1);
+    expect(await run({ porque: "unirse" }, join)).toBe(1);
+  });
+
+  it("nivelEquipoRequerido también filtra comandos", async () => {
+    const cmd = (fanLevel?: number): LiveEvent => ({ event: "comment", username: "@ana", text: "!drop", fanLevel, timestamp: 0 });
+    const ev = { porque: "comando", comando: "!drop", nivelEquipoRequerido: 2 } as const;
+    expect(await run(ev, cmd(2))).toBe(1);
+    expect(await run(ev, cmd(1))).toBe(0);
+  });
+
+  it("donanteTop usa topGifterRank de TikTok cuando viene", async () => {
+    const chat = (topGifterRank?: number): LiveEvent => ({ event: "comment", username: "@ana", text: "hola", topGifterRank, timestamp: 0 });
+    const ev = { quien: "donanteTop", numeroDonantesTop: 3, porque: "chat" } as const;
+    expect(await run(ev, chat(2))).toBe(1);
+    expect(await run(ev, chat(3))).toBe(1);
+    expect(await run(ev, chat(5))).toBe(0);
+  });
+
+  it("donanteTop sin topGifterRank sigue usando el ranking por monedas de la sesión", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ quien: "donanteTop", numeroDonantesTop: 1, porque: "chat" })]);
+    await engine.handleEvent(giftEvent("@rico", 500));
+    await engine.handleEvent({ event: "comment", username: "@rico", text: "hola", timestamp: 0 });
+    expect(bridge.calls).toHaveLength(1);
+  });
+});

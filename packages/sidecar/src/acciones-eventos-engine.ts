@@ -38,6 +38,8 @@ export const PORQUE_LABELS: Record<EventoPorque, string> = {
   emoteSuscriptor: "emote suscriptor",
   stickerFanClub: "sticker fan club",
   compraTiktokShop: "compra TikTok Shop",
+  subeNivelFan: "sube de nivel de fan",
+  subeNivelDonador: "sube de nivel de donador",
 };
 
 function normalizeHandle(value: string): string {
@@ -133,6 +135,9 @@ export class AccionesEventosEngine extends EventEmitter {
       case "donanteTop": {
         const n = ev.numeroDonantesTop ?? 1;
         if (n <= 0) return false;
+        // Si TikTok reporta el puesto del usuario en el ranking de la sala, es
+        // más fiable que el acumulado propio (que solo ve desde que conectamos).
+        if (live.topGifterRank !== undefined) return live.topGifterRank <= n;
         const rank = computeGifterRank(this.gifterCoins, live.username);
         return rank !== null && rank <= n;
       }
@@ -182,11 +187,25 @@ export class AccionesEventosEngine extends EventEmitter {
         return !!ev.stickerId && live.emoteId === ev.stickerId;
       case "compraTiktokShop":
         return false; // oecLiveShopping no es una compra confirmada (ADR 0005)
+      case "subeNivelFan":
+        return live.event === "fanLevelUp" && (live.newLevel ?? 0) >= (ev.nivelMinimo ?? 1);
+      case "subeNivelDonador":
+        return live.event === "donorLevelUp" && (live.newLevel ?? 0) >= (ev.nivelMinimo ?? 1);
     }
   }
 
+  /** `nivelEquipoRequerido` = nivel del Fan Club mínimo (ADR 0007). Solo aplica a
+   * unirse / primera actividad / comando; con 0 (o ausente) no filtra, y un nivel
+   * desconocido no alcanza un mínimo > 0. */
+  private fanLevelOk(ev: Evento, live: LiveEvent): boolean {
+    if (ev.porque !== "unirse" && ev.porque !== "primeraActividad" && ev.porque !== "comando") return true;
+    const required = ev.nivelEquipoRequerido ?? 0;
+    if (required <= 0) return true;
+    return (live.fanLevel ?? 0) >= required;
+  }
+
   private matchesEvento(ev: Evento, live: LiveEvent): boolean {
-    return this.quienMatches(ev, live) && this.porqueMatches(ev, live);
+    return this.quienMatches(ev, live) && this.porqueMatches(ev, live) && this.fanLevelOk(ev, live);
   }
 
   /** Se llama por cada LiveEvent normalizado que llega del sidecar de TikTok. */

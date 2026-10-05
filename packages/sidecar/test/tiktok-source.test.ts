@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EmoteScene } from "tiktok-live-connector";
-import { extractGiftCatalogEntry, extractHostProfile, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
+import { extractGiftCatalogEntry, extractHostProfile, extractLevels, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
 
 describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", () => {
   it("normaliza un comentario plano a un LiveEvent válido", () => {
@@ -300,5 +300,107 @@ describe("extractHostProfile", () => {
 
   it("ignora URLs que no son strings", () => {
     expect(extractHostProfile({ data: { owner: { avatar_thumb: { url_list: [null, 5] } } } })).toBeNull();
+  });
+});
+
+function badge(sceneType: number, level: string, extra: Record<string, unknown> = {}) {
+  return { sceneType, privilegeLogExtra: { level }, combine: { str: level }, ...extra };
+}
+
+describe("extractLevels (insignias de user.badgeList, ADR 0007)", () => {
+  it("nivel de donador (sceneType 8) y de fan club (sceneType 10)", () => {
+    const raw = { user: { badgeList: [badge(8, "6"), badge(10, "33", { combine: { str: "Matt" } })] } };
+    expect(extractLevels(raw)).toEqual({ userLevel: 6, fanLevel: 33 });
+  });
+
+  it("ranking de donantes (sceneType 6) desde el texto 'No. 3'", () => {
+    const raw = { user: { badgeList: [{ sceneType: 6, combine: { text: { defaultPattern: "No. 3" } } }] } };
+    expect(extractLevels(raw)).toEqual({ topGifterRank: 3 });
+  });
+
+  it("ignora nivel 0, textos sin número y otras insignias (moderador, new gifter)", () => {
+    const raw = {
+      user: {
+        badgeList: [badge(8, "0"), badge(1, "0"), badge(2, "0"), { sceneType: 6, combine: { text: { defaultPattern: "Top" } } }],
+      },
+    };
+    expect(extractLevels(raw)).toEqual({});
+  });
+
+  it("sin user, sin badgeList o con formas raras devuelve {}", () => {
+    for (const bad of [null, undefined, {}, { user: {} }, { user: { badgeList: "x" } }, { user: { badgeList: [null, 3] } }]) {
+      expect(extractLevels(bad)).toEqual({});
+    }
+  });
+
+  it("cae a combine.str si privilegeLogExtra.level falta", () => {
+    expect(extractLevels({ user: { badgeList: [{ sceneType: 8, combine: { str: "12" } }] } })).toEqual({ userLevel: 12 });
+  });
+});
+
+describe("mapTiktokEvent adjunta los niveles del usuario", () => {
+  it("chat con insignias lleva userLevel y fanLevel", () => {
+    const evt = mapTiktokEvent("chat", {
+      user: { displayId: "fan", nickname: "Fan", badgeList: [badge(8, "11"), badge(10, "3")] },
+      content: "hola",
+    });
+    expect(evt).toMatchObject({ event: "comment", userLevel: 11, fanLevel: 3 });
+  });
+
+  it("sin insignias no inventa niveles", () => {
+    const evt = mapTiktokEvent("chat", { user: { displayId: "fan", nickname: "Fan" }, content: "hola" });
+    expect(evt?.userLevel).toBeUndefined();
+    expect(evt?.fanLevel).toBeUndefined();
+  });
+});
+
+describe("TikTokLiveSource detecta subidas de nivel (ADR 0007)", () => {
+  function chat(level: string, fan?: string) {
+    return {
+      user: {
+        displayId: "ana",
+        nickname: "Ana",
+        badgeList: [badge(8, level), ...(fan ? [badge(10, fan)] : [])],
+      },
+      content: "hola",
+    };
+  }
+
+  it("emite donorLevelUp al ver el nivel aumentar entre dos mensajes; el primero no", () => {
+    const src = new TikTokLiveSource("host");
+    const events: any[] = [];
+    src.on("event", (e) => events.push(e));
+
+    src.ingest("chat", chat("6"));
+    expect(events.map((e) => e.event)).toEqual(["comment"]);
+
+    src.ingest("chat", chat("7"));
+    expect(events.map((e) => e.event)).toEqual(["comment", "comment", "donorLevelUp"]);
+    expect(events[2]).toMatchObject({ username: "@ana", nickname: "Ana", previousLevel: 6, newLevel: 7, userLevel: 7 });
+  });
+
+  it("emite fanLevelUp con el nivel de fan", () => {
+    const src = new TikTokLiveSource("host");
+    const events: any[] = [];
+    src.on("event", (e) => events.push(e));
+    src.ingest("chat", chat("6", "1"));
+    src.ingest("chat", chat("6", "2"));
+    expect(events.at(-1)).toMatchObject({ event: "fanLevelUp", previousLevel: 1, newLevel: 2, fanLevel: 2 });
+  });
+
+  it("un regalo en mitad de combo (descartado por el mapeo) igual actualiza el nivel", () => {
+    const src = new TikTokLiveSource("host");
+    const events: any[] = [];
+    src.on("event", (e) => events.push(e));
+    const gift = (level: string, repeatEnd: boolean) => ({
+      user: { displayId: "ana", nickname: "Ana", badgeList: [badge(8, level)] },
+      giftId: 1,
+      gift: { name: "Rose", id: "1" },
+      repeatEnd,
+      repeatCount: 1,
+    });
+    src.ingest("chat", chat("6"));
+    src.ingest("gift", gift("7", false));
+    expect(events.some((e) => e.event === "donorLevelUp" && e.newLevel === 7)).toBe(true);
   });
 });

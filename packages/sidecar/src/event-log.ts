@@ -25,6 +25,8 @@ export const EVENT_LABELS: Record<LiveEventTypeT, string> = {
   join: "entrada al live",
   subscribe: "suscripción",
   emote: "emote/sticker",
+  fanLevelUp: "subida de nivel de fan",
+  donorLevelUp: "subida de nivel de donador",
 };
 
 /**
