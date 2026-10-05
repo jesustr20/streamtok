@@ -91,6 +91,28 @@ describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", 
     });
   });
 
+  it("detecta seguidor/suscriptor también por userIdentity del mensaje (user.isFollower llega en false)", () => {
+    // Forma real vista en una grabación: el usuario sigue al streamer pero
+    // `user.isFollower` es false; la señal está en `userIdentity`.
+    const evt = mapTiktokEvent("chat", {
+      user: { displayId: "fan", nickname: "Fan", isFollower: false, isSubscribe: false },
+      userIdentity: { isFollowerOfAnchor: true, isSubscriberOfAnchor: true },
+      content: "hola",
+    });
+
+    expect(evt).toMatchObject({ isFollower: true, isSubscriber: true });
+  });
+
+  it("userIdentity en false no marca al usuario como seguidor", () => {
+    const evt = mapTiktokEvent("chat", {
+      user: { displayId: "fan", nickname: "Fan" },
+      userIdentity: { isFollowerOfAnchor: false },
+      content: "hola",
+    });
+
+    expect(evt?.isFollower).toBeUndefined();
+  });
+
   it("no inventa flags de viewer que la fuente no reporta", () => {
     const evt = mapTiktokEvent("chat", {
       user: { displayId: "fan", nickname: "Fan" },
