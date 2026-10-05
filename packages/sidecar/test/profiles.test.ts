@@ -188,6 +188,58 @@ describe("ProfilesController", () => {
     ws.close();
   });
 
+  it("crear un perfil lo activa y deja el motor limpio (empezar de cero)", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    seed(profilesPath, {
+      profiles: [{ id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] }],
+      activeProfileId: "p1",
+    });
+    server = new StreamTokWsServer(0);
+    const engine = new AccionesEventosEngine(new ModBridge(server));
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), engine, () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+    expect(engine.getAcciones()).toEqual([accion1]);
+
+    const accionesAfter = once(ws, "acciones");
+    const eventosAfter = once(ws, "eventos");
+    const stateAfter = once(ws, "profiles");
+    ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "create", name: "Nuevo" } }));
+    const st = await stateAfter;
+
+    const created = st.profiles.find((p: any) => p.name === "Nuevo");
+    expect(created).toBeDefined();
+    expect(st.activeProfileId).toBe(created.id);
+    // El motor ya trabaja con el perfil nuevo (vacío), no con el anterior.
+    expect(engine.getAcciones()).toEqual([]);
+    expect(engine.getEventos()).toEqual([]);
+    // Y la UI recibe las listas vacías del perfil nuevo.
+    expect((await accionesAfter).acciones).toEqual([]);
+    expect((await eventosAfter).eventos).toEqual([]);
+
+    ws.close();
+  });
+
+  it("duplicar un perfil NO cambia el perfil activo", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    seed(profilesPath, {
+      profiles: [{ id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] }],
+      activeProfileId: "p1",
+    });
+    server = new StreamTokWsServer(0);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    const stateAfter = once(ws, "profiles");
+    ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "duplicate", id: "p1" } }));
+    const st = await stateAfter;
+    expect(st.profiles).toHaveLength(2);
+    expect(st.activeProfileId).toBe("p1");
+
+    ws.close();
+  });
+
   it("get-state responde con el estado actual (snapshot bajo demanda)", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {
@@ -208,6 +260,34 @@ describe("ProfilesController", () => {
     expect(st.kind).toBe("state");
     expect(st.profiles).toHaveLength(2);
     expect(st.activeProfileId).toBe("p1");
+
+    ws.close();
+  });
+
+  it("get-state también devuelve las acciones y eventos del perfil activo (UI que se monta tarde)", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    seed(profilesPath, {
+      profiles: [
+        { id: "p1", name: "Uno", acciones: [accion1], eventos: [evento1] },
+        { id: "p2", name: "Dos", acciones: [], eventos: [] },
+      ],
+      activeProfileId: "p1",
+    });
+    server = new StreamTokWsServer(0);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    // La pantalla de Juegos se monta después de la conexión inicial y se perdió
+    // los `update` de acciones/eventos: pide el snapshot por `profiles`.
+    const acciones = once(ws, "acciones");
+    const eventos = once(ws, "eventos");
+    const state = once(ws, "profiles");
+    ws.send(JSON.stringify({ channel: "profiles", payload: { kind: "get-state" } }));
+
+    expect((await state).activeProfileId).toBe("p1");
+    expect(await acciones).toMatchObject({ kind: "update", acciones: [{ id: "a1" }] });
+    expect(await eventos).toMatchObject({ kind: "update", eventos: [{ id: "e1" }] });
 
     ws.close();
   });

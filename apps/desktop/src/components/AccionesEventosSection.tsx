@@ -87,6 +87,11 @@ export function AccionesEventosSection({
         else if (msg.kind === "error") setError(msg.message);
       }
     });
+    // Snapshot bajo demanda: si esta sección se monta después de la conexión
+    // inicial (el usuario venía de Inicio), pide el estado actual del perfil
+    // activo: acciones y eventos no tienen `get-state` propio, llegan con el de
+    // `profiles`.
+    client.send("profiles", { kind: "get-state" });
     return off;
   }, [client]);
 

@@ -56,7 +56,7 @@ export function InicioView({
 
   const tabHint =
     tab === "gratuita"
-      ? 'Usa el nivel gratuito de la comunidad (Euler Stream) para firmar la conexión al LIVE. Puede dar límite de reintentos en horas pico — si te pasa seguido, cambia a la pestaña "Con API key propia".'
+      ? 'Usa el nivel gratuito de la comunidad (Euler Stream) para firmar la conexión al LIVE. Puede dar límite de reintentos en horas pico (más adelante podrás usar tu propia API key).'
       : "Usa tu propia API key de Euler Stream para firmar la conexión al LIVE. Recomendado si haces shows largos o en horas pico.";
 
   return (
@@ -95,12 +95,15 @@ export function InicioView({
           >
             Conexión gratuita
           </button>
+          {/* Todavía no se envía la clave al sidecar: todas las conexiones usan el
+              nivel gratuito. Se habilita cuando se implemente (ver pendientes). */}
           <button
             type="button"
-            onClick={() => setTab("apiKey")}
-            style={tabStyle(tab === "apiKey")}
+            disabled
+            title="Próximamente: usar tu propia clave de firma de Euler Stream"
+            style={{ ...tabStyle(false), cursor: "default", opacity: 0.55 }}
           >
-            Con API key propia
+            Con API key propia · Próximamente
           </button>
         </div>
 
@@ -168,7 +171,7 @@ export function InicioView({
               >
                 <input
                   type="text"
-                  placeholder={tab === "apiKey" ? "tu_api_key" : "Solo en la pestaña 'Con API key propia'"}
+                  placeholder={tab === "apiKey" ? "tu_api_key" : "Próximamente"}
                   disabled={tab !== "apiKey"}
                   style={{
                     flexGrow: 1,

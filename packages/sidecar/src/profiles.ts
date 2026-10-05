@@ -350,7 +350,12 @@ export class ProfilesController extends EventEmitter {
       case "get-state":
         // Snapshot bajo demanda: una UI que se monta después de la conexión
         // inicial pide el estado actual (no lo recibió en `client-connected`).
+        // Incluye las acciones y eventos del perfil activo: las pantallas que
+        // los muestran no tienen un `get-state` propio y, si se montan tarde
+        // (el usuario estaba en Inicio al conectar), se los habrían perdido.
         this.sendStateTo(socket);
+        this.sendAccionesTo(socket);
+        this.sendEventosTo(socket);
         break;
       default:
         // "state"/"error" los emite el sidecar; se ignoran entrantes.
@@ -364,9 +369,18 @@ export class ProfilesController extends EventEmitter {
       this.server.sendTo(socket, "profiles", { kind: "error", message: "El nombre del perfil no puede estar vacío." });
       return;
     }
-    this.file.profiles.push(newProfile(trimmed));
+    // Un perfil nuevo se activa de inmediato: el usuario lo crea para empezar
+    // de cero, así que la UI debe pasar a él (vacío) en vez de quedarse en el
+    // perfil anterior con el nuevo escondido en la lista. Misma secuencia que
+    // `setActive` (motor + log de eventos + broadcast de acciones/eventos).
+    const profile = newProfile(trimmed);
+    this.file.profiles.push(profile);
+    this.file.activeProfileId = profile.id;
+    this.engine.setAcciones(profile.acciones);
+    this.engine.setEventos(profile.eventos);
+    this.resetEventLog();
     this.emit("log", { level: "info", message: `Perfil creado: "${trimmed}"` });
-    this.commit(socket);
+    this.commit(socket, true);
   }
 
   private duplicate(id: string, socket: WebSocket) {

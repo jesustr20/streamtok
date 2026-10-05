@@ -106,7 +106,7 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
 | `profiles` | Perfiles de configuración por mod (crear/duplicar/renombrar/borrar/activar) |
 | `acciones` | Acciones (qué pasa) del perfil activo — ADR 0004 |
 | `eventos` | Eventos (qué lo dispara) del perfil activo — ADR 0004 |
-| `event-log` | Log en vivo (no persistente) de qué disparó o descartó el motor y por qué |
+| `event-log` | Log en vivo (no persistente) de qué disparó o descartó el motor y por qué. El sidecar lo emite, pero la UI ya no lo muestra (se quitó el panel "Eventos y Cola") |
 | `tiktok-connection` | Conectar/desconectar el LIVE de TikTok desde Inicio + estado y grabación |
 
 ## Qué ya funciona
@@ -126,8 +126,6 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
   `CommunityRule` → Acciones/Eventos), idempotente y cubierta por tests
 - **Perfiles de configuración por mod** — varios perfiles nombrados, cada
   uno con sus propias acciones/eventos, solo uno activo a la vez
-- **Panel "Eventos y Cola"** — log en vivo (in-memory, últimas 50 entradas,
-  no persistente) de lo que el motor decidió por cada evento
 - **Editor de parámetros tipado** (`ParamEditor`) — enum→select, bool→switch,
   int→número con presets y min/max — reutilizado en todos los flujos que
   configuran una acción

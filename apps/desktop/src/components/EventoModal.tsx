@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { GiftPicker } from "./GiftPicker";
 import type {
   Accion,
   Evento,
@@ -543,77 +544,6 @@ function AccionCombo({
   );
 }
 
-function GiftPicker({
-  value,
-  gifts,
-  onSelect,
-}: {
-  value: string;
-  gifts: GiftCatalogEntry[];
-  onSelect: (name: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = gifts.find((g) => g.name === value);
-
-  return (
-    <div style={{ position: "relative" }}>
-      <button type="button" onClick={() => setOpen((o) => !o)} style={giftPickerButtonStyle}>
-        {selected ? (
-          <>
-            <img src={selected.imageUrl} alt="" referrerPolicy="no-referrer" style={giftThumbStyle} />
-            <span style={giftPickerLabelStyle}>{selected.name}</span>
-            <span style={giftCostStyle}>{selected.cost} 🪙</span>
-          </>
-        ) : (
-          <span style={{ flex: 1, textAlign: "left", fontSize: 12.5, color: "#5B5D66" }}>
-            Elegir regalo…
-          </span>
-        )}
-        <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>
-      </button>
-
-      {open && (
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 15 }} onClick={() => setOpen(false)} />
-          <div style={giftDropdownStyle}>
-            {gifts.map((g) => {
-              const isSelected = g.name === value;
-              return (
-                <button
-                  key={g.id ?? g.name}
-                  type="button"
-                  onClick={() => {
-                    onSelect(g.name);
-                    setOpen(false);
-                  }}
-                  style={{ ...giftOptionStyle, background: isSelected ? "#1E2027" : "transparent" }}
-                >
-                  <img src={g.imageUrl} alt="" referrerPolicy="no-referrer" style={giftThumbStyle} />
-                  <span
-                    style={{
-                      flex: 1,
-                      textAlign: "left",
-                      fontSize: 12.5,
-                      color: isSelected ? "#F4F4F5" : "#C4C5CC",
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {g.name}
-                  </span>
-                  <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>{g.cost} 🪙</span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 const ACCENT = "#E23A57";
 
 const overlayStyle: React.CSSProperties = {
@@ -883,74 +813,6 @@ const ghostButtonStyle: React.CSSProperties = {
   fontSize: 12.5,
   fontWeight: 700,
   cursor: "pointer",
-};
-
-const giftPickerButtonStyle: React.CSSProperties = {
-  width: "100%",
-  height: 36,
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "0 10px",
-  background: "#0E0F12",
-  border: "1px solid #2A2C33",
-  borderRadius: 8,
-  cursor: "pointer",
-  color: "#F4F4F5",
-  boxSizing: "border-box",
-};
-
-const giftThumbStyle: React.CSSProperties = {
-  width: 20,
-  height: 20,
-  borderRadius: 4,
-  objectFit: "cover",
-  flexShrink: 0,
-};
-
-const giftPickerLabelStyle: React.CSSProperties = {
-  flex: 1,
-  textAlign: "left",
-  fontSize: 12.5,
-  minWidth: 0,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const giftCostStyle: React.CSSProperties = {
-  fontSize: 11.5,
-  color: "#9A9CA5",
-  whiteSpace: "nowrap",
-};
-
-const giftDropdownStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "calc(100% + 4px)",
-  left: 0,
-  right: 0,
-  zIndex: 16,
-  display: "flex",
-  flexDirection: "column",
-  maxHeight: 220,
-  overflowY: "auto",
-  background: "#0E0F12",
-  border: "1px solid #2A2C33",
-  borderRadius: 8,
-  boxShadow: "0 12px 32px #00000080",
-  padding: 4,
-  boxSizing: "border-box",
-};
-
-const giftOptionStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "7px 8px",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
-  textAlign: "left",
 };
 
 const giftEmptyStyle: React.CSSProperties = {

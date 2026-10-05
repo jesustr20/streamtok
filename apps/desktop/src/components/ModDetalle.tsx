@@ -4,7 +4,6 @@ import type { SidecarClient } from "../lib/ws-client";
 import { AccionesEventosSection } from "./AccionesEventosSection";
 import { ConexionAcceso } from "./ConexionAcceso";
 import { ConfigurarEventos } from "./ConfigurarEventos";
-import { EventQueuePanel } from "./EventQueuePanel";
 import { OverlaySection } from "./OverlaySection";
 import { PerfilConfiguracion } from "./PerfilConfiguracion";
 import { SimularEventos } from "./SimularEventos";
@@ -23,7 +22,7 @@ type SectionRef = (typeof JUMPS)[number]["ref"];
 /**
  * Vista de detalle del mod (ModDetalle.dc.html): header con tarjeta partida,
  * accesos rápidos, Conexión y Acceso, Perfil de configuración, Acciones y
- * Eventos, fila de 3 columnas (Simular/Configurar/Eventos y Cola) y Overlay.
+ * Eventos, fila de 2 columnas (Simular/Configurar) y Overlay.
  */
 export function ModDetalle({
   catalog,
@@ -57,6 +56,9 @@ export function ModDetalle({
         if (msg.kind === "update") setEventosCount(msg.eventos.length);
       }
     });
+    // El contador de la cabecera también necesita el estado actual si la
+    // pantalla se monta después de la conexión inicial.
+    client.send("profiles", { kind: "get-state" });
     return off;
   }, [client]);
 
@@ -225,11 +227,10 @@ export function ModDetalle({
         <AccionesEventosSection catalog={catalog} client={client} />
       </div>
 
-      {/* Simular + Configurar + Eventos y Cola */}
+      {/* Simular + Configurar */}
       <div ref={refs.simulador} style={{ display: "flex", gap: 16, alignItems: "stretch" }}>
         <SimularEventos client={client} />
         <ConfigurarEventos />
-        <EventQueuePanel client={client} />
       </div>
 
       {/* Overlay */}
