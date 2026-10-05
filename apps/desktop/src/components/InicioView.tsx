@@ -1,4 +1,6 @@
-import { useState } from "react";
+import type { TiktokConnectionMessage, TiktokConnectionState } from "@streamtok/shared";
+import { useEffect, useState } from "react";
+import type { SidecarClient } from "../lib/ws-client";
 
 const ACCENT = "#E23A57";
 
@@ -10,14 +12,47 @@ type Tab = "gratuita" | "apiKey";
  * campo de API key (deshabilitado en el tab gratuito), botones Conectar/
  * Desconectar y el aviso "¿Se cortó la conexión en pleno show?".
  *
- * La conexión real al LIVE aún no tiene backend (el sidecar arranca la fuente
- * solo con TIKTOK_USERNAME); acá se mantiene la estructura visual completa y
- * un estado local de conexión.
+ * "Conectar" le pide al sidecar (canal WS `tiktok-connection`) que se conecte al
+ * LIVE del usuario. Mientras está conectado, el sidecar graba TODOS los
+ * mensajes crudos del LIVE en un archivo aparte (recordings/), útil para
+ * conectarse a lives de batallas y recopilar datos reales.
  */
-export function InicioView({ onGoJuegos }: { onGoJuegos: () => void }) {
+export function InicioView({
+  client,
+  onGoJuegos,
+}: {
+  client: SidecarClient | null;
+  onGoJuegos: () => void;
+}) {
   const [tab, setTab] = useState<Tab>("gratuita");
   const [username, setUsername] = useState("");
-  const [connected, setConnected] = useState(false);
+  const [conn, setConn] = useState<TiktokConnectionState>({ status: "idle", recordedEvents: 0 });
+
+  useEffect(() => {
+    if (!client) return;
+    const off = client.on((evt) => {
+      if (evt.channel !== "tiktok-connection") return;
+      const msg = evt.payload as TiktokConnectionMessage;
+      if (msg.kind !== "state") return;
+      setConn(msg.state);
+      // Si la app se abre con una conexión ya activa, muestra su usuario.
+      if (msg.state.username) setUsername((current) => current || msg.state.username!);
+    });
+    // Snapshot bajo demanda (el estado inicial puede haber llegado antes de montar).
+    client.send("tiktok-connection", { kind: "get-state" });
+    return off;
+  }, [client]);
+
+  const busy = conn.status === "connecting";
+  const connected = conn.status === "connected";
+  const canConnect = !!client && !busy && username.trim().replace(/^@+/, "") !== "";
+
+  function connect() {
+    client?.send("tiktok-connection", { kind: "connect", username });
+  }
+  function disconnect() {
+    client?.send("tiktok-connection", { kind: "disconnect" });
+  }
 
   const tabHint =
     tab === "gratuita"
@@ -96,6 +131,9 @@ export function InicioView({ onGoJuegos }: { onGoJuegos: () => void }) {
                   placeholder="tu_usuario"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canConnect) connect();
+                  }}
                   style={{
                     flexGrow: 1,
                     background: "transparent",
@@ -151,8 +189,10 @@ export function InicioView({ onGoJuegos }: { onGoJuegos: () => void }) {
           <div style={{ display: "flex", gap: 10 }}>
             <button
               type="button"
-              onClick={() => setConnected(true)}
+              disabled={!canConnect}
+              onClick={connect}
               style={{
+                opacity: canConnect ? 1 : 0.5,
                 padding: "0 24px",
                 height: 44,
                 display: "flex",
@@ -164,14 +204,15 @@ export function InicioView({ onGoJuegos }: { onGoJuegos: () => void }) {
                 fontSize: 13.5,
                 fontWeight: 700,
                 border: "none",
-                cursor: "pointer",
+                cursor: canConnect ? "pointer" : "default",
               }}
             >
-              Conectar
+              {busy ? "Conectando…" : connected ? "Reconectar" : "Conectar"}
             </button>
             <button
               type="button"
-              onClick={() => setConnected(false)}
+              disabled={conn.status === "idle" || !client}
+              onClick={disconnect}
               style={{
                 padding: "0 20px",
                 height: 44,
@@ -192,6 +233,9 @@ export function InicioView({ onGoJuegos }: { onGoJuegos: () => void }) {
           </div>
         </div>
       </div>
+
+      {/* estado de la conexión + grabación */}
+      <ConnectionStatus conn={conn} />
 
       {/* si la conexión falla */}
       <div
@@ -249,4 +293,53 @@ function tabStyle(sel: boolean): React.CSSProperties {
     borderRight: "none",
     cursor: "pointer",
   };
+}
+
+const STATUS_STYLE: Record<TiktokConnectionState["status"], { color: string; label: string }> = {
+  idle: { color: "#5B5D66", label: "Sin conexión" },
+  connecting: { color: "#F5A524", label: "Conectando…" },
+  connected: { color: "#34D399", label: "Conectado" },
+  error: { color: "#E5484D", label: "No se pudo conectar" },
+};
+
+function ConnectionStatus({ conn }: { conn: TiktokConnectionState }) {
+  const { color, label } = STATUS_STYLE[conn.status];
+  const showRecording = conn.recordingPath && (conn.status === "connecting" || conn.status === "connected" || conn.recordedEvents > 0);
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: "16px 18px",
+        background: "#17181D",
+        border: "1px solid #2A2C33",
+        borderRadius: 14,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+        <span style={{ fontSize: 13, fontWeight: 700 }}>
+          {label}
+          {conn.username && conn.status !== "idle" ? ` · @${conn.username}` : ""}
+        </span>
+      </div>
+      {conn.status === "error" && conn.error && (
+        <div style={{ fontSize: 12.5, color: "#F2A0A3", lineHeight: 1.5 }}>{conn.error}</div>
+      )}
+      {showRecording && (
+        <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.6 }}>
+          {conn.status === "connected" ? "Grabando todos los eventos del LIVE" : "Grabación de esta sesión"}
+          {" · "}
+          <strong style={{ color: "#C4C5CC" }}>{conn.recordedEvents.toLocaleString("es")}</strong> mensajes
+          <div style={{ color: "#6B6D76", wordBreak: "break-all" }}>{conn.recordingPath}</div>
+        </div>
+      )}
+      {conn.status === "idle" && (
+        <div style={{ fontSize: 12, color: "#6B6D76" }}>
+          Al conectar, todo lo que llegue del LIVE se guarda además en un archivo aparte para analizarlo después.
+        </div>
+      )}
+    </div>
+  );
 }

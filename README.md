@@ -42,11 +42,45 @@ Con la app de escritorio real (botón de instalar mod, mod de GTA V conectado)
 pnpm desktop     # pnpm tauri dev
 ```
 
-Para conectar tu LIVE real de TikTok en vez de solo el Simulador:
+Para conectar tu LIVE real de TikTok en vez de solo el Simulador: abre la app,
+ve a **Inicio**, escribe el usuario (con o sin `@`) y pulsa **Conectar** (el
+sidecar debe estar corriendo; con `pnpm desktop` ya lo está). Debes estar en
+vivo en TikTok. Alternativa sin UI: `TIKTOK_USERNAME=tu_usuario pnpm sidecar`.
 
-```bash
-TIKTOK_USERNAME=tu_usuario pnpm sidecar
-```
+### Grabación de los eventos crudos del LIVE
+
+Cada vez que te conectas, el sidecar guarda **todo** lo que llega del LIVE, sin
+filtrar (incluye lo que la app todavía no usa: niveles, donadores, batallas,
+ranking, likes…), en un archivo aparte del catálogo de regalos. Sirve para
+conectarte a cualquier LIVE — por ejemplo uno de batallas, con muchas
+donaciones — y recopilar datos reales para decidir después qué se agrega a la app.
+
+- Un archivo `.jsonl` por conexión en la carpeta `recordings/` de los datos de
+  la app. La ruta y el contador de mensajes se ven en **Inicio** mientras
+  estás conectado. Cada línea es
+  `{ "t": <ms>, "type": "WebcastGiftMessage", "event": { … } }` con el mensaje
+  decodificado completo.
+- Para que el archivo no crezca sin control, se **compacta**: se quitan formatos
+  de texto y listas repetidas de URLs de avatar; el primer like/join de cada
+  viewer va completo (y de nuevo si cambian sus insignias o nivel) y los
+  repetidos quedan como una línea mínima con `"ref": "viewer-seen"` (userId,
+  count y total de likes); en comentarios, regalos y follows el bloque `user`
+  (insignias, nivel) se guarda completo la primera vez por viewer y luego queda
+  como `{ "id", "nickname", "seen": true }` (si cambia su nivel o insignias, se
+  vuelve a guardar completo); las copias del mismo usuario dentro del texto a
+  mostrar quedan como `{ "id", "sameAsUser": true }`; los estados que se reenvían iguales (ranking de la
+  sala, batalla, panel de regalos, meta) solo se guardan si cambian
+  (`"ref": "state-unchanged"`). El mensaje en sí (texto del comentario, regalo, etc.) y
+  cualquier tipo desconocido se guardan siempre completos. Con `STREAMTOK_RECORD_FULL=1` se
+  guarda absolutamente todo sin compactar.
+- Se cierra al pulsar **Desconectar**, al terminar el LIVE o al cerrar el sidecar.
+- Tope por archivo: 500 MB por defecto (al llegar deja de grabar y avisa en el
+  log del sidecar); cámbialo con la variable `STREAMTOK_RECORD_MAX_MB`. Un LIVE
+  de batallas puede generar varios GB por hora.
+- Los mensajes incluyen datos públicos de los viewers (handles, nombres, ids,
+  avatares): el archivo queda solo en tu máquina, no lo subas al repo.
+- Mientras estás conectado, los eventos del LIVE también llegan a tus Eventos
+  configurados: usa un perfil vacío o deja el juego cerrado si solo quieres grabar.
 
 ## Protocolo con el mod (fijo, no se negocia sin ADR)
 
@@ -73,6 +107,7 @@ mod, viven en sus propios archivos de `packages/shared`, nunca en
 | `acciones` | Acciones (qué pasa) del perfil activo — ADR 0004 |
 | `eventos` | Eventos (qué lo dispara) del perfil activo — ADR 0004 |
 | `event-log` | Log en vivo (no persistente) de qué disparó o descartó el motor y por qué |
+| `tiktok-connection` | Conectar/desconectar el LIVE de TikTok desde Inicio + estado y grabación |
 
 ## Qué ya funciona
 
@@ -160,12 +195,3 @@ pnpm --filter @streamtok/sidecar exec tsc --noEmit -p .
 pnpm --filter @streamtok/sidecar test
 pnpm --filter @streamtok/desktop exec tsc -p tsconfig.json --noEmit
 ```
-EOF
-
-git add README.md
-git commit -m "docs: actualizar README con el estado real del proyecto (stack, canales WS, features, pendientes)"
-git push -u origin docs-readme-actualizado
-
-gh pr create \
-  --title "docs: actualizar README con el estado real del proyecto" \
-  --body "El README seguía describiendo el scaffold inicial (\"falta conectar tiktok-live-connector\", \"falta persistir reglas\", etc.) — todo eso ya está hecho. Actualizado con: stack completo, tabla de canales WS propios de la app, cómo correr el proyecto (con y sin Windows), qué ya funciona (issues #2 al #17), qué falta, y enlaces a los 3 ADRs."

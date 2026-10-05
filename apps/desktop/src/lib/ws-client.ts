@@ -8,6 +8,7 @@ import type {
   ModAckPayload,
   ModHelloPayload,
   ProfilesMessage,
+  TiktokConnectionMessage,
 } from "@streamtok/shared";
 
 export type SidecarEvent =
@@ -19,6 +20,7 @@ export type SidecarEvent =
   | { channel: "manual-command"; payload: ManualCommandResponse }
   | { channel: "profiles"; payload: ProfilesMessage }
   | { channel: "gift-catalog"; payload: GiftCatalogMessage }
+  | { channel: "tiktok-connection"; payload: TiktokConnectionMessage }
   | { channel: string; payload: unknown };
 
 type Listener = (evt: SidecarEvent) => void;
