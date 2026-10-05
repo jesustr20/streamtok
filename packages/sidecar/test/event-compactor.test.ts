@@ -123,4 +123,77 @@ describe("EventCompactor", () => {
       expect(r.ref).toBeUndefined();
     }
   });
+
+  describe("bloque de usuario repetido", () => {
+    const chat = (u: ReturnType<typeof user>, content: string) => ({
+      type: "WebcastChatMessage",
+      data: { common: { msgId: Math.random() }, user: u, content },
+    });
+
+    it("comentarios: el primero del viewer lleva su usuario completo, los siguientes solo una referencia", () => {
+      const c = new EventCompactor();
+      const first = c.process("WebcastChatMessage", chat(user("1"), "hola")).event as any;
+      expect(first.data.user.badgeList).toBeDefined();
+
+      const second = c.process("WebcastChatMessage", chat(user("1"), "otra vez")).event as any;
+      expect(second.data.content).toBe("otra vez");
+      expect(second.data.user).toEqual({ id: "1", nickname: "n1", seen: true });
+    });
+
+    it("si el viewer cambia de insignias o nivel, el usuario vuelve a guardarse completo", () => {
+      const c = new EventCompactor();
+      c.process("WebcastChatMessage", chat(user("1"), "a"));
+      const changed = c.process("WebcastChatMessage", chat(user("1", { payGrade: { level: 9 } }), "b")).event as any;
+      expect(changed.data.user.payGrade.level).toBe(9);
+      expect(changed.data.user.seen).toBeUndefined();
+    });
+
+    it("regalos y follows también referencian al usuario ya guardado, y el mensaje sigue completo", () => {
+      const c = new EventCompactor();
+      c.process("WebcastChatMessage", chat(user("1"), "x"));
+      const gift = c.process("WebcastGiftMessage", { type: "WebcastGiftMessage", data: { user: user("1"), giftId: 5 } });
+      expect(gift.ref).toBeUndefined();
+      expect((gift.event as any).data.giftId).toBe(5);
+      expect((gift.event as any).data.user.badgeList).toBeDefined(); // otro tipo de mensaje: su propio primer guardado
+      const gift2 = c.process("WebcastGiftMessage", { type: "WebcastGiftMessage", data: { user: user("1"), giftId: 6 } });
+      expect((gift2.event as any).data.user.seen).toBe(true);
+      expect((gift2.event as any).data.giftId).toBe(6);
+    });
+
+    it("un tipo no pisa la firma de otro: like, join, like del mismo viewer → el 2º like sigue compacto", () => {
+      const c = new EventCompactor();
+      const u1 = user("1");
+      const u2 = user("1", { badgeList: [] }); // el join trae un usuario ligeramente distinto
+      c.process("WebcastLikeMessage", like(u1, 1, "1"));
+      c.process("WebcastMemberMessage", { type: "WebcastMemberMessage", data: { user: u2 } });
+      expect(c.process("WebcastLikeMessage", like(u1, 1, "2")).ref).toBe("viewer-seen");
+    });
+  });
+
+  describe("copias del usuario dentro del texto a mostrar", () => {
+    it("userValue.user con el mismo id que data.user se reemplaza por una marca", () => {
+      const c = new EventCompactor();
+      const u = user("5");
+      const out = c.process("WebcastMemberMessage", {
+        type: "WebcastMemberMessage",
+        data: {
+          user: u,
+          common: { displayText: { pieces: [{ userValue: { user: u } }] } },
+          anchorDisplayText: { pieces: [{ userValue: { user: u } }] },
+        },
+      }).event as any;
+      expect(out.data.user.nickname).toBe("n5");
+      expect(out.data.common.displayText.pieces[0].userValue.user).toEqual({ id: "5", sameAsUser: true });
+      expect(out.data.anchorDisplayText.pieces[0].userValue.user).toEqual({ id: "5", sameAsUser: true });
+    });
+
+    it("si el usuario de userValue es otra persona, se conserva completo", () => {
+      const c = new EventCompactor();
+      const out = c.process("WebcastChatMessage", {
+        type: "WebcastChatMessage",
+        data: { user: user("1"), common: { displayText: { pieces: [{ userValue: { user: user("2") } }] } } },
+      }).event as any;
+      expect(out.data.common.displayText.pieces[0].userValue.user.nickname).toBe("n2");
+    });
+  });
 });

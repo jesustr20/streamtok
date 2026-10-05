@@ -64,10 +64,14 @@ donaciones — y recopilar datos reales para decidir después qué se agrega a l
   de texto y listas repetidas de URLs de avatar; el primer like/join de cada
   viewer va completo (y de nuevo si cambian sus insignias o nivel) y los
   repetidos quedan como una línea mínima con `"ref": "viewer-seen"` (userId,
-  count y total de likes); los estados que se reenvían iguales (ranking de la
+  count y total de likes); en comentarios, regalos y follows el bloque `user`
+  (insignias, nivel) se guarda completo la primera vez por viewer y luego queda
+  como `{ "id", "nickname", "seen": true }` (si cambia su nivel o insignias, se
+  vuelve a guardar completo); las copias del mismo usuario dentro del texto a
+  mostrar quedan como `{ "id", "sameAsUser": true }`; los estados que se reenvían iguales (ranking de la
   sala, batalla, panel de regalos, meta) solo se guardan si cambian
-  (`"ref": "state-unchanged"`). Comentarios, regalos, follows y cualquier tipo
-  desconocido se guardan siempre completos. Con `STREAMTOK_RECORD_FULL=1` se
+  (`"ref": "state-unchanged"`). El mensaje en sí (texto del comentario, regalo, etc.) y
+  cualquier tipo desconocido se guardan siempre completos. Con `STREAMTOK_RECORD_FULL=1` se
   guarda absolutamente todo sin compactar.
 - Se cierra al pulsar **Desconectar**, al terminar el LIVE o al cerrar el sidecar.
 - Tope por archivo: 500 MB por defecto (al llegar deja de grabar y avisa en el

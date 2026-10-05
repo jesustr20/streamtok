@@ -11,12 +11,17 @@
  *  2. Likes y joins: el primer mensaje de cada viewer (y cada vez que cambian
  *     sus insignias/nivel) va completo; los repetidos se guardan como una línea
  *     mínima (`ref: "viewer-seen"`) con el userId y, en likes, count y total.
- *  3. Estados que se reenvían iguales (ranking de la sala, batalla, panel de
+ *  3. Comentarios, regalos y follows: el bloque `user` (insignias, nivel) se
+ *     guarda completo la primera vez por viewer (y cuando cambia); después queda
+ *     `{ id, nickname, seen: true }`. El mensaje en sí va siempre completo.
+ *  4. Las copias del usuario que TikTok mete dentro del texto a mostrar
+ *     (`userValue.user`) se reemplazan por `{ id, sameAsUser: true }` cuando son
+ *     el mismo viewer que `data.user`.
+ *  5. Estados que se reenvían iguales (ranking de la sala, batalla, panel de
  *     regalos, meta): solo se guardan completos cuando cambian
  *     (`ref: "state-unchanged"` en los repetidos).
  *
- * Todo lo demás (comentarios, regalos, follows, tipos desconocidos…) se guarda
- * completo, y ante cualquier forma inesperada también: nunca se pierde un dato
+ * Todo lo demás (tipos desconocidos…) se guarda completo, y ante cualquier forma inesperada también: nunca se pierde un dato
  * por no entender un mensaje.
  */
 
@@ -79,30 +84,59 @@ const STATE_RULES: Record<string, StateRule> = {
 };
 
 const VIEWER_TYPES = new Set(["WebcastLikeMessage", "WebcastMemberMessage"]);
+/** Mensajes completos cuyo bloque `user` se referencia si ya se guardó. */
+const USER_BLOCK_TYPES = new Set(["WebcastChatMessage", "WebcastSocialMessage", "WebcastGiftMessage"]);
 const USER_VOLATILE = new Set(["followInfo"]);
+
+/** Reemplaza (in situ) las copias de `data.user` que viven dentro de `userValue`. */
+function replaceEmbeddedUserCopies(node: unknown, userId: string): void {
+  if (Array.isArray(node)) {
+    for (const item of node) replaceEmbeddedUserCopies(item, userId);
+    return;
+  }
+  const rec = asRecord(node);
+  if (!rec) return;
+  const userValue = asRecord(rec.userValue);
+  if (userValue && asRecord(userValue.user)?.id === userId) {
+    userValue.user = { id: userId, sameAsUser: true };
+  }
+  for (const v of Object.values(rec)) replaceEmbeddedUserCopies(v, userId);
+}
 
 export class EventCompactor {
   private readonly viewers = new Map<string, string>();
   private readonly states = new Map<string, string>();
+
+  /** true si este viewer ya se guardó con el mismo usuario en este tipo de mensaje; si no, lo registra. */
+  private seenSameViewer(type: string, userId: string, user: Record<string, unknown>): boolean {
+    const key = `${type}|${userId}`;
+    const sig = signature(user, USER_VOLATILE);
+    if (this.viewers.get(key) === sig) return true;
+    this.viewers.set(key, sig);
+    return false;
+  }
 
   process(type: string, event: unknown): CompactResult {
     const slimmed = slim(event);
     const data = asRecord(asRecord(slimmed)?.data);
     if (!data) return { event: slimmed };
 
+    const user = asRecord(data.user);
+    const userId = typeof user?.id === "string" && user.id !== "" ? user.id : null;
+    if (userId) replaceEmbeddedUserCopies(data, userId);
+
     if (VIEWER_TYPES.has(type)) {
-      const user = asRecord(data.user);
-      const userId = user?.id;
-      if (user && typeof userId === "string" && userId !== "") {
-        const sig = signature(user, USER_VOLATILE);
-        if (this.viewers.get(userId) === sig) {
-          return {
-            ref: "viewer-seen",
-            event: type === "WebcastLikeMessage" ? { userId, count: data.count, total: data.total } : { userId },
-          };
-        }
-        this.viewers.set(userId, sig);
+      if (user && userId && this.seenSameViewer(type, userId, user)) {
+        return {
+          ref: "viewer-seen",
+          event: type === "WebcastLikeMessage" ? { userId, count: data.count, total: data.total } : { userId },
+        };
       }
+      return { event: slimmed };
+    }
+
+    if (USER_BLOCK_TYPES.has(type) && user && userId && this.seenSameViewer(type, userId, user)) {
+      data.user = { id: userId, nickname: user.nickname, seen: true };
       return { event: slimmed };
     }
 
