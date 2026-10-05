@@ -4,6 +4,8 @@ import type {
   AccionesMessage,
   Evento,
   EventosMessage,
+  GiftCatalogEntry,
+  GiftCatalogMessage,
   ModHelloPayload,
 } from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
@@ -36,10 +38,81 @@ function eventoAccionesIds(e: Evento): string[] {
   return [...e.accionesTodas, ...e.accionesAleatorias];
 }
 
-function eventoSearchText(e: Evento, acciones: Accion[]): string {
+/**
+ * Texto/estructura de la columna "Trigger": qué dato concreto dispara el evento
+ * (el regalo con imagen/nombre/coins, el comando, el mínimo de likes, etc.).
+ */
+type TriggerInfo =
+  | { kind: "gift"; name: string; cost?: number; imageUrl?: string; id?: string }
+  | { kind: "text"; text: string }
+  | { kind: "none" };
+
+function triggerFor(e: Evento, gifts: GiftCatalogEntry[]): TriggerInfo {
+  switch (e.porque) {
+    case "regaloEspecifico": {
+      const g = gifts.find((x) => (e.giftId && x.id === e.giftId) || (e.giftName && x.name === e.giftName));
+      return {
+        kind: "gift",
+        name: g?.name ?? e.giftName ?? `ID ${e.giftId}`,
+        cost: g?.cost,
+        imageUrl: g?.imageUrl,
+        id: g?.id ?? e.giftId,
+      };
+    }
+    case "regaloValorMinimo":
+      return { kind: "text", text: `≥ ${e.valorMinimoMonedas ?? 1} coins` };
+    case "comando":
+      return e.comando ? { kind: "text", text: e.comando } : { kind: "none" };
+    case "likes":
+      return { kind: "text", text: `${e.cantidadMinimaLikes ?? 1} likes` };
+    case "subeNivelFan":
+    case "subeNivelDonador":
+      return { kind: "text", text: `Nivel ≥ ${e.nivelMinimo ?? 1}` };
+    case "emoteSuscriptor":
+      return e.emoteId ? { kind: "text", text: `Emote ${e.emoteId}` } : { kind: "none" };
+    case "stickerFanClub":
+      return e.stickerId ? { kind: "text", text: `Sticker ${e.stickerId}` } : { kind: "none" };
+    case "compraTiktokShop":
+      return e.nombreProductoContiene
+        ? { kind: "text", text: `Producto: ${e.nombreProductoContiene}` }
+        : { kind: "none" };
+    default:
+      return { kind: "none" };
+  }
+}
+
+function triggerSearchText(t: TriggerInfo): string {
+  if (t.kind === "gift") return `${t.name} ${t.cost ?? ""} ${t.id ?? ""}`;
+  if (t.kind === "text") return t.text;
+  return "";
+}
+
+function TriggerCell({ trigger }: { trigger: TriggerInfo }) {
+  if (trigger.kind === "none") return <span style={{ color: "#5B5D66" }}>—</span>;
+  if (trigger.kind === "text") return <span style={{ color: "#C4C5CC" }}>{trigger.text}</span>;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+      {trigger.imageUrl && (
+        <img
+          src={trigger.imageUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", flexShrink: 0 }}
+        />
+      )}
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F4F5", whiteSpace: "normal" }}>
+        {trigger.name}
+        {trigger.cost !== undefined ? ` - ${trigger.cost} coin${trigger.cost === 1 ? "" : "s"}` : ""}
+      </span>
+    </div>
+  );
+}
+
+function eventoSearchText(e: Evento, acciones: Accion[], gifts: GiftCatalogEntry[]): string {
   return [
     describeQuien(e),
     PORQUE_LABELS[e.porque],
+    triggerSearchText(triggerFor(e, gifts)),
     e.usuarioEspecifico ?? "",
     e.comando ?? "",
     accionNamesFor(acciones, eventoAccionesIds(e)),
@@ -63,6 +136,7 @@ export function AccionesEventosSection({
 }) {
   const [acciones, setAcciones] = useState<Accion[]>([]);
   const [eventos, setEventos] = useState<Evento[]>([]);
+  const [gifts, setGifts] = useState<GiftCatalogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [accionModal, setAccionModal] = useState<{ initial: Accion | null } | null>(null);
@@ -85,6 +159,9 @@ export function AccionesEventosSection({
         const msg = evt.payload as EventosMessage;
         if (msg.kind === "update") setEventos(msg.eventos);
         else if (msg.kind === "error") setError(msg.message);
+      } else if (evt.channel === "gift-catalog") {
+        const msg = evt.payload as GiftCatalogMessage;
+        if (msg.kind === "state") setGifts(msg.gifts);
       }
     });
     // Snapshot bajo demanda: si esta sección se monta después de la conexión
@@ -92,6 +169,7 @@ export function AccionesEventosSection({
     // activo: acciones y eventos no tienen `get-state` propio, llegan con el de
     // `profiles`.
     client.send("profiles", { kind: "get-state" });
+    client.send("gift-catalog", { kind: "get-state" });
     return off;
   }, [client]);
 
@@ -166,7 +244,7 @@ export function AccionesEventosSection({
     a.nombre.toLowerCase().includes(accionSearch.toLowerCase()),
   );
   const q = eventoSearch.toLowerCase();
-  const filteredEventos = eventos.filter((e) => eventoSearchText(e, acciones).includes(q));
+  const filteredEventos = eventos.filter((e) => eventoSearchText(e, acciones, gifts).includes(q));
 
   return (
     <div style={sectionCardStyle}>
@@ -328,7 +406,8 @@ export function AccionesEventosSection({
               <col style={{ width: 56 }} />
               <col style={{ width: 68 }} />
               <col style={{ width: 190 }} />
-              <col />
+              <col style={{ width: 230 }} />
+              <col style={{ width: 230 }} />
               <col />
             </colgroup>
             <thead>
@@ -337,13 +416,14 @@ export function AccionesEventosSection({
                 <th style={thCenterStyle}>Activo</th>
                 <th style={thStyle}>Usuario</th>
                 <th style={thStyle}>Desencadenante</th>
+                <th style={thStyle}>Trigger</th>
                 <th style={thStyle}>Acción(es)</th>
               </tr>
             </thead>
             <tbody>
               {filteredEventos.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={emptyStyle}>
+                  <td colSpan={6} style={emptyStyle}>
                     No hay eventos todavía. Crea uno con "+ Crear nuevo Evento".
                   </td>
                 </tr>
@@ -385,7 +465,10 @@ export function AccionesEventosSection({
                       </button>
                     </td>
                     <td style={{ ...tdStyle, fontSize: 12, color: "#9A9CA5", whiteSpace: "normal" }}>{describeQuien(e)}</td>
-                    <td style={{ ...tdStyle, fontSize: 12.5, fontWeight: 600 }}>{PORQUE_LABELS[e.porque]}</td>
+                    <td style={{ ...tdStyle, fontSize: 12.5, fontWeight: 600, whiteSpace: "normal" }}>{PORQUE_LABELS[e.porque]}</td>
+                    <td style={{ ...tdStyle, fontSize: 12 }}>
+                      <TriggerCell trigger={triggerFor(e, gifts)} />
+                    </td>
                     <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{accionNamesFor(acciones, eventoAccionesIds(e))}</td>
                   </tr>
                 ))
