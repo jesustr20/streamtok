@@ -131,10 +131,14 @@ describe("validateEventos", () => {
     expect(validateEventos([evento({ porque: "comando", comando: "/carro" })]).ok).toBe(true);
   });
 
-  it("porque regaloEspecifico requiere giftId", () => {
+  it("porque regaloEspecifico requiere giftId o giftName", () => {
     expect(validateEventos([evento({ porque: "regaloEspecifico" })]).ok).toBe(false);
     expect(
       validateEventos([evento({ porque: "regaloEspecifico", giftId: "5655" })]).ok,
+    ).toBe(true);
+    // Regalo sembrado del catálogo estático: aún sin id, solo con nombre.
+    expect(
+      validateEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]).ok,
     ).toBe(true);
   });
 

@@ -327,7 +327,7 @@ export function AccionesEventosSection({
             <colgroup>
               <col style={{ width: 56 }} />
               <col style={{ width: 68 }} />
-              <col style={{ width: 84 }} />
+              <col style={{ width: 190 }} />
               <col />
               <col />
             </colgroup>
@@ -384,7 +384,7 @@ export function AccionesEventosSection({
                         {e.activo ? "✓" : ""}
                       </button>
                     </td>
-                    <td style={{ ...tdStyle, fontSize: 12, color: "#9A9CA5" }}>{describeQuien(e)}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "#9A9CA5", whiteSpace: "normal" }}>{describeQuien(e)}</td>
                     <td style={{ ...tdStyle, fontSize: 12.5, fontWeight: 600 }}>{PORQUE_LABELS[e.porque]}</td>
                     <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{accionNamesFor(acciones, eventoAccionesIds(e))}</td>
                   </tr>

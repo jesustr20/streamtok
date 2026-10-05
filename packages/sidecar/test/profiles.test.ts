@@ -292,6 +292,56 @@ describe("ProfilesController", () => {
     ws.close();
   });
 
+  it("eventos set válido: se guarda, se devuelve en update y queda en disco", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    seed(profilesPath, { profiles: [{ id: "p1", name: "Uno", acciones: [accion1], eventos: [] }], activeProfileId: "p1" });
+    server = new StreamTokWsServer(0);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    const upd = once(ws, "eventos");
+    ws.send(JSON.stringify({ channel: "eventos", payload: { kind: "set", eventos: [evento1] } }));
+    expect(await upd).toMatchObject({ kind: "update", eventos: [{ id: "e1" }] });
+    expect(JSON.parse(readFileSync(profilesPath, "utf8")).profiles[0].eventos).toHaveLength(1);
+    ws.close();
+  });
+
+  it("eventos set con un regalo sembrado (solo nombre, sin id) se guarda", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    seed(profilesPath, { profiles: [{ id: "p1", name: "Uno", acciones: [accion1], eventos: [] }], activeProfileId: "p1" });
+    server = new StreamTokWsServer(0);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    const regalo = { ...evento1, id: "e3", porque: "regaloEspecifico", giftName: "Rose" };
+    const upd = once(ws, "eventos");
+    ws.send(JSON.stringify({ channel: "eventos", payload: { kind: "set", eventos: [regalo] } }));
+    expect(await upd).toMatchObject({ kind: "update", eventos: [{ id: "e3", giftName: "Rose" }] });
+    ws.close();
+  });
+
+  it("eventos set inválido: responde con un error en vez de descartarlo en silencio", async () => {
+    const { profilesPath, legacyPath } = tmpDir();
+    seed(profilesPath, { profiles: [{ id: "p1", name: "Uno", acciones: [accion1], eventos: [] }], activeProfileId: "p1" });
+    server = new StreamTokWsServer(0);
+    new ProfilesController(server, new ProfilesStore(profilesPath, legacyPath), new AccionesEventosEngine(new ModBridge(server)), () => null);
+    const port = await waitListening();
+    const { ws } = await connectUI(port);
+
+    // "usuario específico" sin username: estructuralmente inválido
+    const bad = { ...evento1, id: "e2", quien: "usuarioEspecifico" };
+    const err = once(ws, "eventos");
+    ws.send(JSON.stringify({ channel: "eventos", payload: { kind: "set", eventos: [evento1, bad] } }));
+    const reply = await Promise.race([
+      err,
+      new Promise((r) => setTimeout(() => r("SILENCIO"), 800)),
+    ]);
+    expect(reply).toMatchObject({ kind: "error" });
+    ws.close();
+  });
+
   it("duplica un perfil copiando sus acciones y eventos", async () => {
     const { profilesPath, legacyPath } = tmpDir();
     seed(profilesPath, {

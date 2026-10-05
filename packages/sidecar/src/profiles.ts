@@ -19,6 +19,7 @@ import {
   type ProfilesFile,
 } from "@streamtok/shared";
 import { validateAcciones, validateEventos } from "./acciones-eventos.js";
+import { formatZodError } from "./mapping-rules.js";
 import type { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventLogBuffer } from "./event-log.js";
 import { migrateLegacyRules, migrateProfilesFile } from "./migration.js";
@@ -257,11 +258,32 @@ export class ProfilesController extends EventEmitter {
       });
   }
 
+  /**
+   * Un `set` que no pasa el schema se responde con `error` (antes se descartaba
+   * en silencio y la UI quedaba sin saber por qué no se guardó). Otros mensajes
+   * mal formados siguen ignorándose.
+   */
+  private rejectInvalidSet(
+    channel: "acciones" | "eventos",
+    payload: unknown,
+    error: Parameters<typeof formatZodError>[0],
+    socket: WebSocket,
+  ) {
+    if ((payload as { kind?: unknown } | null)?.kind !== "set") return;
+    const message = formatZodError(error);
+    this.emit("log", { level: "warn", message: `${channel === "eventos" ? "Eventos" : "Acciones"} rechazados: ${message}` });
+    this.server.sendTo(socket, channel, { kind: "error", message });
+  }
+
   // --- canal acciones (opera sobre el perfil activo) ---
 
   private handleAcciones(payload: unknown, socket: WebSocket) {
     const parsed = AccionesMessageSchema.safeParse(payload);
-    if (!parsed.success || parsed.data.kind !== "set") return;
+    if (!parsed.success) {
+      this.rejectInvalidSet("acciones", payload, parsed.error, socket);
+      return;
+    }
+    if (parsed.data.kind !== "set") return;
 
     const result = validateAcciones(parsed.data.acciones, this.getCatalog());
     if (!result.ok) {
@@ -294,7 +316,11 @@ export class ProfilesController extends EventEmitter {
 
   private handleEventos(payload: unknown, socket: WebSocket) {
     const parsed = EventosMessageSchema.safeParse(payload);
-    if (!parsed.success || parsed.data.kind !== "set") return;
+    if (!parsed.success) {
+      this.rejectInvalidSet("eventos", payload, parsed.error, socket);
+      return;
+    }
+    if (parsed.data.kind !== "set") return;
 
     const result = validateEventos(parsed.data.eventos);
     if (!result.ok) {
