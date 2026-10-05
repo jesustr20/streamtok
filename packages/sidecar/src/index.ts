@@ -114,6 +114,8 @@ const tiktokConnection = new TiktokConnectionController(server, {
       dir: join(appDataDir(), "recordings"),
       label: username,
       maxBytes: maxBytesFromEnv(process.env),
+      // STREAMTOK_RECORD_FULL=1 guarda todo sin adelgazar ni deduplicar.
+      compact: process.env.STREAMTOK_RECORD_FULL !== "1",
       // eslint-disable-next-line no-console
       onLog: (message) => console.log("[recorder]", message),
     }),

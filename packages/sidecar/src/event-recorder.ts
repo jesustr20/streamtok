@@ -1,5 +1,6 @@
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
+import { EventCompactor } from "./event-compactor.js";
 
 /**
  * Grabadora de eventos crudos del LIVE de TikTok.
@@ -28,6 +29,8 @@ export interface EventRecorderOptions {
   label?: string;
   /** Tope de bytes del archivo; al llegar se deja de grabar. */
   maxBytes?: number;
+  /** Quita relleno y deduplica taps/joins repetidos (ver event-compactor.ts). Por defecto true. */
+  compact?: boolean;
   onLog?: (message: string) => void;
   now?: () => number;
 }
@@ -63,11 +66,13 @@ export class EventRecorder {
   private bytes = 0;
   private full = false;
   private readonly maxBytes: number;
+  private readonly compactor: EventCompactor | null;
   private readonly now: () => number;
 
   constructor(private readonly opts: EventRecorderOptions) {
     this.now = opts.now ?? Date.now;
     this.maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+    this.compactor = opts.compact === false ? null : new EventCompactor();
     const stamp = new Date(this.now()).toISOString().replace(/[:.]/g, "-");
     const label = opts.label ? `${safeLabel(opts.label)}-` : "";
     this.filePath = join(opts.dir, `live-${label}${stamp}.jsonl`);
@@ -77,7 +82,9 @@ export class EventRecorder {
   record(type: string, event: unknown): void {
     if (this.full) return;
     try {
-      const line = JSON.stringify({ t: this.now(), type, event: sanitize(event, new WeakSet()) }) + "\n";
+      const clean = sanitize(event, new WeakSet());
+      const { ref, event: out } = this.compactor ? this.compactor.process(type, clean) : { ref: undefined, event: clean };
+      const line = JSON.stringify({ t: this.now(), type, ref, event: out }) + "\n";
       const size = Buffer.byteLength(line);
       if (this.bytes + size > this.maxBytes) {
         this.full = true;

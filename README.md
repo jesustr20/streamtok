@@ -60,6 +60,15 @@ donaciones — y recopilar datos reales para decidir después qué se agrega a l
   estás conectado. Cada línea es
   `{ "t": <ms>, "type": "WebcastGiftMessage", "event": { … } }` con el mensaje
   decodificado completo.
+- Para que el archivo no crezca sin control, se **compacta**: se quitan formatos
+  de texto y listas repetidas de URLs de avatar; el primer like/join de cada
+  viewer va completo (y de nuevo si cambian sus insignias o nivel) y los
+  repetidos quedan como una línea mínima con `"ref": "viewer-seen"` (userId,
+  count y total de likes); los estados que se reenvían iguales (ranking de la
+  sala, batalla, panel de regalos, meta) solo se guardan si cambian
+  (`"ref": "state-unchanged"`). Comentarios, regalos, follows y cualquier tipo
+  desconocido se guardan siempre completos. Con `STREAMTOK_RECORD_FULL=1` se
+  guarda absolutamente todo sin compactar.
 - Se cierra al pulsar **Desconectar**, al terminar el LIVE o al cerrar el sidecar.
 - Tope por archivo: 500 MB por defecto (al llegar deja de grabar y avisa en el
   log del sidecar); cámbialo con la variable `STREAMTOK_RECORD_MAX_MB`. Un LIVE

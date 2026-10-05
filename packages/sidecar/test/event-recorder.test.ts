@@ -107,6 +107,52 @@ describe("EventRecorder", () => {
   });
 });
 
+describe("EventRecorder compacto", () => {
+  let dir: string;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const likeEvent = (total: string) => ({
+    type: "WebcastLikeMessage",
+    data: {
+      user: { id: "7", nickname: "Ana", avatarThumb: { uri: "a", urlList: ["x", "y", "z"] } },
+      count: 3,
+      total,
+      common: { displayText: { defaultFormat: { color: "#fff" }, text: "liked" } },
+    },
+  });
+
+  const lines = (path: string): any[] =>
+    readFileSync(path, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+
+  it("por defecto: adelgaza y guarda compacto el tap repetido del mismo viewer", async () => {
+    dir = mkdtempSync(join(tmpdir(), "streamtok-recorder-compact-"));
+    const rec = new EventRecorder({ dir });
+    rec.record("WebcastLikeMessage", likeEvent("10"));
+    rec.record("WebcastLikeMessage", likeEvent("13"));
+    await rec.close();
+    const [first, second] = lines(rec.filePath);
+    expect(first.ref).toBeUndefined();
+    expect(first.event.data.user.avatarThumb.urlList).toEqual(["x"]);
+    expect(first.event.data.common.displayText.defaultFormat).toBeUndefined();
+    expect(second.ref).toBe("viewer-seen");
+    expect(second.event).toEqual({ userId: "7", count: 3, total: "13" });
+  });
+
+  it("compact:false guarda todo tal cual llegó", async () => {
+    dir = mkdtempSync(join(tmpdir(), "streamtok-recorder-full-"));
+    const rec = new EventRecorder({ dir, compact: false });
+    rec.record("WebcastLikeMessage", likeEvent("10"));
+    rec.record("WebcastLikeMessage", likeEvent("13"));
+    await rec.close();
+    const [first, second] = lines(rec.filePath);
+    expect(second.ref).toBeUndefined();
+    expect(second.event).toEqual(likeEvent("13"));
+    expect(first.event.data.user.avatarThumb.urlList).toHaveLength(3);
+  });
+});
+
 describe("maxBytesFromEnv", () => {
   it("sin variable o inválida → undefined (tope por defecto)", () => {
     expect(maxBytesFromEnv({})).toBeUndefined();
