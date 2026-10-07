@@ -8,7 +8,7 @@ import type {
   LiveEvent,
   ModAckPayload,
 } from "@streamtok/shared";
-import { isArenaAction } from "@streamtok/shared";
+import { requiresNameTag } from "@streamtok/shared";
 import { EVENT_LABELS, reasonForCommandError } from "./event-log.js";
 import type { ModBridge } from "./mod-bridge.js";
 
@@ -322,11 +322,10 @@ export class AccionesEventosEngine extends EventEmitter {
     evt: LiveEvent,
   ): Promise<ModAckPayload> {
     const nameTag = evt.nickname ?? evt.username;
-    const isArena = isArenaAction(modActionId);
-
-    // Contrato: en arena_* la app DEBE mandar nameTag (y coins vía params).
+    // Contrato: en arena_* y race_join/boost/rose la app DEBE mandar nameTag
+    // (y coins vía params en arena).
     const opts: { nameTag?: string; notify?: string } = {};
-    if (isArena || this.modBridge.getAction(modActionId)?.supportsNameTag) {
+    if (requiresNameTag(modActionId) || this.modBridge.getAction(modActionId)?.supportsNameTag) {
       opts.nameTag = nameTag;
     }
 

@@ -23,6 +23,7 @@ export const ModCategory = z.enum([
   "chiliad",
   "arena",
   "parkour",
+  "race",
   "other",
 ]);
 export type ModCategoryT = z.infer<typeof ModCategory>;
@@ -43,7 +44,9 @@ export type ModActionParam = z.infer<typeof ModActionParamSchema>;
 export const ModActionSchema = z.object({
   id: z.string(),
   name: z.string(),
-  category: ModCategory,
+  // Una categoría que esta versión de la app no conoce (mod más nuevo) cae en
+  // "other" en vez de rechazar todo el mod-hello y dejar la app sin catálogo.
+  category: ModCategory.catch("other"),
   icon: z.string(), // clave que la app mapea a su propia imagen
   description: z.string(),
   image: z.string().optional(), // solo en personajes custom (ruta/URL del JSON del streamer)
@@ -112,8 +115,18 @@ export const MOD_LIMITS = {
 /** Categorías de "modo" del mod de GTA V (prefijo del id de acción) — útiles
  * para agrupar en la UI de mapeo de eventos y para reglas especiales
  * (ej. arena_* necesita nameTag + coins siempre). */
-export const MOD_MODE_PREFIXES = ["chiliad_", "arena_", "parkour_"] as const;
+export const MOD_MODE_PREFIXES = ["chiliad_", "arena_", "parkour_", "race_"] as const;
 
 export function isArenaAction(actionId: string): boolean {
   return actionId.startsWith("arena_");
+}
+
+/** Acciones del modo Carrera que identifican al viewer (piloto) y por eso
+ * esperan su display name en `nameTag`. */
+const RACE_NAMETAG_ACTIONS: ReadonlySet<string> = new Set(["race_join", "race_boost", "race_rose"]);
+
+/** La app DEBE mandar `nameTag` en estas acciones aunque el catálogo no lo
+ * declare: todo `arena_*` y `race_join` / `race_boost` / `race_rose`. */
+export function requiresNameTag(actionId: string): boolean {
+  return isArenaAction(actionId) || RACE_NAMETAG_ACTIONS.has(actionId);
 }
