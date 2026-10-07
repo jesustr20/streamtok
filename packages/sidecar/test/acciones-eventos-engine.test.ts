@@ -268,6 +268,34 @@ describe("AccionesEventosEngine — matching", () => {
   });
 });
 
+describe("AccionesEventosEngine — nameTag en el modo Carrera", () => {
+  it.each(["race_join", "race_boost", "race_rose"])(
+    "%s manda nameTag (display name) aunque el catálogo no lo declare",
+    async (modActionId) => {
+      const bridge = makeBridge();
+      const engine = new AccionesEventosEngine(bridge);
+      engine.setAcciones([accion({ comandos: [{ modActionId, params: {} }] })]);
+      engine.setEventos([evento({ porque: "seguir" })]);
+
+      await engine.handleEvent(followEvent());
+
+      expect(bridge.calls[0].action).toBe(modActionId);
+      expect(bridge.calls[0].opts?.nameTag).toBe("Fan 123");
+    },
+  );
+
+  it("race_start (acción del streamer) no manda nameTag si el catálogo no lo pide", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ comandos: [{ modActionId: "race_start", params: {} }] })]);
+    engine.setEventos([evento({ porque: "seguir" })]);
+
+    await engine.handleEvent(followEvent());
+
+    expect(bridge.calls[0].opts?.nameTag).toBeUndefined();
+  });
+});
+
 describe("AccionesEventosEngine — quien con metadata (issue #23)", () => {
   it("quien seguidor coincide cuando la fuente reporta isFollower", async () => {
     const bridge = makeBridge();

@@ -132,6 +132,18 @@ export function ParkourIcon({ size }: IconProps) {
   );
 }
 
+/** race — bandera de meta (cuadros). */
+export function RaceIcon({ size }: IconProps) {
+  return (
+    <IconSvg size={size}>
+      <path d="M5 21V4" />
+      <path d="M5 4h14l-2.5 4L19 12H5" />
+      <path d="M9 4v8" />
+      <path d="M13 4v8" />
+    </IconSvg>
+  );
+}
+
 /** other — tres puntos horizontales (ellipsis). */
 export function OtherIcon({ size }: IconProps) {
   return (
@@ -156,11 +168,12 @@ const ICONS: Record<string, CategoryIconComponent> = {
   chiliad: ChiliadIcon,
   arena: ArenaIcon,
   parkour: ParkourIcon,
+  race: RaceIcon,
   other: OtherIcon,
 };
 
 /** Devuelve el ícono de la categoría. Usa el fallback `other` SOLO cuando la
- * categoría no viene (undefined/null/vacía) o no matchea ninguna de las 11
+ * categoría no viene (undefined/null/vacía) o no matchea ninguna de las 12
  * conocidas; nunca devuelve un ícono "fijo" para categorías válidas. */
 export function getCategoryIcon(category: string | null | undefined): CategoryIconComponent {
   if (!category) return OtherIcon;

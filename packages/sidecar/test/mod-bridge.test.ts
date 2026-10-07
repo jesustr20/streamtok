@@ -100,6 +100,51 @@ describe("ModBridge (protocolo v0.9.0)", () => {
     uiWs.close();
   });
 
+  it("acepta el catálogo del modo Carrera (category race)", async () => {
+    const port = await waitListening();
+    const modWs = await connect(port);
+    modWs.send(
+      JSON.stringify({
+        channel: "mod-hello",
+        payload: {
+          ...fakeCatalog,
+          actions: [
+            ...fakeCatalog.actions,
+            { id: "race_join", name: "Unirse a la carrera", category: "race", icon: "race", description: "Entra a la carrera", supportsNameTag: true, params: [] },
+          ],
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(modBridge.getCatalog()?.actions).toHaveLength(3);
+    expect(modBridge.getAction("race_join")?.category).toBe("race");
+    modWs.close();
+  });
+
+  it("una categoría desconocida cae en other sin rechazar todo el mod-hello", async () => {
+    const port = await waitListening();
+    const modWs = await connect(port);
+    modWs.send(
+      JSON.stringify({
+        channel: "mod-hello",
+        payload: {
+          ...fakeCatalog,
+          actions: [
+            ...fakeCatalog.actions,
+            { id: "futuro_x", name: "Algo nuevo", category: "categoria-del-futuro", icon: "x", description: "", supportsNameTag: false, params: [] },
+          ],
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(modBridge.getCatalog()?.actions).toHaveLength(3);
+    expect(modBridge.getAction("futuro_x")?.category).toBe("other");
+    expect(modBridge.getAction("arena_join")?.category).toBe("arena");
+    modWs.close();
+  });
+
   it("sendCommand devuelve ok:false sin bloquear si no hay mod conectado", async () => {
     await waitListening();
     const ack = await modBridge.sendCommand("arena_join", {});
