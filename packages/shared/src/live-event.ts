@@ -59,6 +59,9 @@ export const LiveEventSchema = z.object({
   // Eventos `fanLevelUp` / `donorLevelUp`: nivel antes y después de la subida.
   previousLevel: z.number().int().nonnegative().optional(),
   newLevel: z.number().int().nonnegative().optional(),
+  /** Evento `like`: taps que trae este mensaje (TikTok agrupa varios por mensaje;
+   * en una grabación real 609 mensajes sumaron 7448 taps). Ausente = 1. */
+  likeCount: z.number().int().positive().optional(),
 });
 export type LiveEvent = z.infer<typeof LiveEventSchema>;
 

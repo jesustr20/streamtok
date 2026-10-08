@@ -32,8 +32,8 @@ export interface ConnectedAccount {
  * sidecar (el mismo motor que procesa los eventos reales del LIVE).
  *
  * - Share / Follow / Suscripción / Unirse son generales (no llevan datos).
- * - Likes: manda N eventos `like` (el motor cuenta cada `like` como +1 para
- *   el umbral "cada N likes").
+ * - Likes: manda un evento `like` con `likeCount` = N taps (como TikTok, que
+ *   agrupa varios taps por mensaje); el motor los acumula por usuario.
  * - Chat: manda el texto tal cual (para probar comandos "!palabra").
  * - Regalo: sale del catálogo persistido (canal WS `gift-catalog`, issue #35),
  *   disponible sin estar en vivo, con el costo y el ID reales del regalo.
@@ -136,7 +136,7 @@ export function SimularEventos({
   function simulateLikes() {
     begin();
     const n = Math.min(MAX_LIKES, Math.max(1, Math.floor(likes) || 1));
-    for (let i = 0; i < n; i++) send("like");
+    send("like", { likeCount: n });
   }
 
   function simulateChat() {
