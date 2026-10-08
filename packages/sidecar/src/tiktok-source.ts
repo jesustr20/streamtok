@@ -260,7 +260,26 @@ function mapUserEvent(
 ): LiveEvent | null {
   const { username, nickname } = extractUserIdentity(raw);
   if (!username) return null;
-  return finalize({ event, username, nickname, timestamp: Date.now(), ...extractUserFlags(raw) });
+  const likeCount = event === "like" ? extractLikeCount(raw) : undefined;
+  return finalize({
+    event,
+    username,
+    nickname,
+    timestamp: Date.now(),
+    ...(likeCount !== undefined ? { likeCount } : {}),
+    ...extractUserFlags(raw),
+  });
+}
+
+/** Taps que trae un mensaje de like: el campo real es `count` (en algunas
+ * versiones del conector, `likeCount`). Si no hay un entero positivo, se omite
+ * y el motor cuenta 1. */
+function extractLikeCount(raw: RawRecord): number | undefined {
+  for (const v of [raw.count, raw.likeCount]) {
+    const n = typeof v === "string" ? Number(v) : v;
+    if (typeof n === "number" && Number.isInteger(n) && n > 0) return n;
+  }
+  return undefined;
 }
 
 /**

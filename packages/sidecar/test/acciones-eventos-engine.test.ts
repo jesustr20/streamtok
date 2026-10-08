@@ -228,6 +228,62 @@ describe("AccionesEventosEngine — matching", () => {
     expect(entries.filter((e) => e.reason === "like-threshold")).toHaveLength(5);
   });
 
+  it("likes: el acumulado es por usuario, no global", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "likes", cantidadMinimaLikes: 3 })]);
+    const { entries } = collect(engine);
+
+    // 2 likes de @ana y 2 de @beto: nadie llega a 3 (global serían 4).
+    for (const u of ["@ana", "@beto", "@ana", "@beto"]) {
+      await engine.handleEvent({ event: "like", username: u, nickname: u.slice(1), timestamp: 0 });
+    }
+    expect(bridge.calls).toHaveLength(0);
+    expect(entries.map((e) => e.message)).toEqual(["ana: 1/3 likes", "beto: 1/3 likes", "ana: 2/3 likes", "beto: 2/3 likes"]);
+
+    // el 3.º de @ana dispara, y con su nameTag
+    await engine.handleEvent({ event: "like", username: "@ana", nickname: "Ana", timestamp: 0 });
+    expect(bridge.calls).toHaveLength(1);
+    expect(bridge.calls[0].opts?.nameTag).toBe("Ana");
+  });
+
+  it("likes: suma los taps de likeCount y dispara una vez por cada N completo", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "likes", cantidadMinimaLikes: 20 })]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent({ event: "like", username: "@ana", nickname: "Ana", likeCount: 15, timestamp: 0 });
+    expect(bridge.calls).toHaveLength(0);
+    expect(entries[0].message).toBe("Ana: 15/20 likes");
+
+    // 15 + 15 = 30 → cruza 20 una vez; quedan 10 acumulados
+    await engine.handleEvent({ event: "like", username: "@ana", nickname: "Ana", likeCount: 15, timestamp: 0 });
+    expect(bridge.calls).toHaveLength(1);
+
+    await engine.handleEvent({ event: "like", username: "@ana", nickname: "Ana", likeCount: 10, timestamp: 0 });
+    expect(bridge.calls).toHaveLength(2);
+
+    // un mensaje grande cruza varias veces: 45 taps con N=20 → 2 disparos
+    await engine.handleEvent({ event: "like", username: "@beto", nickname: "Beto", likeCount: 45, timestamp: 0 });
+    expect(bridge.calls).toHaveLength(4);
+  });
+
+  it("likes: resetSession reinicia los acumulados", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "likes", cantidadMinimaLikes: 20 })]);
+
+    await engine.handleEvent({ event: "like", username: "@ana", likeCount: 15, timestamp: 0 });
+    engine.resetSession();
+    await engine.handleEvent({ event: "like", username: "@ana", likeCount: 15, timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(0);
+  });
+
   it("comando (porque) coincide por prefijo del texto", async () => {
     const bridge = makeBridge();
     const engine = new AccionesEventosEngine(bridge);

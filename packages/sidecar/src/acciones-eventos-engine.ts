@@ -86,7 +86,7 @@ function pickRandom<T>(items: T[]): T {
 export class AccionesEventosEngine extends EventEmitter {
   private acciones: Accion[] = [];
   private eventos: Evento[] = [];
-  /** Likes acumulados por Evento (para "cada N likes"). */
+  /** Likes (taps) acumulados por Evento y por usuario, módulo N ("cada N likes"). */
   private likeCounts = new Map<string, number>();
   /** Monedas acumuladas por handle durante la sesión (ranking de donantes). */
   private gifterCoins = new Map<string, number>();
@@ -229,25 +229,31 @@ export class AccionesEventosEngine extends EventEmitter {
       if (!this.matchesEvento(evento, evt)) continue;
       matched = true;
 
-      // Umbral de likes ("cada N likes"): acumular y solo disparar al alcanzarlo.
+      // Umbral de likes ("cada N likes"): se acumulan los taps POR USUARIO y
+      // solo se dispara al alcanzarlo (una vez por cada N completo).
+      let times = 1;
       if (evento.porque === "likes" && evt.event === "like") {
-        const n = evento.cantidadMinimaLikes ?? 15;
-        const count = (this.likeCounts.get(evento.id) ?? 0) + 1;
-        this.likeCounts.set(evento.id, count);
-        if (count % n !== 0) {
+        const n = Math.max(1, evento.cantidadMinimaLikes ?? 15);
+        const key = `${evento.id}|${normalizeHandle(evt.username)}`;
+        const total = (this.likeCounts.get(key) ?? 0) + (evt.likeCount ?? 1);
+        times = Math.floor(total / n);
+        this.likeCounts.set(key, total % n);
+        if (times === 0) {
           this.emitEntry({
             status: "discarded",
             event: "like",
             reason: "like-threshold",
             eventoId: evento.id,
-            message: `like acumulado (${count % n}/${n})`,
+            message: `${evt.nickname ?? evt.username}: ${total}/${n} likes`,
           });
           continue;
         }
       }
 
-      const didFire = await this.fireEvento(evento, evt, { onlyRepeat: giftInProgress });
-      if (didFire) fired = true;
+      for (let i = 0; i < times; i++) {
+        const didFire = await this.fireEvento(evento, evt, { onlyRepeat: giftInProgress });
+        if (didFire) fired = true;
+      }
     }
 
     if (giftInProgress && !fired) {

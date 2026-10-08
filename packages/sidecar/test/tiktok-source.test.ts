@@ -30,6 +30,18 @@ describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", 
     });
   });
 
+  it("like: lee los taps del mensaje (count) como likeCount", () => {
+    const user = { displayId: "fan", nickname: "Fan" };
+    expect(mapTiktokEvent("like", { user, count: 15 })).toMatchObject({ event: "like", likeCount: 15 });
+    expect(mapTiktokEvent("like", { user, likeCount: 4 })).toMatchObject({ likeCount: 4 });
+    expect(mapTiktokEvent("like", { user, count: "7" })).toMatchObject({ likeCount: 7 });
+    // sin count válido: se omite (el motor cuenta 1)
+    expect(mapTiktokEvent("like", { user })?.likeCount).toBeUndefined();
+    expect(mapTiktokEvent("like", { user, count: 0 })?.likeCount).toBeUndefined();
+    // solo aplica a likes
+    expect(mapTiktokEvent("follow", { user, count: 9 })?.likeCount).toBeUndefined();
+  });
+
   it("normaliza el repeatEnd del streak de regalo (intermedio: false, final: true)", () => {
     const base = {
       user: { displayId: "fan", nickname: "Fan" },
