@@ -30,6 +30,39 @@ describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", 
     });
   });
 
+  it("regalo sin combo (gift.type distinto de 1) llega como final aunque repeatEnd sea 0", () => {
+    // Grabación real: "Hat and Mustache" (type 4) y "Super GG" / "Hand Heart"
+    // (type 2) llegan una sola vez con repeatEnd 0 y nunca se cierran.
+    const user = { displayId: "fan", nickname: "Fan" };
+    const hat = mapTiktokEvent("gift", {
+      user,
+      giftId: "6427",
+      repeatCount: 1,
+      repeatEnd: 0,
+      gift: { name: "Hat and Mustache", diamondCount: 99, type: 4 },
+    });
+    expect(hat).toMatchObject({ event: "gift", giftName: "Hat and Mustache", giftId: 6427, coins: 99, repeatEnd: true });
+
+    const superGg = mapTiktokEvent("gift", {
+      user,
+      giftId: "12988",
+      repeatCount: 1,
+      repeatEnd: 0,
+      gift: { name: "Super GG", diamondCount: 100, type: 2 },
+    });
+    expect(superGg).toMatchObject({ repeatEnd: true, coins: 100 });
+
+    // un regalo con combo (type 1) sigue en curso hasta su repeatEnd 1
+    const rose = mapTiktokEvent("gift", {
+      user,
+      giftId: "5655",
+      repeatCount: 2,
+      repeatEnd: 0,
+      gift: { name: "Rose", diamondCount: 1, type: 1 },
+    });
+    expect(rose).toMatchObject({ repeatEnd: false });
+  });
+
   it("like: lee los taps del mensaje (count) como likeCount", () => {
     const user = { displayId: "fan", nickname: "Fan" };
     expect(mapTiktokEvent("like", { user, count: 15 })).toMatchObject({ event: "like", likeCount: 15 });
