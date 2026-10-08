@@ -162,12 +162,19 @@ function mapGift(raw: RawRecord): LiveEvent | null {
   // Streaks de regalo: tiktok-live-connector emite eventos intermedios
   // (repeatEnd: 0) y un evento final (repeatEnd: 1). Normalizamos `repeatEnd`
   // tal cual para que el motor decida (repetir con combo o esperar el cierre).
-  const repeatEnd =
+  let repeatEnd =
     raw.repeatEnd === 1 || raw.repeatEnd === true
       ? true
       : raw.repeatEnd === 0 || raw.repeatEnd === false
         ? false
         : undefined;
+  // Solo los regalos con combo (`gift.type === 1`) mandan un cierre de streak
+  // (`repeatEnd: 1`). Los demás tipos (2, 4…: "Hat and Mustache", "Super GG",
+  // "Hand Heart"…) llegan UNA vez con `repeatEnd: 0` y nunca se cierran: son
+  // regalos completos. Sin esto el motor los trataba como combos sin terminar
+  // y jamás disparaban.
+  const giftType = raw.gift?.type;
+  if (typeof giftType === "number" && giftType !== 1) repeatEnd = true;
 
   let giftId: number | undefined;
   if (raw.giftId !== undefined && raw.giftId !== null && raw.giftId !== "") {
