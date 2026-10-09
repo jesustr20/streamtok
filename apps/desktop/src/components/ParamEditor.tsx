@@ -1,5 +1,9 @@
 import { useState } from "react";
 import type { ModActionParam } from "@streamtok/shared";
+import { SearchSelect } from "./SearchSelect";
+
+/** Desde cuántas opciones un enum usa el selector con "Buscar…". */
+const SEARCHABLE_MIN_OPTIONS = 6;
 
 /**
  * Editor genérico de parámetros de una acción del mod, manejado 100% por las
@@ -82,16 +86,24 @@ function ParamField({
       );
     }
     return (
-      <label style={labelStyle}>
+      <div style={labelStyle}>
         {param.name}
-        <select style={inputStyle} value={str} onChange={(e) => onChange(e.target.value)}>
-          {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-      </label>
+        {options.length >= SEARCHABLE_MIN_OPTIONS ? (
+          <SearchSelect
+            value={str}
+            options={options.map((o) => ({ value: o, label: o }))}
+            onChange={onChange}
+          />
+        ) : (
+          <select style={inputStyle} value={str} onChange={(e) => onChange(e.target.value)}>
+            {options.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
     );
   }
 

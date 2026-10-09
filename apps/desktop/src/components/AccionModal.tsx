@@ -1,3 +1,4 @@
+import { SearchSelect } from "./SearchSelect";
 import { useState } from "react";
 import type { Accion, AccionMedia, ModAction, ModHelloPayload } from "@streamtok/shared";
 import { getCategoryIcon } from "../lib/categoryIcons";
@@ -491,65 +492,11 @@ function CommandPicker({
   actions: ModAction[];
   onSelect: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [hovered, setHovered] = useState<string | null>(null);
-  const selected = actions.find((a) => a.id === value);
-  const SelectedIcon = selected ? getCategoryIcon(selected.category) : null;
-
-  return (
-    <div style={{ position: "relative" }}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        style={{ ...pickerTriggerStyle, color: selected ? "#F4F4F5" : "#5B5D66" }}
-      >
-        {selected && SelectedIcon ? (
-          <>
-            <SelectedIcon size={16} />
-            <span style={pickerTriggerLabelStyle}>{selected.name}</span>
-          </>
-        ) : (
-          <span style={pickerTriggerLabelStyle}>Seleccionar comando…</span>
-        )}
-        <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>
-      </button>
-
-      {open && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 15 }}
-            onClick={() => setOpen(false)}
-          />
-          <div style={pickerDropdownStyle}>
-            {actions.map((a) => {
-              const Icon = getCategoryIcon(a.category);
-              const active = a.id === value || hovered === a.id;
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  onMouseEnter={() => setHovered(a.id)}
-                  onMouseLeave={() => setHovered(null)}
-                  onClick={() => {
-                    onSelect(a.id);
-                    setOpen(false);
-                  }}
-                  style={{
-                    ...pickerOptionStyle,
-                    background: active ? "#1E2027" : "transparent",
-                    color: active ? "#F4F4F5" : "#9A9CA5",
-                  }}
-                >
-                  <Icon size={16} />
-                  <span style={pickerOptionLabelStyle}>{a.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  );
+  const options = actions.map((a) => {
+    const Icon = getCategoryIcon(a.category);
+    return { value: a.id, label: a.name, icon: <Icon size={16} /> };
+  });
+  return <SearchSelect value={value} options={options} onChange={onSelect} placeholder="Seleccionar comando…" />;
 }
 
 const overlayStyle: React.CSSProperties = {
@@ -616,67 +563,10 @@ const closeCommandStyle: React.CSSProperties = {
   padding: 0,
 };
 
-const pickerTriggerStyle: React.CSSProperties = {
-  width: "100%",
-  height: 32,
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "0 10px",
-  background: "#0E0F12",
-  border: "1px solid #2A2C33",
-  borderRadius: 7,
-  cursor: "pointer",
-  boxSizing: "border-box",
-};
 
-const pickerTriggerLabelStyle: React.CSSProperties = {
-  flex: 1,
-  textAlign: "left",
-  fontSize: 12,
-  minWidth: 0,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
 
-const pickerDropdownStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "calc(100% + 4px)",
-  left: 0,
-  right: 0,
-  zIndex: 16,
-  display: "flex",
-  flexDirection: "column",
-  maxHeight: 220,
-  overflowY: "auto",
-  background: "#0E0F12",
-  border: "1px solid #2A2C33",
-  borderRadius: 8,
-  boxShadow: "0 12px 32px #00000080",
-  padding: 4,
-  boxSizing: "border-box",
-};
 
-const pickerOptionStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "7px 8px",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
-  textAlign: "left",
-};
 
-const pickerOptionLabelStyle: React.CSSProperties = {
-  flex: 1,
-  fontSize: 12,
-  minWidth: 0,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
 
 const additionalSelectStyle: React.CSSProperties = {
   width: "100%",

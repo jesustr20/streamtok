@@ -12,6 +12,8 @@ import type { SidecarClient } from "../lib/ws-client";
 import { describeQuien, PORQUE_LABELS } from "../lib/labels";
 import { AccionModal } from "./AccionModal";
 import { EventoModal } from "./EventoModal";
+import { Pagination, usePagination } from "./Pagination";
+import { matchesQuery } from "../lib/search";
 
 function sanitizeUnknownParams(
   params: Record<string, unknown>,
@@ -240,11 +242,12 @@ export function AccionesEventosSection({
     });
   }
 
-  const filteredAcciones = acciones.filter((a) =>
-    a.nombre.toLowerCase().includes(accionSearch.toLowerCase()),
+  const filteredAcciones = acciones.filter((a) => matchesQuery(a.nombre, accionSearch));
+  const filteredEventos = eventos.filter((e) =>
+    matchesQuery(eventoSearchText(e, acciones, gifts), eventoSearch),
   );
-  const q = eventoSearch.toLowerCase();
-  const filteredEventos = eventos.filter((e) => eventoSearchText(e, acciones, gifts).includes(q));
+  const accionesPaging = usePagination(filteredAcciones, accionSearch);
+  const eventosPaging = usePagination(filteredEventos, eventoSearch);
 
   return (
     <div style={sectionCardStyle}>
@@ -300,16 +303,16 @@ export function AccionesEventosSection({
         <div style={tableContainerStyle}>
           <table style={{ ...tableStyle, minWidth: 940 }}>
             <colgroup>
-              <col style={{ width: 88 }} />
-              <col style={{ width: 160 }} />
-              <col style={{ width: 84 }} />
-              <col style={{ width: 112 }} />
-              <col style={{ width: 88 }} />
-              <col style={{ width: 82 }} />
-              <col style={{ width: 64 }} />
-              <col style={{ width: 64 }} />
-              <col style={{ width: 56 }} />
-              <col />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "21%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "7%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "15%" }} />
             </colgroup>
             <thead>
               <tr style={headerRowStyle}>
@@ -333,7 +336,7 @@ export function AccionesEventosSection({
                   </td>
                 </tr>
               ) : (
-                filteredAcciones.map((a) => (
+                accionesPaging.pageItems.map((a) => (
                   <tr key={a.id}>
                     <td style={tdStyle}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -372,6 +375,7 @@ export function AccionesEventosSection({
             </tbody>
           </table>
         </div>
+        <Pagination page={accionesPaging.page} pageCount={accionesPaging.pageCount} onChange={accionesPaging.setPage} />
       </div>
 
       {/* ------------------------------- Eventos ------------------------------- */}
@@ -401,14 +405,14 @@ export function AccionesEventosSection({
         </div>
 
         <div style={tableContainerStyle}>
-          <table style={tableStyle}>
+          <table style={{ ...tableStyle, minWidth: 860 }}>
             <colgroup>
-              <col style={{ width: 56 }} />
-              <col style={{ width: 68 }} />
-              <col style={{ width: 190 }} />
-              <col style={{ width: 230 }} />
-              <col style={{ width: 230 }} />
-              <col />
+              <col style={{ width: "7%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "21%" }} />
+              <col style={{ width: "22%" }} />
+              <col style={{ width: "27%" }} />
             </colgroup>
             <thead>
               <tr style={headerRowStyle}>
@@ -428,7 +432,7 @@ export function AccionesEventosSection({
                   </td>
                 </tr>
               ) : (
-                filteredEventos.map((e) => (
+                eventosPaging.pageItems.map((e) => (
                   <tr key={e.id}>
                     <td style={tdStyle}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -476,6 +480,7 @@ export function AccionesEventosSection({
             </tbody>
           </table>
         </div>
+        <Pagination page={eventosPaging.page} pageCount={eventosPaging.pageCount} onChange={eventosPaging.setPage} />
       </div>
 
       {error && (
@@ -665,6 +670,8 @@ const tdStyle: React.CSSProperties = {
   padding: "10px 12px",
   borderTop: "1px solid #22242B",
   whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
   boxSizing: "border-box",
 };
 

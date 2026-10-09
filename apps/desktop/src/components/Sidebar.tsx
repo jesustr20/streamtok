@@ -67,7 +67,8 @@ export function Sidebar({
         display: "flex",
         flexDirection: "column",
         gap: 24,
-        minHeight: "100vh",
+        height: "100vh",
+        overflowY: "auto",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px" }}>

@@ -62,7 +62,8 @@ export function App() {
     <div
       style={{
         display: "flex",
-        minHeight: "100vh",
+        height: "100vh",
+        overflow: "hidden",
         background: "#0E0F12",
         color: "#F4F4F5",
         fontFamily: "'Manrope', sans-serif",
@@ -78,6 +79,8 @@ export function App() {
           flexDirection: "column",
           boxSizing: "border-box",
           minWidth: 0,
+          minHeight: 0,
+          overflowY: "auto",
         }}
       >
         {view === "inicio" && <InicioView client={client} onGoJuegos={() => setView("juegos")} />}

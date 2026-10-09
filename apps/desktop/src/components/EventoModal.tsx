@@ -1,3 +1,4 @@
+import { matchesQuery } from "../lib/search";
 import { useEffect, useState } from "react";
 import { GiftPicker } from "./GiftPicker";
 import type {
@@ -50,6 +51,7 @@ export function EventoModal({
   const [usuarioEspecifico, setUsuarioEspecifico] = useState(initial?.usuarioEspecifico ?? "");
   const [numeroDonantesTop, setNumeroDonantesTop] = useState<number>(initial?.numeroDonantesTop ?? 3);
   const [porque, setPorque] = useState<EventoPorque>(initial?.porque ?? "unirse");
+  const [porqueSearch, setPorqueSearch] = useState("");
   const [nivelEquipoRequerido, setNivelEquipoRequerido] = useState<number>(
     initial?.nivelEquipoRequerido ?? 0,
   );
@@ -239,8 +241,16 @@ export function EventoModal({
 
           <div>
             <span style={questionLabelStyle}>¿Por qué se desencadenará el evento?</span>
+            <input
+              value={porqueSearch}
+              placeholder="Buscar…"
+              onChange={(e) => setPorqueSearch(e.target.value)}
+              style={{ ...comboSearchStyle, margin: "0 0 8px" }}
+            />
             <div style={radioListStyle}>
-              {PORQUE_OPTIONS.map((o) => (
+              {PORQUE_OPTIONS.filter(
+                (o) => o.value === porque || matchesQuery(o.label, porqueSearch),
+              ).map((o) => (
                 <button
                   key={o.value}
                   type="button"
@@ -510,7 +520,9 @@ function AccionCombo({
   emptyText: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const available = acciones.filter((a) => !selected.includes(a.id));
+  const visible = available.filter((a) => matchesQuery(a.nombre, query));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -533,7 +545,12 @@ function AccionCombo({
       </div>
 
       <div style={{ position: "relative" }}>
-        <button type="button" onClick={() => setOpen((o) => !o)} style={accionComboButtonStyle}>
+        <button type="button" onClick={() => {
+            setQuery("");
+            setOpen((o) => !o);
+          }}
+          style={accionComboButtonStyle}
+        >
           <span style={{ flex: 1, textAlign: "left", fontSize: 12.5 }}>+ Agregar acción</span>
           <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>
         </button>
@@ -541,12 +558,28 @@ function AccionCombo({
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 15 }} onClick={() => setOpen(false)} />
             <div style={accionComboDropdownStyle}>
+              <input
+                autoFocus
+                value={query}
+                placeholder="Buscar…"
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setOpen(false);
+                  if (e.key === "Enter" && visible[0]) {
+                    onAdd(visible[0].id);
+                    setOpen(false);
+                  }
+                }}
+                style={comboSearchStyle}
+              />
               {available.length === 0 ? (
                 <span style={{ padding: "8px 10px", fontSize: 12, color: "#5B5D66" }}>
                   No hay más acciones para agregar.
                 </span>
+              ) : visible.length === 0 ? (
+                <span style={{ padding: "8px 10px", fontSize: 12, color: "#5B5D66" }}>Sin resultados</span>
               ) : (
-                available.map((a) => (
+                visible.map((a) => (
                   <button
                     key={a.id}
                     type="button"
@@ -847,4 +880,18 @@ const giftEmptyStyle: React.CSSProperties = {
   fontSize: 11.5,
   color: "#5B5D66",
   lineHeight: 1.5,
+};
+
+const comboSearchStyle: React.CSSProperties = {
+  background: "#17181D",
+  border: "1px solid #2A2C33",
+  borderRadius: 6,
+  color: "#F4F4F5",
+  fontSize: 12,
+  padding: "6px 8px",
+  margin: "0 0 4px",
+  outline: "none",
+  fontFamily: "inherit",
+  boxSizing: "border-box",
+  width: "100%",
 };

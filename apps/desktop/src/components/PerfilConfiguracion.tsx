@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ProfileSummary, ProfilesMessage } from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
+import { SearchSelect } from "./SearchSelect";
 
 const ACCENT = "#E23A57";
 
@@ -86,32 +87,16 @@ export function PerfilConfiguracion({
 
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <select
-            value={activeProfileId ?? ""}
-            onChange={(e) => e.target.value && client?.send("profiles", { kind: "set-active", id: e.target.value })}
-            style={{
-              height: 38,
-              padding: "0 14px",
-              background: "#0E0F12",
-              border: "1px solid #2A2C33",
-              borderRadius: 9,
-              color: "#F4F4F5",
-              fontSize: 13,
-              fontWeight: 700,
-              boxSizing: "border-box",
-              cursor: "pointer",
-            }}
-          >
-            {profiles.length === 0 ? (
-              <option value="">Sin perfiles</option>
-            ) : (
-              profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))
-            )}
-          </select>
+          <div style={{ width: 220 }}>
+            <SearchSelect
+              value={activeProfileId ?? ""}
+              options={profiles.map((p) => ({ value: p.id, label: p.name }))}
+              placeholder="Sin perfiles"
+              height={38}
+              fontSize={13}
+              onChange={(id) => id && client?.send("profiles", { kind: "set-active", id })}
+            />
+          </div>
         </div>
 
         {creating ? (
