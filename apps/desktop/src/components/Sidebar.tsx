@@ -59,7 +59,7 @@ export function Sidebar({
   return (
     <aside
       style={{
-        width: 220,
+        width: 252,
         flexShrink: 0,
         boxSizing: "border-box",
         padding: "28px 16px",
@@ -69,6 +69,7 @@ export function Sidebar({
         gap: 24,
         height: "100vh",
         overflowY: "auto",
+        overflowX: "hidden",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px" }}>
@@ -180,8 +181,9 @@ export function Sidebar({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 12,
+                gap: 10,
                 width: "100%",
+                boxSizing: "border-box",
                 textAlign: "left",
                 padding: "10px 12px",
                 borderRadius: 10,
@@ -202,7 +204,7 @@ export function Sidebar({
                   flexShrink: 0,
                 }}
               />
-              <span style={{ flex: 1 }}>{item.label}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{item.label}</span>
               {!item.enabled && (
                 <span
                   style={{
@@ -213,6 +215,7 @@ export function Sidebar({
                     padding: "2px 6px",
                     borderRadius: 4,
                     letterSpacing: "0.02em",
+                    flexShrink: 0,
                   }}
                 >
                   Próximamente
