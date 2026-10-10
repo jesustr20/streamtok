@@ -287,9 +287,19 @@ export class ProfilesController extends EventEmitter {
 
     const result = validateAcciones(parsed.data.acciones, this.getCatalog());
     if (!result.ok) {
-      this.emit("log", { level: "warn", message: `Acciones rechazadas (${result.errors.length} errores)` });
+      this.emit("log", {
+        level: "warn",
+        message: `Acciones rechazadas (${result.errors.length} errores): ${result.errors.join(" ")}`,
+      });
       this.server.sendTo(socket, "acciones", { kind: "error", message: result.errors.join(" ") });
       return;
+    }
+
+    if (result.descartados.length > 0) {
+      this.emit("log", {
+        level: "warn",
+        message: `Parámetros que el mod ya no define, descartados al guardar: ${result.descartados.join("; ")}`,
+      });
     }
 
     const active = this.activeProfile();

@@ -72,13 +72,45 @@ describe("validateAcciones", () => {
     if (!result.ok) expect(result.errors.join(" ")).toMatch(/no_existe/);
   });
 
-  it("rechaza un parámetro que la acción del mod no define", () => {
+  it("descarta un parámetro que el mod ya no define en vez de rechazar el guardado", () => {
     const result = validateAcciones(
-      [accion({ comandos: [{ modActionId: "arena_join", params: { foo: 1 } }] })],
+      [accion({ comandos: [{ modActionId: "arena_join", params: { character: "npc", foo: 1 } }] })],
       catalog,
     );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors.join(" ")).toMatch(/foo/);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.acciones[0].comandos[0].params).toEqual({ character: "npc" });
+      expect(result.descartados.join(" ")).toMatch(/foo/);
+    }
+  });
+
+  it("una acción con parámetros viejos no bloquea guardar las demás", () => {
+    const result = validateAcciones(
+      [
+        accion({ id: "a1", comandos: [{ modActionId: "vehicle_spawn_random", params: { enabled: true } }] }),
+        accion({ id: "a2", comandos: [{ modActionId: "vehicle_spawn_random", params: { amount: 5000 } }] }),
+      ],
+      catalog,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.acciones[0].comandos[0].params).toEqual({});
+      expect(result.acciones[1].comandos[0].params).toEqual({ amount: 5000 });
+    }
+  });
+
+  it("acepta cualquier entero (sin tope) y sigue rechazando un tipo incompatible", () => {
+    const libre = validateAcciones(
+      [accion({ comandos: [{ modActionId: "vehicle_spawn_random", params: { amount: 999999 } }] })],
+      catalog,
+    );
+    expect(libre.ok).toBe(true);
+    const mal = validateAcciones(
+      [accion({ comandos: [{ modActionId: "vehicle_spawn_random", params: { amount: "mucho" } }] })],
+      catalog,
+    );
+    expect(mal.ok).toBe(false);
+    if (!mal.ok) expect(mal.errors.join(" ")).toMatch(/amount/);
   });
 
   it("sin catálogo valida solo la forma", () => {

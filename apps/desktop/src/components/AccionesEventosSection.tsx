@@ -267,6 +267,16 @@ export function AccionesEventosSection({
         </p>
       </div>
 
+      {error && (
+        <div
+          role="alert"
+          style={{ padding: "10px 12px", background: "#2A1416", border: "1px solid #E23A57", borderRadius: 8, color: "#F4A5B4", fontSize: 12.5 }}
+        >
+          <strong>No se guardó: </strong>
+          {error}
+        </div>
+      )}
+
       {/* ------------------------------- Acciones ------------------------------- */}
       <div style={accionesBlockStyle}>
         <div>
@@ -482,12 +492,6 @@ export function AccionesEventosSection({
         </div>
         <Pagination page={eventosPaging.page} pageCount={eventosPaging.pageCount} onChange={eventosPaging.setPage} />
       </div>
-
-      {error && (
-        <div style={{ padding: "10px 12px", background: "#2A1416", border: "1px solid #E23A57", borderRadius: 8, color: "#F4A5B4", fontSize: 12.5 }}>
-          {error}
-        </div>
-      )}
 
       {accionModal && (
         <AccionModal
