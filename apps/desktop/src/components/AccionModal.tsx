@@ -43,6 +43,14 @@ function toParamValues(params: Record<string, unknown>): ParamValues {
   return out;
 }
 
+/** Quita los parámetros que el mod ya no define (p. ej. un `enabled` viejo
+ * guardado antes de actualizar el mod); si no, el sidecar los descarta igual. */
+function onlyKnownParams(params: ParamValues, action: ModAction | undefined): ParamValues {
+  if (!action) return params;
+  const known = new Set(action.params.map((p) => p.name));
+  return Object.fromEntries(Object.entries(params).filter(([k]) => known.has(k)));
+}
+
 function emptyMedia(): AccionMedia {
   return { animacion: false, imagen: false, sonido: false, video: false };
 }
@@ -112,7 +120,10 @@ export function AccionModal({
 
     const validComandos = comandos
       .filter((c) => c.modActionId !== "")
-      .map((c) => ({ modActionId: c.modActionId, params: sanitizeParamValues(c.params) }));
+      .map((c) => ({
+        modActionId: c.modActionId,
+        params: onlyKnownParams(sanitizeParamValues(c.params), actions.find((a) => a.id === c.modActionId)),
+      }));
 
     onSave({
       id: initial?.id ?? newId(),

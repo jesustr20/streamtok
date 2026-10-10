@@ -13,7 +13,7 @@ import { formatZodError, validateActionParams } from "./mapping-rules.js";
  */
 
 export type AccionesValidationResult =
-  | { ok: true; acciones: Accion[] }
+  | { ok: true; acciones: Accion[]; descartados: string[] }
   | { ok: false; errors: string[] };
 
 export type EventosValidationResult =
@@ -48,7 +48,12 @@ export function normalizeEvento(e: Evento): Evento {
 /**
  * Valida una lista de Acciones. Estructuralmente contra `AccionSchema` y, si
  * hay catálogo del mod conectado, semánticamente: cada `comando` debe
- * referenciar una acción real del catálogo con params compatibles.
+ * referenciar una acción real del catálogo con params de tipo compatible.
+ *
+ * Un parámetro guardado que el mod YA NO define (p. ej. `enabled` de
+ * `traffic_fast` tras actualizar el mod) no rechaza el guardado: se descarta
+ * y se informa en `descartados`. Rechazarlo bloquearía cualquier edición de la
+ * lista completa por una acción vieja y el usuario vería que "no guarda".
  */
 export function validateAcciones(
   input: unknown,
@@ -60,25 +65,34 @@ export function validateAcciones(
   }
   const acciones = parsed.data;
 
-  if (!catalog) return { ok: true, acciones };
+  if (!catalog) return { ok: true, acciones, descartados: [] };
 
   const errors: string[] = [];
-  for (const accion of acciones) {
-    for (const comando of accion.comandos) {
+  const descartados: string[] = [];
+  const limpias = acciones.map((accion) => ({
+    ...accion,
+    comandos: accion.comandos.map((comando) => {
       const action = catalog.actions.find((a) => a.id === comando.modActionId);
       if (!action) {
         errors.push(
           `La acción "${accion.nombre}" (${accion.id}) referencia el comando "${comando.modActionId}", que no existe en el catálogo del mod.`,
         );
-        continue;
+        return comando;
       }
-      for (const err of validateActionParams(action, comando.params)) {
+      const conocidos = new Set(action.params.map((p) => p.name));
+      const params: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(comando.params)) {
+        if (conocidos.has(key)) params[key] = value;
+        else descartados.push(`"${accion.nombre}" (${comando.modActionId}): ${key}`);
+      }
+      for (const err of validateActionParams(action, params)) {
         errors.push(`La acción "${accion.nombre}" (${accion.id}) ${err}`);
       }
-    }
-  }
+      return { ...comando, params: params as typeof comando.params };
+    }),
+  }));
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, acciones };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, acciones: limpias, descartados };
 }
 
 /**
