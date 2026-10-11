@@ -37,6 +37,9 @@ export const LiveEventSchema = z.object({
   giftId: z.number().optional(),
   coins: z.number().optional(), // valor total en monedas del regalo (repeatCount ya aplicado)
   repeatEnd: z.boolean().optional(), // gifts con streak: solo actuar cuando true
+  // Cantidad ACUMULADA de regalos del streak hasta este mensaje (ADR 0009). En un
+  // combo llega 1, 3, 4, 5… y el cierre trae el total. Sin él se cuenta 1.
+  repeatCount: z.number().int().positive().optional(),
   text: z.string().optional(), // comentario / comando de chat
   timestamp: z.number(),
   // Metadata de viewer (issue #23 / ADR 0005). Opcionales a propósito: solo

@@ -63,6 +63,19 @@ describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", 
     expect(rose).toMatchObject({ repeatEnd: false });
   });
 
+  it("regalo: pasa la cantidad acumulada del streak como repeatCount", () => {
+    const base = {
+      user: { displayId: "fan", nickname: "Fan" },
+      giftId: "5655",
+      gift: { name: "Rose", diamondCount: 1, type: 1 },
+    };
+    expect(mapTiktokEvent("gift", { ...base, repeatCount: 4, repeatEnd: 0 })).toMatchObject({ repeatCount: 4 });
+    expect(mapTiktokEvent("gift", { ...base, repeatCount: 5, repeatEnd: 1 })).toMatchObject({ repeatCount: 5 });
+    // ausente o inválido: se omite (el motor cuenta 1)
+    expect(mapTiktokEvent("gift", { ...base, repeatEnd: 1 })?.repeatCount).toBeUndefined();
+    expect(mapTiktokEvent("gift", { ...base, repeatCount: 0, repeatEnd: 1 })?.repeatCount).toBeUndefined();
+  });
+
   it("like: lee los taps del mensaje (count) como likeCount", () => {
     const user = { displayId: "fan", nickname: "Fan" };
     expect(mapTiktokEvent("like", { user, count: 15 })).toMatchObject({ event: "like", likeCount: 15 });

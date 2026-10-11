@@ -123,20 +123,113 @@ describe("AccionesEventosEngine — matching", () => {
     expect(entries[0].reason).toBe("gift-in-progress");
   });
 
-  it("repetirConComboDeRegalos:true dispara en cada evento del combo (incl. intermedios)", async () => {
+  it("repetir:true cuenta CADA regalo del combo: 1,3,4,5 + cierre 5 = 5 ejecuciones", async () => {
     const bridge = makeBridge();
     const engine = new AccionesEventosEngine(bridge);
     engine.setAcciones([accion({ repetirConComboDeRegalos: true })]);
     engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
-    const { entries } = collect(engine);
+    const msg = (repeatCount: number, repeatEnd: boolean) =>
+      engine.handleEvent({ event: "gift", username: "@fan", giftId: 5655, giftName: "Rose", coins: repeatCount, repeatCount, repeatEnd, timestamp: 0 });
+
+    await msg(1, false);
+    await msg(3, false);
+    await msg(4, false);
+    await msg(5, false);
+    await msg(5, true);
+
+    expect(bridge.calls).toHaveLength(5);
+  });
+
+  it("una sola rosa (en curso + cierre) con repetir:true se ejecuta UNA vez, no dos", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: true })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
+
+    await engine.handleEvent({ event: "gift", username: "@fan", giftId: 5655, giftName: "Rose", coins: 1, repeatCount: 1, repeatEnd: false, timestamp: 0 });
+    await engine.handleEvent({ event: "gift", username: "@fan", giftId: 5655, giftName: "Rose", coins: 1, repeatCount: 1, repeatEnd: true, timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("sin repeatCount (fuente vieja) una rosa en curso + cierre sigue siendo 1 ejecución", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: true })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
 
     await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 1, repeatEnd: false, timestamp: 0 });
-    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 2, repeatEnd: false, timestamp: 0 });
-    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 3, repeatEnd: true, timestamp: 0 });
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 1, repeatEnd: true, timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("repetir:true: si los mensajes en curso no llegaron, el cierre ejecuta el total", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: true })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
+
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 3, repeatCount: 3, repeatEnd: true, timestamp: 0 });
 
     expect(bridge.calls).toHaveLength(3);
-    expect(entries.filter((e) => e.status === "fired")).toHaveLength(3);
-    expect(entries.filter((e) => e.reason === "gift-in-progress")).toHaveLength(0);
+  });
+
+  it("dos streaks seguidos de la misma persona se cuentan por separado", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: true })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
+    const gift = (repeatCount: number, repeatEnd: boolean) =>
+      engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: repeatCount, repeatCount, repeatEnd, timestamp: 0 });
+
+    await gift(1, false);
+    await gift(2, false);
+    await gift(2, true);
+    await gift(1, false);
+    await gift(1, true);
+
+    expect(bridge.calls).toHaveLength(3);
+  });
+
+  it("si el cierre de un streak se perdió, un streak nuevo (cantidad menor) no queda contaminado", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: true })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
+    const gift = (repeatCount: number, repeatEnd: boolean) =>
+      engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: repeatCount, repeatCount, repeatEnd, timestamp: 0 });
+
+    await gift(1, false);
+    await gift(3, false); // streak A (sin cierre)
+    await gift(1, false); // streak B empieza: la cantidad bajó
+    await gift(2, false);
+
+    expect(bridge.calls).toHaveLength(5); // 1 + 2 (A) + 1 + 1 (B)
+  });
+
+  it("regalo sin repeatEnd (simulador) con repetir:true: una ejecución por regalo, sin quedarse con estado", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: true })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
+
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 1, timestamp: 0 });
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 1, timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(2);
+  });
+
+  it("una rosa con repetir:false (por defecto) también se ejecuta una sola vez", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Rose" })]);
+
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 1, repeatCount: 1, repeatEnd: false, timestamp: 0 });
+    await engine.handleEvent({ event: "gift", username: "@fan", giftName: "Rose", coins: 1, repeatCount: 1, repeatEnd: true, timestamp: 0 });
+
+    expect(bridge.calls).toHaveLength(1);
   });
 
   it("repetirConComboDeRegalos:false (o ausente) solo dispara al cierre del combo", async () => {
