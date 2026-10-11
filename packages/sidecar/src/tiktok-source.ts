@@ -193,6 +193,11 @@ function mapGift(raw: RawRecord): LiveEvent | null {
     coins = diamondCount * count;
   }
 
+  const repeatCount =
+    typeof raw.repeatCount === "number" && Number.isInteger(raw.repeatCount) && raw.repeatCount > 0
+      ? raw.repeatCount
+      : undefined;
+
   return finalize({
     event: "gift",
     username,
@@ -201,6 +206,7 @@ function mapGift(raw: RawRecord): LiveEvent | null {
     giftName,
     coins,
     repeatEnd,
+    ...(repeatCount !== undefined ? { repeatCount } : {}),
     timestamp: Date.now(),
     ...extractUserFlags(raw),
   });

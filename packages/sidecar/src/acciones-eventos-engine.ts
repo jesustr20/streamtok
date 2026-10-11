@@ -88,6 +88,10 @@ export class AccionesEventosEngine extends EventEmitter {
   private eventos: Evento[] = [];
   /** Likes (taps) acumulados por Evento y por usuario, módulo N ("cada N likes"). */
   private likeCounts = new Map<string, number>();
+  /** Veces que una acción "repetir con combo" YA se ejecutó en el streak actual
+   * (clave evento|acción|usuario|regalo → cantidad de regalos cubiertos). Cada
+   * mensaje ejecuta solo la diferencia con `repeatCount`; se borra al cerrar. */
+  private streakFired = new Map<string, number>();
   /** Monedas acumuladas por handle durante la sesión (ranking de donantes). */
   private gifterCoins = new Map<string, number>();
 
@@ -106,6 +110,7 @@ export class AccionesEventosEngine extends EventEmitter {
   setEventos(eventos: Evento[]) {
     this.eventos = eventos;
     this.likeCounts.clear();
+    this.streakFired.clear();
   }
 
   getEventos(): Evento[] {
@@ -117,6 +122,7 @@ export class AccionesEventosEngine extends EventEmitter {
   resetSession() {
     this.gifterCoins.clear();
     this.likeCounts.clear();
+    this.streakFired.clear();
   }
 
   private quienMatches(ev: Evento, live: LiveEvent): boolean {
@@ -221,6 +227,15 @@ export class AccionesEventosEngine extends EventEmitter {
       this.gifterCoins.set(handle, (this.gifterCoins.get(handle) ?? 0) + evt.coins);
     }
 
+    // Cierre de un streak (o regalo suelto): las acciones "repetir con combo"
+    // que ya dispararon con un mensaje en curso no se repiten otra vez aquí.
+    const giftClosing = evt.event === "gift" && evt.repeatEnd === true;
+    // Sin `repeatEnd` (fuente que no informa streaks) no hay streak que seguir.
+    const streakKey =
+      evt.event === "gift" && evt.repeatEnd !== undefined
+        ? `${normalizeHandle(evt.username)}|${evt.giftId ?? evt.giftName ?? "?"}`
+        : undefined;
+
     let matched = false;
     let fired = false;
 
@@ -251,9 +266,18 @@ export class AccionesEventosEngine extends EventEmitter {
       }
 
       for (let i = 0; i < times; i++) {
-        const didFire = await this.fireEvento(evento, evt, { onlyRepeat: giftInProgress });
+        const didFire = await this.fireEvento(evento, evt, {
+          onlyRepeat: giftInProgress,
+          streakKey,
+        });
         if (didFire) fired = true;
       }
+    }
+
+    // El streak terminó: olvidar qué acciones ya se repitieron en él.
+    if (giftClosing && streakKey) {
+      const suffix = `|${streakKey}`;
+      for (const k of [...this.streakFired.keys()]) if (k.endsWith(suffix)) this.streakFired.delete(k);
     }
 
     if (giftInProgress && !fired) {
@@ -279,7 +303,7 @@ export class AccionesEventosEngine extends EventEmitter {
   private async fireEvento(
     evento: Evento,
     evt: LiveEvent,
-    opts: { onlyRepeat?: boolean } = {},
+    opts: { onlyRepeat?: boolean; streakKey?: string } = {},
   ): Promise<boolean> {
     const ids = [
       ...evento.accionesTodas,
@@ -304,7 +328,28 @@ export class AccionesEventosEngine extends EventEmitter {
       if (opts.onlyRepeat && accion.repetirConComboDeRegalos !== true) {
         continue;
       }
-      await this.executeAccion(evento, accion, evt);
+      // "Repetir con combo": se ejecuta UNA vez por cada regalo del streak. TikTok
+      // manda el combo en varios mensajes con la cantidad acumulada (1, 3, 4, 5…)
+      // y un cierre con el total, así que cada mensaje ejecuta solo los regalos
+      // nuevos desde el anterior (ADR 0009). Una rosa suelta (en curso + cierre)
+      // = 1 ejecución, no 2.
+      let times = 1;
+      if (accion.repetirConComboDeRegalos === true && evt.event === "gift" && !opts.streakKey) {
+        times = evt.repeatCount ?? 1; // regalo sin información de streak: tantas como regalos
+      } else if (accion.repetirConComboDeRegalos === true && opts.streakKey) {
+        const repeatKey = `${evento.id}|${accion.id}|${opts.streakKey}`;
+        const total = evt.repeatCount ?? 1;
+        // Si la cantidad baja, empezó un streak nuevo y el cierre del anterior se perdió.
+        const prev = this.streakFired.get(repeatKey) ?? 0;
+        const already = total < prev ? 0 : prev;
+        times = Math.max(0, total - already);
+        if (times === 0) continue;
+        if (this.streakFired.size > 2000) this.streakFired.clear(); // streaks abandonados
+        this.streakFired.set(repeatKey, already + times);
+      }
+      for (let i = 0; i < times; i++) {
+        await this.executeAccion(evento, accion, evt);
+      }
       fired = true;
     }
     return fired;
