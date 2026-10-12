@@ -35,6 +35,12 @@ export interface TiktokConnectionDeps {
 const STATE_REFRESH_MS = 1000;
 
 /**
+ * Espera (ms) antes de cada reintento tras un corte del LIVE: crece y se queda
+ * en el último valor (30 s) mientras no se pulse "Desconectar".
+ */
+export const RECONNECT_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
+
+/**
  * Arranca/para la conexión al LIVE de TikTok a pedido de la UI (canal WS
  * `tiktok-connection`). Cada conexión graba SIEMPRE todos los mensajes crudos
  * en un archivo propio (event-recorder.ts), aparte del catálogo de regalos.
@@ -47,6 +53,10 @@ export class TiktokConnectionController extends EventEmitter {
   private generation = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastBroadcastCount = 0;
+  /** Reintento programado tras un corte (se cancela con connect/disconnect). */
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Reintentos seguidos desde el último corte (vuelve a 0 al reconectar). */
+  private retryAttempt = 0;
 
   constructor(
     private readonly server: StreamTokWsServer,
@@ -70,6 +80,8 @@ export class TiktokConnectionController extends EventEmitter {
 
   async connect(rawUsername: string): Promise<void> {
     const username = rawUsername.trim().replace(/^@+/, "").trim();
+    this.cancelRetry();
+    this.retryAttempt = 0;
     await this.teardown();
     const generation = ++this.generation;
 
@@ -78,6 +90,15 @@ export class TiktokConnectionController extends EventEmitter {
       return;
     }
 
+    await this.startAttempt(username, generation, false);
+  }
+
+  /**
+   * Un intento de conexión. `auto` = es un reintento tras un corte: si falla
+   * vuelve a programarse solo (el primer intento manual NO reintenta, para que
+   * un usuario mal escrito o un LIVE apagado se vea como error de inmediato).
+   */
+  private async startAttempt(username: string, generation: number, auto: boolean): Promise<void> {
     const recorder = this.deps.createRecorder(username);
     let count = 0;
     const counting: Pick<RawRecorder, "record"> = {
@@ -98,13 +119,15 @@ export class TiktokConnectionController extends EventEmitter {
     source.on("disconnected", () => {
       if (!current()) return;
       // Estado primero (síncrono) y después se libera la grabación.
+      const retry = this.nextRetry();
       this.setState({
         status: "error",
         username,
         recordedEvents: count,
-        error: "Se cortó la conexión con el LIVE (terminó el live o se perdió la red).",
+        error: `Se cortó la conexión con el LIVE (terminó el live o se perdió la red). ${retry.text}`,
       });
       void this.teardown();
+      this.armRetry(username, generation, retry);
     });
 
     this.setState({ status: "connecting", username, recordingPath: recorder.filePath, recordedEvents: 0 });
@@ -113,15 +136,19 @@ export class TiktokConnectionController extends EventEmitter {
     } catch (err) {
       if (!current()) return;
       await this.teardown();
-      this.setState({
-        status: "error",
-        username,
-        recordedEvents: 0,
-        error: (err as Error)?.message ?? String(err),
-      });
+      if (!current()) return;
+      const reason = (err as Error)?.message ?? String(err);
+      if (auto) {
+        const retry = this.nextRetry();
+        this.setState({ status: "error", username, recordedEvents: 0, error: `${reason}. ${retry.text}` });
+        this.armRetry(username, generation, retry);
+      } else {
+        this.setState({ status: "error", username, recordedEvents: 0, error: reason });
+      }
       return;
     }
     if (!current()) return;
+    this.retryAttempt = 0;
     this.deps.onConnected();
     let host: { nickname?: string; avatarUrl?: string } | null = null;
     try {
@@ -145,8 +172,43 @@ export class TiktokConnectionController extends EventEmitter {
 
   async disconnect(): Promise<void> {
     this.generation++;
+    this.cancelRetry();
+    this.retryAttempt = 0;
     await this.teardown();
     this.setState({ status: "idle", recordedEvents: 0 });
+  }
+
+  /** Calcula el siguiente reintento (aumenta el contador) y el texto para la UI. */
+  private nextRetry(): { attempt: number; delayMs: number; text: string } {
+    const attempt = ++this.retryAttempt;
+    const delayMs = RECONNECT_DELAYS_MS[Math.min(attempt - 1, RECONNECT_DELAYS_MS.length - 1)];
+    return {
+      attempt,
+      delayMs,
+      text: `Reconectando en ${Math.round(delayMs / 1000)} s (intento ${attempt}). Pulsa Desconectar para cancelar.`,
+    };
+  }
+
+  /** Programa el reintento; se ignora si mientras tanto hubo connect/disconnect. */
+  private armRetry(username: string, generation: number, retry: { attempt: number; delayMs: number }): void {
+    if (generation !== this.generation) return;
+    this.emit("log", {
+      level: "warn",
+      message: `Se cortó la conexión con @${username}; reintento ${retry.attempt} en ${Math.round(retry.delayMs / 1000)} s`,
+    });
+    this.cancelRetry();
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (generation !== this.generation) return;
+      const next = ++this.generation;
+      void this.startAttempt(username, next, true);
+    }, retry.delayMs);
+    this.retryTimer.unref?.();
+  }
+
+  private cancelRetry(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
   }
 
   /** Detiene fuente, grabación y timer de la conexión vigente (si hay). */

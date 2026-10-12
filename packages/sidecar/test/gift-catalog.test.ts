@@ -129,24 +129,102 @@ describe("GiftCatalogController", () => {
     ws.close();
   });
 
-  it("match por id tiene prioridad sobre match por nombre", async () => {
+  it("mismo id y nada cambió → no hay cambios", async () => {
     const path = tmpPath();
     seed(path, [{ id: "5487", name: "Finger Heart", imageUrl: "https://cdn/real.png", cost: 5 }]);
     server = new StreamTokWsServer(0);
     const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
 
-    // el evento real viene con el mismo id (aunque el nombre difiera en mayúsculas)
+    expect(
+      controller.learn({ id: "5487", name: "Finger Heart", imageUrl: "https://cdn/real.png", cost: 5 }),
+    ).toBe(false);
+  });
+
+  it("mismo id con nombre, costo o imagen distintos → se actualiza y se avisa", async () => {
+    const path = tmpPath();
+    seed(path, [{ id: "5487", name: "Finger Heart", imageUrl: "https://cdn/vieja.png", cost: 5 }]);
+    server = new StreamTokWsServer(0);
+    const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
+    const logs: string[] = [];
+    controller.on("log", (l) => logs.push(l.message));
+
     const changed = controller.learn({
       id: "5487",
-      name: "FINGER HEART",
-      imageUrl: "https://cdn/otra.png",
-      cost: 5,
+      name: "Finger Heart 2",
+      imageUrl: "https://cdn/nueva.png",
+      cost: 7,
     });
 
-    expect(changed).toBe(false);
+    expect(changed).toBe(true);
     expect(controller.getEntries()).toEqual([
-      { id: "5487", name: "Finger Heart", imageUrl: "https://cdn/real.png", cost: 5 },
+      { id: "5487", name: "Finger Heart 2", imageUrl: "https://cdn/nueva.png", cost: 7 },
     ]);
+    expect(logs.join("\n")).toMatch(/Regalo actualizado: Finger Heart 2 \(id 5487\).*nombre.*costo 5 → 7.*imagen/);
+  });
+
+  it("el id manda: mismo nombre pero otro id es otro regalo (no se ignora)", async () => {
+    const path = tmpPath();
+    seed(path, [{ id: "1", name: "Unicorn", imageUrl: "https://cdn/a.png", cost: 100 }]);
+    server = new StreamTokWsServer(0);
+    const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
+
+    expect(controller.learn({ id: "2", name: "Unicorn", imageUrl: "https://cdn/b.png", cost: 200 })).toBe(true);
+    expect(controller.getEntries().map((e) => e.id)).toEqual(["1", "2"]);
+  });
+
+  it("regalo sembrado con precio viejo: al llegar el real se confirma con el id y el costo real", async () => {
+    const path = tmpPath();
+    seed(path, [
+      { name: "Heart", imageUrl: "https://beetgames.com/heart.webp", cost: 1 },
+      { name: "LIVE Island", imageUrl: "https://beetgames.com/live_island.webp", cost: 10 },
+    ]);
+    server = new StreamTokWsServer(0);
+    const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
+    const logs: string[] = [];
+    controller.on("log", (l) => logs.push(l.message));
+
+    controller.learn({ id: "5576", name: "Heart", imageUrl: "https://tiktokcdn.com/heart.png", cost: 10 });
+
+    expect(controller.getEntries()).toEqual([
+      { id: "5576", name: "Heart", imageUrl: "https://tiktokcdn.com/heart.png", cost: 10 },
+      { name: "LIVE Island", imageUrl: "https://beetgames.com/live_island.webp", cost: 10 },
+    ]);
+    expect(logs.join("\n")).toMatch(/Regalo confirmado: Heart \(id 5576\), costo 1 → 10/);
+  });
+
+  it("nombres sembrados repetidos: confirma el de mismo costo", async () => {
+    const path = tmpPath();
+    seed(path, [
+      { name: "Unicorn", imageUrl: "https://beetgames.com/u1.webp", cost: 2499 },
+      { name: "Unicorn", imageUrl: "https://beetgames.com/u2.webp", cost: 5500 },
+    ]);
+    server = new StreamTokWsServer(0);
+    const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
+
+    controller.learn({ id: "77", name: "Unicorn", imageUrl: "https://tiktokcdn.com/u.png", cost: 5500 });
+
+    expect(controller.getEntries()).toEqual([
+      { name: "Unicorn", imageUrl: "https://beetgames.com/u1.webp", cost: 2499 },
+      { id: "77", name: "Unicorn", imageUrl: "https://tiktokcdn.com/u.png", cost: 5500 },
+    ]);
+  });
+
+  it("nombres sembrados repetidos y ninguno del mismo costo: agrega una entrada nueva sin adivinar", async () => {
+    const path = tmpPath();
+    seed(path, [
+      { name: "Unicorn", imageUrl: "https://beetgames.com/u1.webp", cost: 2499 },
+      { name: "Unicorn", imageUrl: "https://beetgames.com/u2.webp", cost: 5500 },
+    ]);
+    server = new StreamTokWsServer(0);
+    const controller = new GiftCatalogController(server, new GiftCatalogStore(path));
+
+    controller.learn({ id: "77", name: "Unicorn", imageUrl: "https://tiktokcdn.com/u.png", cost: 3000 });
+
+    const entries = controller.getEntries();
+    expect(entries).toHaveLength(3);
+    expect(entries[0].id).toBeUndefined();
+    expect(entries[1].id).toBeUndefined();
+    expect(entries[2]).toMatchObject({ id: "77", cost: 3000 });
   });
 
   it("upgrade de entrada sembrada (sin id) cuando llega evento real con nombre coincidente", async () => {
@@ -182,7 +260,7 @@ describe("GiftCatalogController", () => {
     });
 
     expect(changed).toBe(true);
-    expect(controller.getEntries()[0]).toMatchObject({ id: "100", name: "Corazón" });
+    expect(controller.getEntries()[0]).toMatchObject({ id: "100", name: "CORAZON" });
   });
 
   it("agrega entrada nueva si no hay match ni por id ni por nombre", async () => {

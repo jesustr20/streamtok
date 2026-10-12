@@ -1,10 +1,20 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { GiftCatalogEntry } from "@streamtok/shared";
 
 /** "1 Coins - ID:10716" (el ID se omite si el regalo del catálogo no lo trae). */
 function giftSubtitle(g: GiftCatalogEntry): string {
   return g.id ? `${g.cost} Coins - ID:${g.id}` : `${g.cost} Coins`;
 }
+
+/** Regalo que ya llegó por un LIVE real (trae el id que da TikTok). */
+function isConfirmed(g: GiftCatalogEntry): boolean {
+  return !!g.id;
+}
+
+const byName = (a: GiftCatalogEntry, b: GiftCatalogEntry) => a.name.localeCompare(b.name);
+
+/** Clave estable: el id si lo hay; si no, nombre + costo (hay nombres repetidos). */
+const giftKey = (g: GiftCatalogEntry) => g.id ?? `${g.name}|${g.cost}`;
 
 /**
  * Selector de regalo del catálogo (imagen + nombre + monedas + ID, con
@@ -25,9 +35,15 @@ export function GiftPicker({
   const selected = gifts.find((g) => g.name === value);
 
   const q = query.trim().toLowerCase();
-  const visible = q
+  const matching = q
     ? gifts.filter((g) => g.name.toLowerCase().includes(q) || (g.id ?? "").includes(q))
     : gifts;
+  // Primero los que ya llegaron por un LIVE (confirmados, con id), luego el
+  // catálogo sembrado (sin id). La lista se recalcula sola cuando el sidecar
+  // aprende o actualiza un regalo, aunque el desplegable esté abierto.
+  const confirmed = matching.filter(isConfirmed).sort(byName);
+  const unconfirmed = matching.filter((g) => !isConfirmed(g));
+  const visible = [...confirmed, ...unconfirmed];
 
   function close() {
     setOpen(false);
@@ -42,7 +58,10 @@ export function GiftPicker({
             <img src={selected.imageUrl} alt="" referrerPolicy="no-referrer" style={giftThumbStyle} />
             <span style={giftTextColumnStyle}>
               <span style={giftNameStyle}>{selected.name}</span>
-              <span style={giftSubtitleStyle}>{giftSubtitle(selected)}</span>
+              <span style={giftSubtitleStyle}>
+                {giftSubtitle(selected)}
+                {!isConfirmed(selected) && <span style={unconfirmedBadgeStyle}>sin confirmar</span>}
+              </span>
             </span>
           </>
         ) : (
@@ -52,6 +71,12 @@ export function GiftPicker({
         )}
         <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>
       </button>
+      {selected && !isConfirmed(selected) && (
+        <div style={unconfirmedNoteStyle}>
+          Este regalo aún no ha llegado por ningún LIVE, así que se reconoce solo por su nombre. Si
+          TikTok lo llama distinto, no disparará. Cuando llegue, aparecerá aquí con su id.
+        </div>
+      )}
 
       {open && (
         <>
@@ -70,24 +95,36 @@ export function GiftPicker({
                 Ningún regalo coincide.
               </div>
             ) : (
-              visible.map((g) => {
+              visible.map((g, i) => {
                 const isSelected = g.name === value;
+                const firstOfGroup = i === 0 || isConfirmed(g) !== isConfirmed(visible[i - 1]);
+                const header =
+                  firstOfGroup && confirmed.length > 0 && unconfirmed.length > 0
+                    ? isConfirmed(g)
+                      ? `Recibidos en tus LIVEs (${confirmed.length})`
+                      : `Catálogo sin confirmar (${unconfirmed.length})`
+                    : null;
                 return (
-                  <button
-                    key={g.id ?? g.name}
-                    type="button"
-                    onClick={() => {
-                      onSelect(g.name);
-                      close();
-                    }}
-                    style={{ ...giftOptionStyle, background: isSelected ? "#1E2027" : "transparent" }}
-                  >
-                    <img src={g.imageUrl} alt="" referrerPolicy="no-referrer" style={giftThumbStyle} />
-                    <span style={giftTextColumnStyle}>
-                      <span style={{ ...giftNameStyle, color: isSelected ? "#F4F4F5" : "#C4C5CC" }}>{g.name}</span>
-                      <span style={giftSubtitleStyle}>{giftSubtitle(g)}</span>
-                    </span>
-                  </button>
+                  <Fragment key={giftKey(g)}>
+                    {header && <div style={giftGroupHeaderStyle}>{header}</div>}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelect(g.name);
+                        close();
+                      }}
+                      style={{ ...giftOptionStyle, background: isSelected ? "#1E2027" : "transparent" }}
+                    >
+                      <img src={g.imageUrl} alt="" referrerPolicy="no-referrer" style={giftThumbStyle} />
+                      <span style={giftTextColumnStyle}>
+                        <span style={{ ...giftNameStyle, color: isSelected ? "#F4F4F5" : "#C4C5CC" }}>{g.name}</span>
+                        <span style={giftSubtitleStyle}>
+                          {giftSubtitle(g)}
+                          {!isConfirmed(g) && <span style={unconfirmedBadgeStyle}>sin confirmar</span>}
+                        </span>
+                      </span>
+                    </button>
+                  </Fragment>
                 );
               })
             )}
@@ -186,4 +223,33 @@ const giftOptionStyle: React.CSSProperties = {
   borderRadius: 6,
   cursor: "pointer",
   textAlign: "left",
+};
+
+const unconfirmedBadgeStyle: React.CSSProperties = {
+  marginLeft: 8,
+  padding: "1px 6px",
+  borderRadius: 4,
+  fontSize: 9.5,
+  fontWeight: 700,
+  color: "#F5A524",
+  background: "#F5A5241A",
+  textTransform: "uppercase",
+  letterSpacing: 0.3,
+};
+
+const unconfirmedNoteStyle: React.CSSProperties = {
+  marginTop: 6,
+  fontSize: 11,
+  lineHeight: 1.5,
+  color: "#F5A524",
+};
+
+const giftGroupHeaderStyle: React.CSSProperties = {
+  padding: "8px 8px 4px",
+  fontSize: 10.5,
+  fontWeight: 700,
+  letterSpacing: 0.4,
+  textTransform: "uppercase",
+  color: "#6B6D76",
+  flexShrink: 0,
 };

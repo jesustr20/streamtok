@@ -42,6 +42,24 @@ export const PORQUE_LABELS: Record<EventoPorque, string> = {
   subeNivelDonador: "sube de nivel de donador",
 };
 
+/**
+ * Resumen corto del evento para el log: en regalos incluye nombre, id y monedas
+ * (así se ve de un vistazo qué llegó y por qué coincidió o no con un Evento).
+ */
+export function describeLiveEvent(evt: LiveEvent): string {
+  const who = evt.nickname ?? evt.username;
+  if (evt.event === "gift") {
+    const bits = [
+      evt.giftId !== undefined ? `id ${evt.giftId}` : null,
+      typeof evt.coins === "number" ? `${evt.coins} monedas` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    return `regalo ${evt.giftName ?? "?"}${bits ? ` (${bits})` : ""} de ${who}`;
+  }
+  return `${EVENT_LABELS[evt.event]} de ${who}`;
+}
+
 function normalizeHandle(value: string): string {
   const trimmed = value.trim();
   return (trimmed.startsWith("@") ? trimmed.slice(1) : trimmed).toLowerCase();
@@ -295,7 +313,7 @@ export class AccionesEventosEngine extends EventEmitter {
         status: "discarded",
         event: evt.event,
         reason: "no-match",
-        message: `sin evento que coincida con ${EVENT_LABELS[evt.event]}`,
+        message: `sin evento que coincida con ${describeLiveEvent(evt)}`,
       });
     }
   }
@@ -395,7 +413,7 @@ export class AccionesEventosEngine extends EventEmitter {
         action: ctx.modActionId,
         accionId: ctx.accionId,
         eventoId: ctx.eventoId,
-        message: `${PORQUE_LABELS[ctx.porque]} → ${ctx.modActionId}`,
+        message: `${describeLiveEvent(evt)} → ${ctx.modActionId}`,
       });
     } else {
       this.emitEntry({

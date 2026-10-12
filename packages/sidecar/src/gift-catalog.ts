@@ -107,29 +107,60 @@ export class GiftCatalogController extends EventEmitter {
   }
 
   /** Aprende un regalo que llegó por un evento real. Devuelve true si el
-   * catálogo cambió (se agregó o se confirmó el id de una entrada sembrada). */
+   * catálogo cambió.
+   *
+   * El id es la clave: si ya hay una entrada con ese id, se refrescan su
+   * nombre, costo e imagen con lo que trae el evento (TikTok es la fuente de
+   * verdad; la semilla estática puede estar vieja). Si no, se intenta
+   * "confirmar" una entrada sembrada (sin id) con el mismo nombre; si hay varias
+   * con ese nombre se elige la de mismo costo, y si ninguna coincide se agrega
+   * una entrada nueva en vez de adivinar. */
   learn(entry: GiftCatalogEntry): boolean {
-    // 1. Match por id (prioridad): si ya hay una entrada con ese id, no hay nada
-    //    nuevo que aprender.
-    if (entry.id && this.entries.some((e) => e.id === entry.id)) return false;
-
-    // 2. Match por nombre normalizado.
     const target = normalizeGiftName(entry.name);
-    const idx = this.entries.findIndex((e) => normalizeGiftName(e.name) === target);
-    if (idx !== -1) {
-      const existing = this.entries[idx];
-      // 3. Upgrade: la entrada sembrada no tenía id y el evento trae el id real
-      //    + la imagen real (más confiable que la de BeetGames).
-      if (!existing.id && entry.id) {
-        this.entries[idx] = { ...existing, id: entry.id, imageUrl: entry.imageUrl };
+
+    if (entry.id) {
+      // 1. Mismo id: actualizar lo que haya cambiado.
+      const byId = this.entries.findIndex((e) => e.id === entry.id);
+      if (byId !== -1) {
+        const current = this.entries[byId];
+        const changes: string[] = [];
+        if (current.name !== entry.name) changes.push(`nombre "${current.name}" → "${entry.name}"`);
+        if (current.cost !== entry.cost) changes.push(`costo ${current.cost} → ${entry.cost}`);
+        if (current.imageUrl !== entry.imageUrl) changes.push("imagen");
+        if (changes.length === 0) return false;
+        this.entries[byId] = { ...current, name: entry.name, cost: entry.cost, imageUrl: entry.imageUrl };
         this.persistAndBroadcast();
-        this.emit("log", { level: "info", message: `Regalo confirmado: ${entry.name} (id ${entry.id})` });
+        this.emit("log", {
+          level: "info",
+          message: `Regalo actualizado: ${entry.name} (id ${entry.id}): ${changes.join(", ")}`,
+        });
         return true;
       }
+
+      // 2. Entrada sembrada (sin id) con el mismo nombre: confirmarla con el id real.
+      const seeded = this.entries
+        .map((e, i) => ({ e, i }))
+        .filter(({ e }) => !e.id && normalizeGiftName(e.name) === target);
+      const pick =
+        seeded.length === 1 ? seeded[0] : seeded.filter(({ e }) => e.cost === entry.cost).length === 1
+          ? seeded.find(({ e }) => e.cost === entry.cost)
+          : undefined;
+      if (pick) {
+        const costNote = pick.e.cost !== entry.cost ? `, costo ${pick.e.cost} → ${entry.cost}` : "";
+        this.entries[pick.i] = { id: entry.id, name: entry.name, imageUrl: entry.imageUrl, cost: entry.cost };
+        this.persistAndBroadcast();
+        this.emit("log", {
+          level: "info",
+          message: `Regalo confirmado: ${entry.name} (id ${entry.id})${costNote}`,
+        });
+        return true;
+      }
+    } else if (this.entries.some((e) => normalizeGiftName(e.name) === target)) {
+      // Sin id no hay nada que confirmar: ya existe una entrada con ese nombre.
       return false;
     }
 
-    // 4. No hay match ni por id ni por nombre: entrada nueva.
+    // 3. No hay a quién confirmar ni actualizar: entrada nueva.
     this.entries.push(entry);
     this.persistAndBroadcast();
     this.emit("log", {

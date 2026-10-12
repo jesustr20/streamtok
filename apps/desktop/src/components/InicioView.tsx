@@ -248,7 +248,7 @@ export function InicioView({
         <div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>¿Se cortó la conexión en pleno show?</div>
           <div style={{ fontSize: 12, color: "#9A9CA5", marginTop: 2, lineHeight: 1.5 }}>
-            Mientras reconectas, puedes seguir el show a mano desde{" "}
+            Si se corta, StreamTok reintenta conectarse solo. Mientras tanto puedes seguir el show a mano desde{" "}
             <button
               type="button"
               onClick={onGoJuegos}
