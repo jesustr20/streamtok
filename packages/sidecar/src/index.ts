@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { LiveEvent } from "@streamtok/shared";
+import type { EventLogEntry, LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventRecorder, maxBytesFromEnv } from "./event-recorder.js";
 import {
@@ -49,6 +49,15 @@ server.on("listening", (port) => {
 // "acciones"/"eventos".
 // ---------------------------------------------------------------------------
 const engine = new AccionesEventosEngine(modBridge);
+// Decisiones del motor en la consola: qué regalo/evento llegó y qué disparó (o
+// por qué no coincidió ningún Evento). Se omiten los likes parciales, los
+// mensajes de combo en curso y los eventos que no son regalos sin coincidencia.
+engine.on("event-log", (e: EventLogEntry) => {
+  if (e.reason === "like-threshold" || e.reason === "gift-in-progress") return;
+  if (e.reason === "no-match" && e.event !== "gift") return;
+  // eslint-disable-next-line no-console
+  console.log(`[engine:${e.status === "fired" ? "info" : "warn"}]`, e.message, e.eventoId ? `(evento ${e.eventoId})` : "");
+});
 
 const profilesStore = new ProfilesStore(defaultProfilesFilePath());
 const profilesController = new ProfilesController(

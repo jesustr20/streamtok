@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Accion, Evento, EventLogEntry, LiveEvent } from "@streamtok/shared";
-import { AccionesEventosEngine, computeGifterRank } from "../src/acciones-eventos-engine.js";
+import { AccionesEventosEngine, computeGifterRank, describeLiveEvent } from "../src/acciones-eventos-engine.js";
 import type { ModBridge } from "../src/mod-bridge.js";
 
 type Call = {
@@ -679,5 +679,53 @@ describe("AccionesEventosEngine — niveles (ADR 0007)", () => {
     await engine.handleEvent(giftEvent("@rico", 500));
     await engine.handleEvent({ event: "comment", username: "@rico", text: "hola", timestamp: 0 });
     expect(bridge.calls).toHaveLength(1);
+  });
+});
+
+describe("mensajes del log del motor", () => {
+  const heart: LiveEvent = {
+    event: "gift",
+    username: "@satoru",
+    nickname: "Satoru",
+    giftName: "Heart",
+    giftId: 5576,
+    coins: 10,
+    repeatEnd: true,
+    timestamp: 0,
+  };
+
+  it("describeLiveEvent: regalo con nombre, id, monedas y quién; otros eventos con su etiqueta", () => {
+    expect(describeLiveEvent(heart)).toBe("regalo Heart (id 5576, 10 monedas) de Satoru");
+    expect(describeLiveEvent({ ...heart, giftId: undefined, coins: undefined, nickname: undefined })).toBe(
+      "regalo Heart de @satoru",
+    );
+    expect(describeLiveEvent(followEvent())).toMatch(/de Fan 123$/);
+  });
+
+  it("regalo sin evento que coincida: el descarte dice qué regalo llegó", async () => {
+    const engine = new AccionesEventosEngine(makeBridge());
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "LIVE Island" })]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent(heart);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ status: "discarded", reason: "no-match" });
+    expect(entries[0].message).toBe("sin evento que coincida con regalo Heart (id 5576, 10 monedas) de Satoru");
+  });
+
+  it("regalo que dispara: el log dice qué regalo y qué acción salió", async () => {
+    const engine = new AccionesEventosEngine(makeBridge());
+    engine.setAcciones([accion({ comandos: [{ modActionId: "earthquake", params: {} }] })]);
+    engine.setEventos([evento({ id: "ev-heart", porque: "regaloEspecifico", giftId: "5576", giftName: "Heart" })]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent(heart);
+
+    expect(entries.filter((e) => e.status === "fired")).toHaveLength(1);
+    const fired = entries.find((e) => e.status === "fired")!;
+    expect(fired.eventoId).toBe("ev-heart");
+    expect(fired.message).toBe("regalo Heart (id 5576, 10 monedas) de Satoru → earthquake");
   });
 });

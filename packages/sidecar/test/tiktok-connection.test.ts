@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import type { TiktokConnectionState } from "@streamtok/shared";
-import { TiktokConnectionController, type LiveSource } from "../src/tiktok-connection.js";
+import { RECONNECT_DELAYS_MS, TiktokConnectionController, type LiveSource } from "../src/tiktok-connection.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
 
 class FakeSource extends EventEmitter implements LiveSource {
@@ -199,6 +199,85 @@ describe("TiktokConnectionController", () => {
     old.emit("event", { event: "like" });
     expect(controller.getState()).toMatchObject({ status: "connected", username: "dos" });
     expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  describe("reconexión automática tras un corte", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("tras un corte avisa y vuelve a conectar solo, con grabación nueva", async () => {
+      await controller.connect("x");
+      sources[0].emit("disconnected", "1006");
+      expect(controller.getState()).toMatchObject({ status: "error", username: "x" });
+      expect(controller.getState().error).toMatch(/Reconectando en 2 s \(intento 1\)/);
+      expect(sources).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAYS_MS[0]);
+      expect(sources).toHaveLength(2);
+      expect(sources[1].username).toBe("x");
+      expect(controller.getState()).toMatchObject({ status: "connected", username: "x" });
+      expect(onConnected).toHaveBeenCalledTimes(2);
+      expect(recorders).toHaveLength(2);
+    });
+
+    it("si el reintento falla sigue intentando con esperas crecientes y topa en el último valor", async () => {
+      await controller.connect("x");
+      sources[0].emit("disconnected", "1006");
+      nextFail = new Error("LIVE no disponible");
+
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAYS_MS[0]);
+      expect(controller.getState().error).toMatch(/LIVE no disponible\. Reconectando en 5 s \(intento 2\)/);
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAYS_MS[1]);
+      expect(controller.getState().error).toMatch(/en 10 s \(intento 3\)/);
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAYS_MS[2]);
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAYS_MS[3]);
+      expect(controller.getState().error).toMatch(/en 30 s \(intento 5\)/);
+      await vi.advanceTimersByTimeAsync(30000);
+      expect(controller.getState().error).toMatch(/en 30 s \(intento 6\)/);
+
+      nextFail = null;
+      await vi.advanceTimersByTimeAsync(30000);
+      expect(controller.getState()).toMatchObject({ status: "connected", username: "x" });
+      // al reconectar el contador vuelve a empezar
+      sources.at(-1)!.emit("disconnected", "1006");
+      expect(controller.getState().error).toMatch(/en 2 s \(intento 1\)/);
+    });
+
+    it("Desconectar cancela el reintento pendiente", async () => {
+      await controller.connect("x");
+      sources[0].emit("disconnected", "1006");
+      await controller.disconnect();
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(sources).toHaveLength(1);
+      expect(controller.getState()).toEqual({ status: "idle", recordedEvents: 0 });
+    });
+
+    it("un connect manual cancela el reintento pendiente (no se duplican conexiones)", async () => {
+      await controller.connect("uno");
+      sources[0].emit("disconnected", "1006");
+      await controller.connect("dos");
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(sources.map((s) => s.username)).toEqual(["uno", "dos"]);
+      expect(controller.getState()).toMatchObject({ status: "connected", username: "dos" });
+    });
+
+    it("si el primer connect manual falla NO reintenta solo", async () => {
+      nextFail = new Error("LIVE no disponible");
+      await controller.connect("x");
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(sources).toHaveLength(1);
+      expect(controller.getState()).toMatchObject({ status: "error", error: "LIVE no disponible" });
+    });
+
+    it("un corte de una conexión vieja no programa reintentos", async () => {
+      await controller.connect("uno");
+      const old = sources[0];
+      await controller.connect("dos");
+      old.emit("disconnected", "1006");
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(sources).toHaveLength(2);
+      expect(controller.getState()).toMatchObject({ status: "connected", username: "dos" });
+    });
   });
 
   describe("canal WS", () => {
