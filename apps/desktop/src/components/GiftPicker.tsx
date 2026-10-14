@@ -13,6 +13,26 @@ function isConfirmed(g: GiftCatalogEntry): boolean {
 
 const byName = (a: GiftCatalogEntry, b: GiftCatalogEntry) => a.name.localeCompare(b.name);
 
+/** Referencia a un regalo elegido: el id manda (hay regalos con el MISMO nombre
+ * y distinto id, p. ej. dos "Balloons"); sin id solo se conoce el nombre. */
+export interface GiftRef {
+  id?: string;
+  name: string;
+}
+
+export const giftRefOf = (g: GiftCatalogEntry): GiftRef => ({ id: g.id, name: g.name });
+
+/** Busca en el catálogo el regalo al que apunta `ref`: por id si lo trae; si ese
+ * id aún no está en el catálogo (o la referencia no tiene id), por nombre. */
+export function findGift(gifts: GiftCatalogEntry[], ref: GiftRef | null): GiftCatalogEntry | undefined {
+  if (!ref) return undefined;
+  if (ref.id) {
+    const byId = gifts.find((g) => g.id === ref.id);
+    if (byId) return byId;
+  }
+  return gifts.find((g) => g.name === ref.name);
+}
+
 /** Clave estable: el id si lo hay; si no, nombre + costo (hay nombres repetidos). */
 const giftKey = (g: GiftCatalogEntry) => g.id ?? `${g.name}|${g.cost}`;
 
@@ -26,13 +46,13 @@ export function GiftPicker({
   gifts,
   onSelect,
 }: {
-  value: string;
+  value: GiftRef | null;
   gifts: GiftCatalogEntry[];
-  onSelect: (name: string) => void;
+  onSelect: (gift: GiftCatalogEntry) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const selected = gifts.find((g) => g.name === value);
+  const selected = findGift(gifts, value);
 
   const q = query.trim().toLowerCase();
   const matching = q
@@ -96,7 +116,7 @@ export function GiftPicker({
               </div>
             ) : (
               visible.map((g, i) => {
-                const isSelected = g.name === value;
+                const isSelected = g === selected;
                 const firstOfGroup = i === 0 || isConfirmed(g) !== isConfirmed(visible[i - 1]);
                 const header =
                   firstOfGroup && confirmed.length > 0 && unconfirmed.length > 0
@@ -110,7 +130,7 @@ export function GiftPicker({
                     <button
                       type="button"
                       onClick={() => {
-                        onSelect(g.name);
+                        onSelect(g);
                         close();
                       }}
                       style={{ ...giftOptionStyle, background: isSelected ? "#1E2027" : "transparent" }}

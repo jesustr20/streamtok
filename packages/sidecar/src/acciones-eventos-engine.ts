@@ -222,7 +222,12 @@ export class AccionesEventosEngine extends EventEmitter {
       }
       case "regaloEspecifico": {
         if (live.event !== "gift") return false;
-        if (ev.giftId && String(live.giftId ?? "") === ev.giftId) return true;
+        // El id manda: hay regalos distintos con el MISMO nombre (dos "Balloons",
+        // ids 14087 y 15099), así que con id guardado y un id en el regalo que
+        // llega, solo cuenta el id (y sigue valiendo si TikTok renombra el regalo).
+        if (ev.giftId && live.giftId !== undefined) return String(live.giftId) === ev.giftId;
+        // Sin id en el evento (regalo del catálogo sin confirmar) o en el regalo
+        // que llega (fuente que no lo informa): se compara por nombre.
         if (ev.giftName && live.giftName === ev.giftName) return true;
         return false;
       }

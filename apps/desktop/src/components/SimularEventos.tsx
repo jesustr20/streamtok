@@ -7,7 +7,7 @@ import type {
   GiftCatalogMessage,
 } from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
-import { GiftPicker } from "./GiftPicker";
+import { GiftPicker, findGift, giftRefOf, type GiftRef } from "./GiftPicker";
 
 const ACCENT = "#E23A57";
 
@@ -61,7 +61,7 @@ export function SimularEventos({
   account?: ConnectedAccount | null;
 }) {
   const [gifts, setGifts] = useState<GiftCatalogEntry[]>([]);
-  const [gift, setGift] = useState("");
+  const [gift, setGift] = useState<GiftRef | null>(null);
   const [likes, setLikes] = useState(20);
   const [comment, setComment] = useState("");
   const [roles, setRoles] = useState({ isFollower: false, isSubscriber: false, isModerator: false });
@@ -85,7 +85,7 @@ export function SimularEventos({
       if (msg.kind === "state") {
         setGifts(msg.gifts);
         setGift((current) =>
-          current && msg.gifts.some((g) => g.name === current) ? current : (msg.gifts[0]?.name ?? ""),
+          findGift(msg.gifts, current) ? current : msg.gifts[0] ? giftRefOf(msg.gifts[0]) : null,
         );
       }
     });
@@ -147,7 +147,7 @@ export function SimularEventos({
   }
 
   function simulateGift() {
-    const selected = gifts.find((g) => g.name === gift);
+    const selected = findGift(gifts, gift);
     if (!selected) return;
     begin();
     // Un regalo simulado lleva el costo y el ID reales del catálogo (igual
@@ -288,7 +288,7 @@ export function SimularEventos({
             Sin catálogo de regalos todavía
           </div>
         ) : (
-          <GiftPicker value={gift} gifts={gifts} onSelect={setGift} />
+          <GiftPicker value={gift} gifts={gifts} onSelect={(g) => setGift(giftRefOf(g))} />
         )}
         <ActionButton label="Simular Gift" onClick={simulateGift} disabled={!canSend || !gift} primary />
       </Row>
