@@ -1,6 +1,6 @@
 import { matchesQuery } from "../lib/search";
 import { useEffect, useState } from "react";
-import { GiftPicker } from "./GiftPicker";
+import { GiftPicker, giftRefOf, type GiftRef } from "./GiftPicker";
 import type {
   Accion,
   Evento,
@@ -66,7 +66,10 @@ export function EventoModal({
   const [valorMinimoMonedas, setValorMinimoMonedas] = useState<number>(
     initial?.valorMinimoMonedas ?? 1,
   );
-  const [giftName, setGiftName] = useState(initial?.giftName ?? "");
+  // El regalo elegido se guarda por id + nombre: dos regalos pueden llamarse igual.
+  const [gift, setGift] = useState<GiftRef | null>(
+    initial?.giftName ? { id: initial.giftId, name: initial.giftName } : null,
+  );
   const [giftCatalog, setGiftCatalog] = useState<GiftCatalogEntry[]>([]);
   const [emoteId, setEmoteId] = useState(initial?.emoteId ?? "");
   const [stickerId, setStickerId] = useState(initial?.stickerId ?? "");
@@ -130,7 +133,7 @@ export function EventoModal({
         return;
       }
     }
-    if (porque === "regaloEspecifico" && !giftName) {
+    if (porque === "regaloEspecifico" && !gift) {
       setError("Elige un regalo del catálogo.");
       return;
     }
@@ -146,8 +149,6 @@ export function EventoModal({
       setError("Indica el nombre del producto.");
       return;
     }
-
-    const selectedGift = giftCatalog.find((g) => g.name === giftName);
 
     const evento: Evento = {
       id: initial?.id ?? newId(),
@@ -170,8 +171,8 @@ export function EventoModal({
       comando: porque === "comando" ? comando.trim() : undefined,
       cantidadMinimaLikes: porque === "likes" ? numOr(cantidadMinimaLikes, 15) : undefined,
       valorMinimoMonedas: porque === "regaloValorMinimo" ? numOr(valorMinimoMonedas, 1) : undefined,
-      giftId: porque === "regaloEspecifico" ? selectedGift?.id : undefined,
-      giftName: porque === "regaloEspecifico" ? giftName : undefined,
+      giftId: porque === "regaloEspecifico" ? gift?.id : undefined,
+      giftName: porque === "regaloEspecifico" ? gift?.name : undefined,
       emoteId: porque === "emoteSuscriptor" ? emoteId.trim() : undefined,
       stickerId: porque === "stickerFanClub" ? stickerId.trim() : undefined,
       nombreProductoContiene:
@@ -389,7 +390,7 @@ export function EventoModal({
                       modal para poder elegirlo.
                     </div>
                   ) : (
-                    <GiftPicker value={giftName} gifts={giftCatalog} onSelect={setGiftName} />
+                    <GiftPicker value={gift} gifts={giftCatalog} onSelect={(g) => setGift(giftRefOf(g))} />
                   )}
                 </div>
               )}

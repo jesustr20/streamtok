@@ -893,3 +893,52 @@ describe("AccionesEventosEngine — cooldown (ADR 0010)", () => {
     expect(bridge.calls).toHaveLength(1);
   });
 });
+
+describe("AccionesEventosEngine — regalo específico con nombres repetidos", () => {
+  const gift = (giftName: string, giftId?: number): LiveEvent => ({
+    event: "gift", username: "@fan", giftName, giftId, coins: 10, repeatEnd: true, timestamp: 0,
+  });
+
+  it("con id guardado manda el id: otro regalo con el MISMO nombre y distinto id no dispara", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftId: "14087", giftName: "Balloons" })]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent(gift("Balloons", 15099));
+    expect(bridge.calls).toHaveLength(0);
+    expect(entries[0].reason).toBe("no-match");
+
+    await engine.handleEvent(gift("Balloons", 14087));
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("con id guardado y regalo sin id (simulador antiguo): cae al nombre", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftId: "14087", giftName: "Balloons" })]);
+    await engine.handleEvent(gift("Balloons"));
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("evento solo con nombre (sin id): sigue disparando por nombre con cualquier id", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Balloons" })]);
+    await engine.handleEvent(gift("Balloons", 15099));
+    await engine.handleEvent(gift("Balloons", 14087));
+    expect(bridge.calls).toHaveLength(2);
+  });
+
+  it("con id guardado: si TikTok renombra el regalo, sigue disparando por id", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftId: "5879", giftName: "Doughnut" })]);
+    await engine.handleEvent(gift("Donut", 5879));
+    expect(bridge.calls).toHaveLength(1);
+  });
+});
