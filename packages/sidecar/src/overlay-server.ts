@@ -1,7 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { OVERLAY_DEFAULT_PORT, type OverlayKind } from "@streamtok/shared";
-import { overlayPage } from "./overlay-pages.js";
+import { OVERLAY_DEFAULT_PORT, overlayPage, type OverlayKind } from "@streamtok/shared";
 
 /**
  * Servidor HTTP de overlays (ADR 0011). Sirve las páginas que el streamer pega

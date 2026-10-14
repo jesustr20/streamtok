@@ -7,9 +7,11 @@ import { ModDetalle } from "./components/ModDetalle";
 import { ModsLibrary } from "./components/ModsLibrary";
 import { OverlaysView } from "./components/OverlaysView";
 import { Sidebar } from "./components/Sidebar";
+import { TemporizadorView } from "./components/TemporizadorView";
+import { WinsView } from "./components/WinsView";
 import { SidecarClient } from "./lib/ws-client";
 
-export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays";
+export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins";
 
 export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
@@ -100,7 +102,9 @@ export function App() {
         {view === "gestionar-perfiles" && (
           <GestionarPerfiles client={client} onBack={() => setView("juego-detalle")} />
         )}
-        {view === "overlays" && <OverlaysView client={client} />}
+        {view === "overlays" && <OverlaysView client={client} onOpenModule={setView} />}
+        {view === "temporizador" && <TemporizadorView client={client} onCustomize={() => setView("overlays")} />}
+        {view === "wins" && <WinsView client={client} onCustomize={() => setView("overlays")} />}
       </main>
     </div>
   );
