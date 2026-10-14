@@ -43,8 +43,8 @@ UI↔sidecar) con un archivo NUEVO. **No toca `mod-protocol.ts` ni `live-event.t
 - C. Túnel `https` (ngrok/cloudflared). Contra: cuenta, dependencia externa, latencia.
 
 ### 2. Cómo cambian los Eventos al Timer/Wins
-- **A. "Acciones internas" de la app (elegida):** una Acción con origen `app`
-  (comando p. ej. `app.timer.add`, `app.wins.add`) con parámetros (segundos, N).
+- **A. "Acciones internas" de la app (elegida):** una Acción cuyo comando es
+  interno (`modActionId` con prefijo `app.`, p. ej. `app.timer.add`, `app.wins.add`) con parámetros (segundos, N).
   Reutiliza Eventos, cooldown (ADR 0010), "repetir con combo" (ADR 0009) y el
   Simulador sin código nuevo.
 - B. Un bloque aparte "Efectos" dentro del Evento. Contra: duplica filtros,
@@ -92,20 +92,22 @@ UI↔sidecar) con un archivo NUEVO. **No toca `mod-protocol.ts` ni `live-event.t
   y reinicio. Los suma/resta el streamer o un Evento (acción interna). Que los
   dispare el mod (p. ej. una meta lograda en un juego) **requiere un canal nuevo
   en el contrato del mod: no se implementa aquí** (ver "Fuera de alcance").
-- **Persistencia:** `%APPDATA%\StreamTok\counters.json` (carpeta de configuración
+- **Persistencia:** `%APPDATA%\StreamTok\overlays.json` (carpeta de configuración
   de StreamTok). El timer guarda su **hora de fin** (no los segundos restantes) y
   al reabrir la app se restaura **en pausa** si estaba corriendo.
 
 ### Acciones internas
-- `Accion` gana un origen (`mod` | `app`). Las de origen `app` no se envían al mod;
-  las ejecuta el motor de contadores. Se listan en el selector junto a las del mod.
-  (Cambio en `packages/shared/src/action.ts`: campo opcional, retrocompatible.)
+- Un comando cuyo `modActionId` empieza por `app.` no se envía al mod: lo ejecuta
+  el motor de contadores. El catálogo `APP_COMMANDS` (`packages/shared/src/overlays.ts`)
+  usa la forma de `ModAction` y se mezcla con las del mod en el selector
+  (`withAppCommands`). **No cambia `action.ts` ni el contrato del mod** (se
+  descartó el campo de origen en `Accion` por no hacer falta).
 
 ### Diseños
 - Cada tipo de overlay tiene una lista de **diseños** (plantillas HTML/CSS) que
   dibujan los mismos datos. Cambiar de diseño no toca la lógica.
-- La configuración (diseño elegido, colores, fuente, tamaño) se guarda **por
-  perfil** y llega al overlay por WebSocket, así que los cambios se ven al instante.
+- La configuración (diseño elegido, colores, fuente, tamaño) se guarda en `overlays.json` y es
+  **global en la v1** (no por perfil; pasarlo a por perfil queda para después) y llega al overlay por WebSocket (canal `overlays`; los overlays solo leen), así que los cambios se ven al instante.
 - Primeros diseños: Timer (estilo Interactive, estilo TikFinity) y Wins (estilo
   Interactive). Se agregan más después.
 

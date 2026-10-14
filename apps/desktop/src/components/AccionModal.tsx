@@ -1,6 +1,6 @@
 import { SearchSelect } from "./SearchSelect";
 import { useState } from "react";
-import type { Accion, AccionMedia, ModAction, ModHelloPayload } from "@streamtok/shared";
+import { withAppCommands, type Accion, type AccionMedia, type ModAction, type ModHelloPayload } from "@streamtok/shared";
 import { getCategoryIcon } from "../lib/categoryIcons";
 import {
   defaultParamValues,
@@ -88,7 +88,9 @@ export function AccionModal({
   const [cooldownUsuario, setCooldownUsuario] = useState(String(initial?.cooldownUsuarioSeg ?? 0));
   const [error, setError] = useState<string | null>(null);
 
-  const actions = catalog?.actions ?? [];
+  // Comandos del mod + comandos internos de la app (Timer/Wins, ADR 0011).
+  const modActionCount = catalog?.actions.length ?? 0;
+  const actions = withAppCommands(catalog?.actions ?? []);
 
   function toggleGeneral(label: string) {
     setGenerales((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -267,9 +269,9 @@ export function AccionModal({
             </div>
           </div>
 
-          {actions.length === 0 && (
+          {modActionCount === 0 && (
             <div style={{ fontSize: 12, color: "#5B5D66" }}>
-              Sin catálogo del mod: no hay comandos para elegir. Conecta el mod a ws://localhost:7331.
+              Sin catálogo del mod: solo están los comandos de la app (Timer/Wins). Conecta el mod a ws://localhost:7331 para ver los suyos.
             </div>
           )}
 

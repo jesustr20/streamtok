@@ -9,6 +9,13 @@ import {
 } from "./gift-catalog.js";
 import { appDataDir } from "./mapping-rules.js";
 import { ModBridge } from "./mod-bridge.js";
+import {
+  OverlayCounters,
+  OverlaysStore,
+  defaultOverlaysFilePath,
+} from "./overlay-counters.js";
+import { OverlayHttpServer, overlayPortFromEnv } from "./overlay-server.js";
+import { OverlaysController } from "./overlays-controller.js";
 import { registerManualCommand } from "./manual-command.js";
 import {
   ProfilesController,
@@ -88,6 +95,49 @@ giftCatalogController.on("log", (entry) => {
 });
 
 // ---------------------------------------------------------------------------
+// Overlays y contadores (ADR 0011): timer y wins. El motor de contadores es la
+// única fuente de verdad; el canal WS "overlays" lo reparte a la UI y a las
+// páginas que sirve el servidor HTTP local (para LIVE Studio / OBS). Los
+// comandos internos `app.*` de las Acciones y los "segundos por tipo" del timer
+// lo alimentan desde los mismos LiveEvents que ve el motor de Acciones.
+// ---------------------------------------------------------------------------
+const overlayCounters = new OverlayCounters({
+  store: new OverlaysStore(defaultOverlaysFilePath(), (message) =>
+    // eslint-disable-next-line no-console
+    console.warn("[overlays:warn]", message),
+  ),
+});
+overlayCounters.on("log", (entry) => {
+  const tag = `[overlays:${entry.level}]`;
+  // eslint-disable-next-line no-console
+  console.log(tag, entry.message, entry.details ?? "");
+});
+// Al llegar el timer a 0 se ejecutan las Acciones elegidas en "al expirar".
+overlayCounters.on("timer-expired", (accionIds: string[]) => {
+  // eslint-disable-next-line no-console
+  console.log("[overlays:info] el timer llegó a 0");
+  engine.runAcciones(accionIds, "timer-expired").catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("Error ejecutando las acciones de fin del timer:", err);
+  });
+});
+engine.setCounters(overlayCounters);
+new OverlaysController(server, overlayCounters);
+
+const overlayHttp = new OverlayHttpServer({ port: overlayPortFromEnv(process.env), wsPort: PORT });
+overlayHttp
+  .listen()
+  .then((port) => {
+    // eslint-disable-next-line no-console
+    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer y /overlay/wins`);
+  })
+  .catch((err) => {
+    // No tumba el sidecar: sin el servidor de overlays todo lo demás sigue funcionando.
+    // eslint-disable-next-line no-console
+    console.error(`[overlays:error] no se pudo abrir el servidor de overlays: ${(err as Error).message}`);
+  });
+
+// ---------------------------------------------------------------------------
 // Canal "manual-command" (UI → sidecar): dispara un mod-command puntual (botón
 // "Probar acción" de la UI) reusando ModBridge.sendCommand. No toca el
 // protocolo del mod.
@@ -102,6 +152,7 @@ registerManualCommand(server, modBridge);
 // ---------------------------------------------------------------------------
 server.onChannel("live-event", (payload) => {
   const evt = payload as LiveEvent;
+  overlayCounters.handleLiveEvent(evt);
   engine.handleEvent(evt).catch((err) => {
     // eslint-disable-next-line no-console
     console.error("Error procesando live-event:", err);
@@ -130,13 +181,17 @@ const tiktokConnection = new TiktokConnectionController(server, {
     }),
   createSource: (username, recorder) => new TikTokLiveSource(username, recorder),
   onEvent: (evt) => {
+    overlayCounters.handleLiveEvent(evt);
     engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
     });
   },
   onGift: (entry) => giftCatalogController.learn(entry),
-  onConnected: () => engine.resetSession(),
+  onConnected: () => {
+    engine.resetSession();
+    overlayCounters.resetSession();
+  },
 });
 tiktokConnection.on("log", (entry) => {
   const tag = `[tiktok:${entry.level}]`;
@@ -146,6 +201,8 @@ tiktokConnection.on("log", (entry) => {
 
 // Cierra la grabación completa al terminar el proceso (Ctrl+C / cierre de la app).
 const shutdown = () => {
+  overlayCounters.dispose();
+  void overlayHttp.close();
   tiktokConnection.disconnect().finally(() => process.exit(0));
 };
 process.once("SIGINT", shutdown);
