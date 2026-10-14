@@ -140,6 +140,12 @@ function TimerPage({
         </label>
 
         <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4 }}>Segundos por interacción</div>
+        <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.5 }}>
+          Cuántos segundos suma o resta el timer por cada interacción. Usa valores <b>positivos</b> para aumentar y{" "}
+          <b>negativos</b> (p. ej. −5) para disminuir; también decimales, p. ej. 0.05 si un segundo completo es
+          demasiado. Para algo más concreto (un regalo específico, un comando del chat) crea un Evento con el comando
+          “Timer: sumar/restar segundos”.
+        </div>
         <div style={grid3}>
           {PER_TYPE_FIELDS.map((f) => (
             <Field key={f.key} label={f.label} hint={f.hint}>
