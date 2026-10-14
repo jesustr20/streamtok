@@ -44,6 +44,13 @@ export const AccionSchema = z.object({
   /** si es true, un Evento de regalo la dispara en CADA regalo del combo
    * (incluyendo los intermedios con repeatEnd: false), no solo al final. */
   repetirConComboDeRegalos: z.boolean().optional().default(false),
+  /** Cooldown global (ADR 0010): tras ejecutarse, la acción queda bloqueada para
+   * TODO el chat durante estos segundos. 0 o ausente = sin cooldown. */
+  cooldownGlobalSeg: z.number().nonnegative().optional(),
+  /** Cooldown por usuario (ADR 0010): tras ejecutarse, la acción queda bloqueada
+   * solo para quien la disparó (por @username) durante estos segundos. 0 o
+   * ausente = sin cooldown. */
+  cooldownUsuarioSeg: z.number().nonnegative().optional(),
 });
 export type Accion = z.infer<typeof AccionSchema>;
 
