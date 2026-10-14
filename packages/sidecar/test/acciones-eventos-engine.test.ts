@@ -942,3 +942,94 @@ describe("AccionesEventosEngine — regalo específico con nombres repetidos", (
     expect(bridge.calls).toHaveLength(1);
   });
 });
+
+describe("comandos internos de la app (ADR 0011)", () => {
+  function counters() {
+    const applied: Array<{ id: string; params: Record<string, unknown> }> = [];
+    return {
+      applied,
+      applyAppCommand(id: string, params: Record<string, unknown>) {
+        applied.push({ id, params });
+        return id === "app.mala" ? ({ ok: false, error: "no existe" } as const) : ({ ok: true } as const);
+      },
+    };
+  }
+
+  it("un comando app.* lo ejecuta el motor de contadores y NO se manda al mod", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    const c = counters();
+    engine.setCounters(c);
+    engine.setAcciones([accion({ comandos: [{ modActionId: "app.timer.add", params: { seconds: -60 } }] })]);
+    engine.setEventos([evento()]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent(followEvent());
+
+    expect(c.applied).toEqual([{ id: "app.timer.add", params: { seconds: -60 } }]);
+    expect((bridge as unknown as { calls: Call[] }).calls).toEqual([]);
+    expect(entries.map((e) => e.status)).toEqual(["fired"]);
+    expect(entries[0].action).toBe("app.timer.add");
+  });
+
+  it("una acción puede mezclar comandos del mod y comandos internos", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    const c = counters();
+    engine.setCounters(c);
+    engine.setAcciones([
+      accion({
+        comandos: [
+          { modActionId: "arena_join", params: { character: "default" } },
+          { modActionId: "app.wins.add", params: { amount: 1 } },
+        ],
+      }),
+    ]);
+    engine.setEventos([evento()]);
+
+    await engine.handleEvent(followEvent());
+
+    expect((bridge as unknown as { calls: Call[] }).calls.map((x) => x.action)).toEqual(["arena_join"]);
+    expect(c.applied.map((x) => x.id)).toEqual(["app.wins.add"]);
+  });
+
+  it("si el comando interno falla, queda descartado en el log", async () => {
+    const engine = new AccionesEventosEngine(makeBridge());
+    engine.setCounters(counters());
+    engine.setAcciones([accion({ comandos: [{ modActionId: "app.mala", params: {} }] })]);
+    engine.setEventos([evento()]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent(followEvent());
+
+    expect(entries[0]).toMatchObject({ status: "discarded", action: "app.mala" });
+    expect(entries[0].message).toContain("no existe");
+  });
+
+  it("sin motor de contadores conectado, el comando interno se descarta sin romper", async () => {
+    const engine = new AccionesEventosEngine(makeBridge());
+    engine.setAcciones([accion({ comandos: [{ modActionId: "app.wins.add", params: { amount: 1 } }] })]);
+    engine.setEventos([evento()]);
+    const { entries } = collect(engine);
+
+    await engine.handleEvent(followEvent());
+
+    expect(entries[0]).toMatchObject({ status: "discarded", action: "app.wins.add" });
+  });
+
+  it("runAcciones ejecuta acciones por id (p. ej. 'al expirar' del timer), ignorando eventos y cooldown", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setCounters(counters());
+    engine.setAcciones([
+      accion({ id: "x", cooldownGlobalSeg: 999, comandos: [{ modActionId: "arena_join", params: { character: "default" } }] }),
+    ]);
+    const { entries } = collect(engine);
+
+    await engine.runAcciones(["x", "x", "borrada"], "timer-expired");
+
+    expect((bridge as unknown as { calls: Call[] }).calls).toHaveLength(2);
+    expect(entries.filter((e) => e.status === "fired")).toHaveLength(2);
+    expect(entries.some((e) => e.status === "discarded" && e.message.includes("borrada"))).toBe(true);
+  });
+});

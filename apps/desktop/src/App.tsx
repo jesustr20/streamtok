@@ -5,10 +5,11 @@ import { GestionarPerfiles } from "./components/GestionarPerfiles";
 import { InicioView } from "./components/InicioView";
 import { ModDetalle } from "./components/ModDetalle";
 import { ModsLibrary } from "./components/ModsLibrary";
+import { OverlaysView } from "./components/OverlaysView";
 import { Sidebar } from "./components/Sidebar";
 import { SidecarClient } from "./lib/ws-client";
 
-export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles";
+export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays";
 
 export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
@@ -99,6 +100,7 @@ export function App() {
         {view === "gestionar-perfiles" && (
           <GestionarPerfiles client={client} onBack={() => setView("juego-detalle")} />
         )}
+        {view === "overlays" && <OverlaysView client={client} />}
       </main>
     </div>
   );

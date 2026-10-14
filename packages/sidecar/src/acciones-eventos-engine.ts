@@ -8,7 +8,7 @@ import type {
   LiveEvent,
   ModAckPayload,
 } from "@streamtok/shared";
-import { requiresNameTag } from "@streamtok/shared";
+import { isAppCommand, requiresNameTag } from "@streamtok/shared";
 import { EVENT_LABELS, reasonForCommandError } from "./event-log.js";
 import type { ModBridge } from "./mod-bridge.js";
 
@@ -101,6 +101,11 @@ function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+/** Lo que el motor necesita de quien ejecuta los comandos internos `app.*`. */
+export interface AppCommandRunner {
+  applyAppCommand(id: string, params: Record<string, unknown>): { ok: true } | { ok: false; error: string };
+}
+
 export class AccionesEventosEngine extends EventEmitter {
   private acciones: Accion[] = [];
   private eventos: Evento[] = [];
@@ -117,8 +122,16 @@ export class AccionesEventosEngine extends EventEmitter {
   private cooldownGlobalUntil = new Map<string, number>();
   private cooldownUserUntil = new Map<string, number>();
 
+  /** Motor de contadores (timer/wins) que ejecuta los comandos internos `app.*`. */
+  private counters: AppCommandRunner | null = null;
+
   constructor(private modBridge: ModBridge) {
     super();
+  }
+
+  /** Conecta el motor que ejecuta los comandos internos `app.*` (ADR 0011). */
+  setCounters(counters: AppCommandRunner | null) {
+    this.counters = counters;
   }
 
   setAcciones(acciones: Accion[]) {
@@ -465,20 +478,60 @@ export class AccionesEventosEngine extends EventEmitter {
     else this.cooldownUserUntil.set(r.userKey, r.prevUser);
   }
 
-  /** Devuelve true si al menos un comando de la acción fue aceptado por el mod. */
+  /** Devuelve true si al menos un comando de la acción fue aceptado (por el mod o,
+   * para los `app.*`, por el motor de contadores). */
   private async executeAccion(evento: Evento, accion: Accion, evt: LiveEvent): Promise<boolean> {
+    return this.runComandos(accion, evt, { eventoId: evento.id, porque: evento.porque });
+  }
+
+  private async runComandos(
+    accion: Accion,
+    evt: LiveEvent,
+    ctx: { eventoId: string; porque: string },
+  ): Promise<boolean> {
     let anyOk = false;
     for (const comando of accion.comandos) {
-      const ack = await this.dispatchCommand(comando.modActionId, comando.params, evt);
+      const ack = isAppCommand(comando.modActionId)
+        ? this.runAppCommand(comando.modActionId, comando.params)
+        : await this.dispatchCommand(comando.modActionId, comando.params, evt);
       if (ack.ok) anyOk = true;
       this.emitCommandOutcome(ack, evt, {
         modActionId: comando.modActionId,
         accionId: accion.id,
-        eventoId: evento.id,
-        porque: evento.porque,
+        eventoId: ctx.eventoId,
+        porque: ctx.porque,
       });
     }
     return anyOk;
+  }
+
+  private runAppCommand(id: string, params: Record<string, unknown>): ModAckPayload {
+    if (!this.counters) return { id: "app", ok: false, error: "motor de contadores no disponible" };
+    const r = this.counters.applyAppCommand(id, params);
+    return r.ok ? { id: "app", ok: true } : { id: "app", ok: false, error: r.error };
+  }
+
+  /**
+   * Ejecuta Acciones por id sin pasar por Eventos (p. ej. las de "al expirar" del
+   * timer). No aplica cooldown ni "repetir con combo". Una id que ya no existe se
+   * reporta en el log y no corta a las demás.
+   */
+  async runAcciones(ids: string[], origen: string): Promise<void> {
+    const evt: LiveEvent = { event: "comment", username: "@streamtok", nickname: "StreamTok", timestamp: Date.now() };
+    for (const id of ids) {
+      const accion = this.acciones.find((a) => a.id === id);
+      if (!accion) {
+        this.emitEntry({
+          status: "discarded",
+          event: "comment",
+          accionId: id,
+          reason: "accion-no-encontrada",
+          message: `${origen}: la acción ${id} ya no existe (borrada)`,
+        });
+        continue;
+      }
+      await this.runComandos(accion, evt, { eventoId: origen, porque: origen });
+    }
   }
 
   private async dispatchCommand(
@@ -500,7 +553,7 @@ export class AccionesEventosEngine extends EventEmitter {
   private emitCommandOutcome(
     ack: ModAckPayload,
     evt: LiveEvent,
-    ctx: { modActionId: string; accionId: string; eventoId: string; porque: EventoPorque },
+    ctx: { modActionId: string; accionId: string; eventoId: string; porque: string },
   ) {
     if (ack.ok) {
       this.emitEntry({

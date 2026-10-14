@@ -7,6 +7,7 @@ import type {
   ManualCommandResponse,
   ModAckPayload,
   ModHelloPayload,
+  OverlaysMessage,
   ProfilesMessage,
   TiktokConnectionMessage,
 } from "@streamtok/shared";
@@ -21,6 +22,7 @@ export type SidecarEvent =
   | { channel: "profiles"; payload: ProfilesMessage }
   | { channel: "gift-catalog"; payload: GiftCatalogMessage }
   | { channel: "tiktok-connection"; payload: TiktokConnectionMessage }
+  | { channel: "overlays"; payload: OverlaysMessage }
   | { channel: string; payload: unknown };
 
 type Listener = (evt: SidecarEvent) => void;

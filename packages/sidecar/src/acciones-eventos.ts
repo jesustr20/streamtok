@@ -1,6 +1,8 @@
 import {
+  APP_COMMANDS,
   AccionSchema,
   EventoSchema,
+  isAppCommand,
   type Accion,
   type Evento,
   type ModHelloPayload,
@@ -72,10 +74,14 @@ export function validateAcciones(
   const limpias = acciones.map((accion) => ({
     ...accion,
     comandos: accion.comandos.map((comando) => {
-      const action = catalog.actions.find((a) => a.id === comando.modActionId);
+      // Los comandos internos `app.*` (ADR 0011) se validan contra su propio
+      // catálogo, no contra el del mod.
+      const action = isAppCommand(comando.modActionId)
+        ? APP_COMMANDS.find((a) => a.id === comando.modActionId)
+        : catalog.actions.find((a) => a.id === comando.modActionId);
       if (!action) {
         errors.push(
-          `La acción "${accion.nombre}" (${accion.id}) referencia el comando "${comando.modActionId}", que no existe en el catálogo del mod.`,
+          `La acción "${accion.nombre}" (${accion.id}) referencia el comando "${comando.modActionId}", que no existe en el catálogo.`,
         );
         return comando;
       }

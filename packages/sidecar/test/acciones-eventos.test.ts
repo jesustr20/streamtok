@@ -224,3 +224,59 @@ describe("validateEventos", () => {
     expect(result.eventos[2].nivelEquipoRequerido).toBe(0);
   });
 });
+
+describe("validateAcciones con comandos internos app.* (ADR 0011)", () => {
+  const catalog = {
+    mod: "m",
+    version: "1",
+    actions: [
+      {
+        id: "arena_join",
+        name: "Join",
+        category: "arena" as const,
+        icon: "x",
+        description: "",
+        supportsNameTag: true,
+        params: [],
+      },
+    ],
+  };
+  const base = {
+    id: "a",
+    nombre: "Sumar tiempo",
+    descripcion: "",
+    duracionSeg: 0,
+    puntos: 0,
+    pantalla: null,
+    media: { animacion: false, imagen: false, sonido: false, video: false },
+  };
+
+  it("acepta un comando interno aunque no esté en el catálogo del mod", () => {
+    const r = validateAcciones([{ ...base, comandos: [{ modActionId: "app.timer.add", params: { seconds: -60 } }] }], catalog);
+    expect(r.ok).toBe(true);
+  });
+
+  it("valida sus parámetros contra el catálogo interno", () => {
+    const r = validateAcciones([{ ...base, comandos: [{ modActionId: "app.timer.add", params: { seconds: "mucho" } }] }], catalog);
+    expect(r.ok).toBe(false);
+  });
+
+  it("descarta (sin rechazar) un parámetro que el comando interno no define", () => {
+    const r = validateAcciones([{ ...base, comandos: [{ modActionId: "app.wins.reset", params: { x: 1 } }] }], catalog);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.acciones[0].comandos[0].params).toEqual({});
+      expect(r.descartados).toHaveLength(1);
+    }
+  });
+
+  it("un app.* desconocido se rechaza", () => {
+    const r = validateAcciones([{ ...base, comandos: [{ modActionId: "app.nada", params: {} }] }], catalog);
+    expect(r.ok).toBe(false);
+  });
+
+  it("sin catálogo del mod conectado, igual acepta (como antes)", () => {
+    const r = validateAcciones([{ ...base, comandos: [{ modActionId: "app.timer.add", params: { seconds: 5 } }] }], null);
+    expect(r.ok).toBe(true);
+  });
+});
