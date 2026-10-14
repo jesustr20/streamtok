@@ -19,6 +19,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "inicio", label: "Inicio", enabled: true },
   { id: "live", label: "Live", enabled: false },
   { id: "overlays", label: "Overlays", enabled: true },
+  { id: "temporizador", label: "Temporizador", enabled: true },
+  { id: "wins", label: "Wins", enabled: true },
   { id: "simulador", label: "Simulador", enabled: false },
   { id: "alertas", label: "Alertas", enabled: false },
   { id: "puntos", label: "Puntos", enabled: false },

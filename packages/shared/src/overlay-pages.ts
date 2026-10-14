@@ -1,4 +1,4 @@
-import type { OverlayKind } from "@streamtok/shared";
+import type { OverlayKind } from "./overlays.js";
 
 /**
  * Páginas de los overlays (ADR 0011): HTML/CSS/JS autocontenido, sin
@@ -6,6 +6,9 @@ import type { OverlayKind } from "@streamtok/shared";
  * al sidecar, recibe el estado y la configuración, y dibuja. Cada diseño es un
  * bloque de CSS activado por `body[data-design="<id>"]`: cambiar de diseño no
  * toca la lógica. Fondo siempre transparente (se pega sobre el juego).
+ *
+ * Vive en `shared` para que la app dibuje la vista previa con el MISMO código
+ * que se sirve al stream (sin depender de la red local).
  *
  * IMPORTANTE: el JavaScript va dentro de una plantilla de TypeScript; no usar
  * comillas invertidas ni `${` en él.
@@ -146,7 +149,7 @@ const WINS_JS = `
 /** JavaScript común: conexión al sidecar con reintentos, estado, estilo y diseño. */
 const COMMON_JS = `
   var q = new URLSearchParams(location.search);
-  var designOverride = q.get("design");
+  var designOverride = q.get("design") || DESIGN_OVERRIDE || null;
   var state = null, config = null, offset = 0, retry = 0, ws = null;
 
   function applyStyle() {
@@ -187,7 +190,17 @@ const COMMON_JS = `
   connect();
 `;
 
-export function overlayPage(kind: OverlayKind, wsPort: number): string {
+/** Texto como literal JS seguro dentro de un <script> (escapa `<` para que no cierre la etiqueta). */
+function jsString(value: string): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+export interface OverlayPageOptions {
+  /** Diseño forzado (vista previa dentro de la app, donde no hay `?design=`). */
+  design?: string;
+}
+
+export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPageOptions = {}): string {
   const css = kind === "timer" ? TIMER_CSS : WINS_CSS;
   const body = kind === "timer" ? TIMER_BODY : WINS_BODY;
   const kindJs = kind === "timer" ? TIMER_JS : WINS_JS;
@@ -204,6 +217,7 @@ ${body}
 (function () {
   var KIND = ${JSON.stringify(kind)};
   var WS_PORT = ${Math.trunc(wsPort)};
+  var DESIGN_OVERRIDE = ${jsString(opts.design ?? "")};
   // Funciones de dibujo de este overlay (definen render()).
   ${kindJs}
   // Conexión, estado y estilo comunes.
