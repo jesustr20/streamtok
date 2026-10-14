@@ -136,7 +136,7 @@ const WINS_JS = `
     countEl.textContent = w.count;
     goalEl.textContent = w.goal;
     titleEl.textContent = w.title;
-    fillEl.style.width = (w.goal > 0 ? Math.min(100, (w.count / w.goal) * 100) : 0) + "%";
+    fillEl.style.width = (w.goal > 0 ? Math.max(0, Math.min(100, (w.count / w.goal) * 100)) : 0) + "%";
     if (lastCount !== null && w.count > lastCount) {
       document.body.classList.remove("pulse");
       void document.body.offsetWidth;

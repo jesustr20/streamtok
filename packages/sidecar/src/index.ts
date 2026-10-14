@@ -142,7 +142,7 @@ overlayHttp
 // "Probar acción" de la UI) reusando ModBridge.sendCommand. No toca el
 // protocolo del mod.
 // ---------------------------------------------------------------------------
-registerManualCommand(server, modBridge);
+registerManualCommand(server, modBridge, overlayCounters);
 
 // ---------------------------------------------------------------------------
 // Fuente de LiveEvents. En producción esto viene de tiktok-live-connector

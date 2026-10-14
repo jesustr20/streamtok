@@ -52,8 +52,8 @@ function WinsPage({ state, ov, onCustomize }: { state: OverlaysState; ov: Ov; on
           </div>
         </div>
         <div style={grid3}>
-          <Field label="Conteo" hint="cuántos van">
-            <NumberField value={w.count} min={0} integer onCommit={(v) => ov.winsControl("set", v)} />
+          <Field label="Conteo" hint="cuántos van; puede ser negativo">
+            <NumberField value={w.count} integer onCommit={(v) => ov.winsControl("set", v)} />
           </Field>
           <Field label="Meta" hint="cuántos quieres lograr">
             <NumberField value={w.goal} min={0} integer onCommit={(v) => ov.winsControl("set-goal", v)} />
@@ -69,7 +69,8 @@ function WinsPage({ state, ov, onCustomize }: { state: OverlaysState; ov: Ov; on
           </Field>
         </div>
         <div style={{ fontSize: 11.5, color: "#9A9CA5" }}>
-          También puedes sumar wins desde un Evento con el comando “Wins: sumar/restar”.
+          Desde un Evento puedes sumar o quitar wins con los comandos “Wins: sumar/restar” y “Wins: quitar”. Si quitan más
+          de los que llevas, el conteo queda en negativo y tienes que recuperarlos antes de avanzar hacia la meta.
         </div>
       </Card>
 

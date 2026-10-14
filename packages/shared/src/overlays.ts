@@ -90,8 +90,9 @@ export const WinsStateSchema = z.object({
   title: z.string(),
   /** meta: cuántos wins se quiere lograr */
   goal: z.number().int().nonnegative(),
-  /** conteo: cuántos van */
-  count: z.number().int().nonnegative(),
+  /** conteo: cuántos van. Puede ser negativo: si alguien "quita" más wins de los que llevas,
+   * hay que recuperarlos antes de volver a avanzar hacia la meta. */
+  count: z.number().int(),
 });
 export type WinsState = z.infer<typeof WinsStateSchema>;
 
@@ -215,21 +216,27 @@ function appCommand(
 /** Catálogo de comandos internos, con la misma forma que las acciones del mod
  * para que el selector de comandos de la UI los trate igual. */
 export const APP_COMMANDS: ModAction[] = [
-  appCommand("app.timer.add", "Timer: sumar/restar segundos", "timer", "Suma (o resta, si es negativo) segundos al timer. Solo cuenta si el timer está corriendo.", [
-    { name: "seconds", type: "int", default: 10, min: -86400, max: 86400, presets: [-60, -10, 10, 30, 60] },
+  appCommand("app.timer.add", "Timer: sumar tiempo", "timer", "Suma segundos al timer. Solo cuenta si el timer está corriendo.", [
+    { name: "seconds", type: "int", default: 10, min: -86400, max: 86400, presets: [10, 30, 60, 300] },
   ]),
-  appCommand("app.timer.set", "Timer: fijar segundos", "timer", "Fija el tiempo restante del timer.", [
+  appCommand("app.timer.remove", "Timer: restar tiempo", "timer", "Resta segundos al timer; si llega a 0, termina.", [
+    { name: "seconds", type: "int", default: 10, min: 0, max: 86400, presets: [10, 30, 60, 300] },
+  ]),
+  appCommand("app.timer.set", "Timer: fijar tiempo", "timer", "Fija el tiempo restante del timer.", [
     { name: "seconds", type: "int", default: 60, min: 0, max: 86400, presets: [30, 60, 300] },
   ]),
   appCommand("app.timer.start", "Timer: iniciar o reanudar", "timer", "Inicia el timer (o lo reanuda si estaba en pausa)."),
   appCommand("app.timer.pause", "Timer: pausar", "timer", "Pausa el timer."),
-  appCommand("app.timer.reset", "Timer: reiniciar", "timer", "Vuelve al valor inicial, detenido."),
+  appCommand("app.timer.reset", "Timer: reiniciar", "timer", "Vuelve al tiempo inicial, detenido."),
   appCommand("app.timer.stop", "Timer: detener", "timer", "Detiene el timer en 0."),
-  appCommand("app.wins.add", "Wins: sumar/restar", "trophy", "Suma (o resta, si es negativo) al conteo de wins.", [
-    { name: "amount", type: "int", default: 1, min: -1000, max: 1000, presets: [-1, 1, 2, 5] },
+  appCommand("app.wins.add", "Wins: sumar", "trophy", "Suma wins al conteo.", [
+    { name: "amount", type: "int", default: 1, min: -1000, max: 1000, presets: [1, 2, 5] },
+  ]),
+  appCommand("app.wins.remove", "Wins: quitar", "trophy", "Quita wins del conteo. Puede dejarlo por debajo de 0: esos wins hay que recuperarlos.", [
+    { name: "amount", type: "int", default: 1, min: 0, max: 1000, presets: [1, 2, 5] },
   ]),
   appCommand("app.wins.set", "Wins: fijar conteo", "trophy", "Fija el conteo de wins.", [
-    { name: "count", type: "int", default: 0, min: 0, max: 100000 },
+    { name: "count", type: "int", default: 0, min: -100000, max: 100000 },
   ]),
   appCommand("app.wins.reset", "Wins: reiniciar conteo", "trophy", "Pone el conteo de wins en 0."),
 ];

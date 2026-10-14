@@ -397,7 +397,7 @@ export class OverlayCounters extends EventEmitter {
 
   private setCount(next: number) {
     const before = this.wins.count;
-    this.wins = { ...this.wins, count: Math.max(0, Math.trunc(next)) };
+    this.wins = { ...this.wins, count: Math.trunc(next) };
     this.changed();
     const { goal, count } = this.wins;
     if (goal > 0 && before < goal && count >= goal) this.emit("wins-goal", { ...this.wins });
@@ -465,6 +465,12 @@ export class OverlayCounters extends EventEmitter {
         this.timerAdd(s);
         return { ok: true };
       }
+      case "app.timer.remove": {
+        const s = num("seconds");
+        if (s === undefined) return need("seconds");
+        this.timerAdd(-Math.abs(s)); // "restar" siempre resta
+        return { ok: true };
+      }
       case "app.timer.set": {
         const s = num("seconds");
         if (s === undefined) return need("seconds");
@@ -475,6 +481,12 @@ export class OverlayCounters extends EventEmitter {
         const n = num("amount");
         if (n === undefined) return need("amount");
         this.winsAdd(n);
+        return { ok: true };
+      }
+      case "app.wins.remove": {
+        const n = num("amount");
+        if (n === undefined) return need("amount");
+        this.winsAdd(-Math.abs(n)); // "quitar" siempre resta, venga el número con el signo que venga
         return { ok: true };
       }
       case "app.wins.set": {

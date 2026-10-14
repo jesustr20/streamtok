@@ -21,6 +21,30 @@ function IconSvg({ size = 16, children }: IconProps & { children: ReactNode }) {
   );
 }
 
+/** timer — reloj (cronómetro con perilla arriba). */
+export function TimerIcon({ size }: IconProps) {
+  return (
+    <IconSvg size={size}>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2.5 2.5" />
+      <path d="M9 2h6" />
+    </IconSvg>
+  );
+}
+
+/** trophy — copa de campeón (para los wins). */
+export function TrophyIcon({ size }: IconProps) {
+  return (
+    <IconSvg size={size}>
+      <path d="M8 4h8v5a4 4 0 0 1-8 0V4z" />
+      <path d="M8 6H5a1 1 0 0 0-1 1 3 3 0 0 0 3 3" />
+      <path d="M16 6h3a1 1 0 0 1 1 1 3 3 0 0 1-3 3" />
+      <path d="M12 13v4" />
+      <path d="M8.5 20h7" />
+    </IconSvg>
+  );
+}
+
 /** vehicle — silueta simple de auto visto de perfil. */
 export function VehicleIcon({ size }: IconProps) {
   return (

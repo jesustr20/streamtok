@@ -146,3 +146,51 @@ describe("canal manual-command", () => {
     uiWs.close();
   });
 });
+
+describe("canal manual-command — comandos internos de la app (Timer/Wins)", () => {
+  async function setup(runner?: { applyAppCommand: (id: string, p: Record<string, unknown>) => any }) {
+    const server = new StreamTokWsServer(0);
+    const modBridge = new ModBridge(server);
+    registerManualCommand(server, modBridge, runner);
+    const port = server.actualPort || (await new Promise<number>((resolve) => server.on("listening", (p) => resolve(p))));
+    const ui = await connect(port);
+    return { server, modBridge, ui };
+  }
+
+  it("un comando app.* lo ejecuta la app y NUNCA se manda al mod", async () => {
+    const runner = { applyAppCommand: vi.fn(() => ({ ok: true as const })) };
+    const { server, modBridge, ui } = await setup(runner);
+    const spy = vi.spyOn(modBridge, "sendCommand");
+    const resp = once(ui, "manual-command");
+    ui.send(JSON.stringify({ channel: "manual-command", payload: { action: "app.wins.remove", params: { amount: 5 } } }));
+    expect(await resp).toEqual({ kind: "ack", ack: { id: "app", ok: true } });
+    expect(runner.applyAppCommand).toHaveBeenCalledWith("app.wins.remove", { amount: 5 });
+    expect(spy).not.toHaveBeenCalled();
+    ui.close();
+    server.close();
+  });
+
+  it("si la app rechaza el comando, devuelve el motivo en el ack", async () => {
+    const runner = { applyAppCommand: () => ({ ok: false as const, error: 'app.wins.add necesita el parámetro numérico "amount"' }) };
+    const { server, ui } = await setup(runner);
+    const resp = once(ui, "manual-command");
+    ui.send(JSON.stringify({ channel: "manual-command", payload: { action: "app.wins.add", params: {} } }));
+    const r = await resp;
+    expect(r.kind).toBe("ack");
+    expect(r.ack).toMatchObject({ id: "app", ok: false });
+    expect(r.ack.error).toContain("amount");
+    ui.close();
+    server.close();
+  });
+
+  it("sin motor de contadores responde error en vez de mandarlo al mod", async () => {
+    const { server, modBridge, ui } = await setup();
+    const spy = vi.spyOn(modBridge, "sendCommand");
+    const resp = once(ui, "manual-command");
+    ui.send(JSON.stringify({ channel: "manual-command", payload: { action: "app.timer.start", params: {} } }));
+    expect((await resp).ack).toMatchObject({ ok: false });
+    expect(spy).not.toHaveBeenCalled();
+    ui.close();
+    server.close();
+  });
+});

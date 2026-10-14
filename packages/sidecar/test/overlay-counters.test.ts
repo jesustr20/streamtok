@@ -365,17 +365,54 @@ describe("OverlayCounters — wins", () => {
   afterEach(() => vi.useRealTimers());
   const make = () => new OverlayCounters({ store: memoryStore() });
 
-  it("sumar, restar (sin bajar de 0), fijar y reiniciar el conteo", () => {
+  it("sumar, restar, fijar y reiniciar el conteo", () => {
     const c = make();
     c.winsAdd(1);
     c.winsAdd(2);
     expect(c.getState().wins.count).toBe(3);
-    c.winsAdd(-10);
-    expect(c.getState().wins.count).toBe(0);
+    c.winsAdd(-1);
+    expect(c.getState().wins.count).toBe(2);
     c.winsSet(4);
     expect(c.getState().wins.count).toBe(4);
     c.winsReset();
     expect(c.getState().wins.count).toBe(0);
+  });
+
+  it("quitar más wins de los que hay deja el conteo en negativo y hay que recuperarlos", () => {
+    const c = make();
+    c.winsSetGoal(3);
+    c.winsAdd(2);
+    c.winsAdd(-5); // alguien "quita" 5: 2 - 5 = -3
+    expect(c.getState().wins.count).toBe(-3);
+    const reached = vi.fn();
+    c.on("wins-goal", reached);
+    c.winsAdd(3); // vuelve a 0: recuperó lo perdido, aún no llega a la meta
+    expect(c.getState().wins.count).toBe(0);
+    expect(reached).not.toHaveBeenCalled();
+    c.winsAdd(3);
+    expect(c.getState().wins.count).toBe(3);
+    expect(reached).toHaveBeenCalledTimes(1);
+  });
+
+  it("al perder wins ya conseguidos, volver a la meta avisa de nuevo", () => {
+    const c = make();
+    c.winsSetGoal(2);
+    const reached = vi.fn();
+    c.on("wins-goal", reached);
+    c.winsAdd(2);
+    c.winsAdd(-1);
+    c.winsAdd(1);
+    expect(reached).toHaveBeenCalledTimes(2);
+  });
+
+  it("el conteo negativo se guarda y se restaura", async () => {
+    const store = memoryStore();
+    const c = new OverlayCounters({ store });
+    c.winsAdd(-4);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.saved[store.saved.length - 1].wins?.count).toBe(-4);
+    const again = new OverlayCounters({ store: memoryStore(store.saved[store.saved.length - 1]) });
+    expect(again.getState().wins.count).toBe(-4);
   });
 
   it("meta y título; la meta es entera y no negativa", () => {
@@ -442,6 +479,18 @@ describe("OverlayCounters — comandos internos (app.*)", () => {
     const c = make();
     c.applyAppCommand("app.timer.add", { seconds: 50 });
     expect(c.getState().timer.remainingMs).toBe(100_000);
+  });
+
+  it("app.wins.remove resta siempre, aunque el número venga negativo, y puede dejar el conteo bajo 0", () => {
+    const c = new OverlayCounters({ store: memoryStore() });
+    c.winsAdd(1);
+    expect(c.applyAppCommand("app.wins.remove", { amount: 3 }).ok).toBe(true);
+    expect(c.getState().wins.count).toBe(-2);
+    expect(c.applyAppCommand("app.wins.remove", { amount: -1 }).ok).toBe(true);
+    expect(c.getState().wins.count).toBe(-3);
+    expect(c.applyAppCommand("app.wins.remove", {})).toMatchObject({ ok: false });
+    expect(c.applyAppCommand("app.wins.set", { count: -7 }).ok).toBe(true);
+    expect(c.getState().wins.count).toBe(-7);
   });
 
   it("app.wins.add / set / reset", () => {
@@ -529,5 +578,25 @@ describe("OverlayCounters — persistencia", () => {
     c.setConfig(cfg({ startSeconds: 90 }));
     expect(c.getState().timer.status).toBe("running");
     expect(c.getState().timer.endsAt).toBe(T0 + 60_000);
+  });
+});
+
+describe("OverlayCounters — Timer: restar tiempo", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("app.timer.remove resta siempre, venga el número con el signo que venga", () => {
+    const c = new OverlayCounters({ store: memoryStore({ config: cfg({ startSeconds: 100 }) }) });
+    c.timerStart();
+    expect(c.applyAppCommand("app.timer.remove", { seconds: 30 }).ok).toBe(true);
+    expect(c.getState().timer.remainingMs).toBe(70_000);
+    expect(c.applyAppCommand("app.timer.remove", { seconds: -10 }).ok).toBe(true);
+    expect(c.getState().timer.remainingMs).toBe(60_000);
+    expect(c.applyAppCommand("app.timer.remove", {})).toMatchObject({ ok: false });
+    c.applyAppCommand("app.timer.remove", { seconds: 999 }); // más de lo que queda: termina
+    expect(c.getState().timer.status).toBe("finished");
   });
 });

@@ -48,3 +48,9 @@ describe("formato del tiempo del timer", () => {
     expect(overlayPage("timer", 7331)).toContain("function fmtTimer(ms)");
   });
 });
+
+describe("overlay de wins con conteo negativo", () => {
+  it("la barra de progreso no baja de 0 %", () => {
+    expect(overlayPage("wins", 7331)).toContain("Math.max(0, Math.min(100,");
+  });
+});
