@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OverlaysConfigSchema, type LiveEvent, type OverlaysConfig } from "@streamtok/shared";
 import { OverlayCounters, type PersistedOverlays } from "../src/overlay-counters.js";
 
+/** Config de partida de la mayoría de los tests: tiempo inicial de 60 s (el real por defecto es 0). */
+const CONFIG_60 = OverlaysConfigSchema.parse({ timer: { startSeconds: 60 } });
+
 /** Store en memoria: guarda lo último que se le pidió persistir. */
 function memoryStore(initial?: PersistedOverlays) {
   const saved: PersistedOverlays[] = [];
   return {
     saved,
-    load: () => initial ?? { config: OverlaysConfigSchema.parse({}) },
+    load: () => initial ?? { config: CONFIG_60 },
     save: async (p: PersistedOverlays) => {
       saved.push(JSON.parse(JSON.stringify(p)));
     },
@@ -15,7 +18,7 @@ function memoryStore(initial?: PersistedOverlays) {
 }
 
 function cfg(over: Partial<OverlaysConfig["timer"]> = {}, perType: Partial<OverlaysConfig["timer"]["perType"]> = {}): OverlaysConfig {
-  const base = OverlaysConfigSchema.parse({});
+  const base = CONFIG_60;
   return { ...base, timer: { ...base.timer, ...over, perType: { ...base.timer.perType, ...perType } } };
 }
 
@@ -38,7 +41,19 @@ describe("OverlayCounters — timer", () => {
     return { c, store };
   }
 
-  it("arranca en idle con el valor inicial por defecto (60 s)", () => {
+  it("sin configurar, todo va en 0: sin tiempo inicial ni segundos por tipo, y arranca solo", () => {
+    const base = OverlaysConfigSchema.parse({});
+    expect(base.timer.startSeconds).toBe(0);
+    expect(base.timer.maxSeconds).toBe(0);
+    expect(base.timer.autoStart).toBe(true);
+    expect(Object.values(base.timer.perType).every((v) => v === 0)).toBe(true);
+    const c = new OverlayCounters({ store: memoryStore({ config: base }) });
+    expect(c.getState().timer).toMatchObject({ status: "idle", remainingMs: 0 });
+    c.timerStart(); // sin tiempo no hay nada que contar
+    expect(c.getState().timer.status).toBe("idle");
+  });
+
+  it("arranca en idle con el tiempo inicial que se configuró (60 s)", () => {
     const { c } = make();
     const s = c.getState();
     expect(s.timer.status).toBe("idle");
@@ -225,10 +240,103 @@ describe("OverlayCounters — segundos por tipo de interacción", () => {
     expect(remaining(c)).toBe(100 + 15 + 30);
   });
 
-  it("no suma si el timer no está corriendo", () => {
-    const c = new OverlayCounters({ store: memoryStore({ config: cfg({ startSeconds: 100 }, { follow: 5 }) }) });
+  it("con autoStart apagado, un timer detenido no arranca ni suma", () => {
+    const c = new OverlayCounters({ store: memoryStore({ config: cfg({ startSeconds: 100, autoStart: false }, { follow: 5 }) }) });
     c.handleLiveEvent(ev({ event: "follow" }));
     expect(remaining(c)).toBe(100);
+    expect(c.getState().timer.status).toBe("idle");
+  });
+
+  it("en pausa no suma (pausar es decisión del streamer)", () => {
+    const c = running({ follow: 5 });
+    c.timerPause();
+    c.handleLiveEvent(ev({ event: "follow" }));
+    expect(remaining(c)).toBe(100);
+    expect(c.getState().timer.status).toBe("paused");
+  });
+
+  describe("arranque automático con la primera interacción", () => {
+    const gift = (coins: number, over: Partial<LiveEvent> = {}) =>
+      ev({ event: "gift", giftId: 5655, giftName: "Galaxy", coins, repeatEnd: true, ...over });
+    const auto = (extra: Partial<OverlaysConfig["timer"]> = {}) =>
+      new OverlayCounters({ store: memoryStore({ config: cfg({ startSeconds: 0, ...extra }, { coin: 3 }) }) });
+
+    it("con el timer en 0, un regalo lo inicia solo con monedas × segundos por moneda", () => {
+      const c = auto();
+      expect(c.getState().timer).toMatchObject({ status: "idle", remainingMs: 0 });
+      c.handleLiveEvent(gift(1000)); // 1000 monedas × 3 s
+      expect(c.getState().timer).toMatchObject({ status: "running", endsAt: T0 + 3_000_000 });
+    });
+
+    it("cada regalo siguiente se suma, vayan rápido o despacio", () => {
+      const c = auto();
+      c.handleLiveEvent(gift(10, { username: "@ana" })); // 30 s
+      vi.advanceTimersByTime(5_000); // quedan 25
+      c.handleLiveEvent(gift(10, { username: "@luis" })); // +30 → 55
+      c.handleLiveEvent(gift(1, { username: "@eva" })); // +3 → 58
+      expect(remaining(c)).toBe(58);
+      vi.advanceTimersByTime(10_000);
+      c.handleLiveEvent(gift(5, { username: "@ana" })); // +15 → 63
+      expect(remaining(c)).toBe(63);
+    });
+
+    it("si cambia el valor de la moneda, calcula con el nuevo (1 moneda = 1 min)", () => {
+      const c = new OverlayCounters({ store: memoryStore({ config: cfg({ startSeconds: 0 }, { coin: 60 }) }) });
+      c.handleLiveEvent(gift(2));
+      expect(remaining(c)).toBe(120);
+      c.setConfig(cfg({ startSeconds: 0 }, { coin: 5 }));
+      c.handleLiveEvent(gift(2, { username: "@luis" }));
+      expect(remaining(c)).toBe(130);
+    });
+
+    it("tras terminar (00:00) otra interacción lo vuelve a iniciar desde 0", () => {
+      const c = auto();
+      c.handleLiveEvent(gift(2)); // 6 s
+      vi.advanceTimersByTime(6_000);
+      expect(c.getState().timer.status).toBe("finished");
+      c.handleLiveEvent(gift(1, { username: "@luis" })); // 3 s
+      expect(c.getState().timer).toMatchObject({ status: "running", endsAt: T0 + 6_000 + 3_000 });
+    });
+
+    it("tras 'Detener' también arranca, salvo que se apague el arranque automático", () => {
+      const c = auto();
+      c.handleLiveEvent(gift(1));
+      c.timerStop();
+      c.handleLiveEvent(gift(1, { username: "@luis" }));
+      expect(c.getState().timer.status).toBe("running");
+      const off = auto({ autoStart: false });
+      off.handleLiveEvent(gift(1));
+      expect(off.getState().timer.status).toBe("idle");
+    });
+
+    it("si ya había un tiempo inicial a la vista, cuenta desde ahí más lo que suma", () => {
+      const c = new OverlayCounters({ store: memoryStore({ config: cfg({ startSeconds: 60 }, { follow: 5 }) }) });
+      c.handleLiveEvent(ev({ event: "follow" }));
+      expect(c.getState().timer).toMatchObject({ status: "running", endsAt: T0 + 65_000 });
+    });
+
+    it("respeta el tiempo máximo y el multiplicador", () => {
+      const c = auto({ maxSeconds: 20, multiplier: { active: true, value: 2 } });
+      c.handleLiveEvent(gift(10)); // 30 × 2 = 60 → tope 20
+      expect(remaining(c)).toBe(20);
+    });
+
+    it("lo que resta o no suma no lo inicia", () => {
+      const neg = new OverlayCounters({ store: memoryStore({ config: cfg({ startSeconds: 0 }, { follow: -5 }) }) });
+      neg.handleLiveEvent(ev({ event: "follow" }));
+      expect(neg.getState().timer).toMatchObject({ status: "idle", remainingMs: 0 });
+      const zero = auto();
+      zero.handleLiveEvent(ev({ event: "follow" })); // follow = 0 s
+      expect(zero.getState().timer.status).toBe("idle");
+    });
+
+    it("un combo cuenta solo lo nuevo de cada mensaje, también al arrancar", () => {
+      const c = auto();
+      c.handleLiveEvent(gift(2, { repeatEnd: false })); // 6 s, arranca
+      c.handleLiveEvent(gift(5, { repeatEnd: false })); // +3 monedas = +9 s
+      c.handleLiveEvent(gift(5, { repeatEnd: true })); // cierre del combo: nada nuevo
+      expect(remaining(c)).toBe(15);
+    });
   });
 
   it("tipos con 0 segundos y eventos sin tipo de timer no hacen nada ni emiten estado", () => {

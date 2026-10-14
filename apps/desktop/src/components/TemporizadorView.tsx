@@ -1,4 +1,4 @@
-import type { Accion, AccionesMessage, OverlaysConfig, OverlaysState, TimerConfig, TimerPerType } from "@streamtok/shared";
+import { formatTimerMs, type Accion, type AccionesMessage, type OverlaysConfig, type OverlaysState, type TimerConfig, type TimerPerType } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { useOverlays, type Ov } from "../lib/use-overlays";
 import type { SidecarClient } from "../lib/ws-client";
@@ -49,14 +49,6 @@ function useRemaining(state: OverlaysState): number {
   return t.remainingMs;
 }
 
-function fmtTime(ms: number): string {
-  const s = Math.ceil(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const two = (n: number) => String(n).padStart(2, "0");
-  return h > 0 ? `${h}:${two(m)}:${two(s % 60)}` : `${two(m)}:${two(s % 60)}`;
-}
-
 const STATUS_LABEL = { idle: "Detenido", running: "Corriendo", paused: "En pausa", finished: "Terminado" } as const;
 
 const PER_TYPE_FIELDS: { key: keyof TimerPerType; label: string; hint: string }[] = [
@@ -105,7 +97,7 @@ function TimerPage({
                 color: status === "finished" ? "#E5484D" : "#F4F4F5",
               }}
             >
-              {fmtTime(remaining)}
+              {formatTimerMs(remaining)}
             </div>
             <div style={{ fontSize: 12, color: "#9A9CA5" }}>{STATUS_LABEL[status]}</div>
           </div>
@@ -130,13 +122,29 @@ function TimerPage({
 
       <Card title="Configuración">
         <div style={grid2}>
-          <Field label="Tiempo inicial (s)" hint="con lo que arranca al comenzar o reiniciar">
-            <NumberField value={tc.startSeconds} min={1} onCommit={(v) => patchTimer({ startSeconds: v })} />
+          <Field
+            label="Tiempo inicial (s)"
+            hint={
+              tc.startSeconds === 0
+                ? "0 = sin tiempo inicial: arranca con la primera interacción"
+                : `= ${formatTimerMs(tc.startSeconds * 1000)} · se aplica al Comenzar o Reiniciar; no cambia un timer que ya corre`
+            }
+          >
+            <NumberField value={tc.startSeconds} min={0} onCommit={(v) => patchTimer({ startSeconds: v })} />
           </Field>
           <Field label="Tiempo máximo (s)" hint="0 = sin máximo">
             <NumberField value={tc.maxSeconds} min={0} onCommit={(v) => patchTimer({ maxSeconds: v })} />
           </Field>
         </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={tc.autoStart}
+            onChange={(e) => patchTimer({ autoStart: e.target.checked })}
+          />
+          Iniciar solo: si está en 0 o detenido, la primera interacción que suma tiempo lo inicia
+        </label>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
           <input
@@ -148,6 +156,12 @@ function TimerPage({
         </label>
 
         <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4 }}>Segundos por interacción</div>
+        <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.5 }}>
+          Cuántos segundos suma o resta el timer por cada interacción. Usa valores <b>positivos</b> para aumentar y{" "}
+          <b>negativos</b> (p. ej. −5) para disminuir; también decimales, p. ej. 0.05 si un segundo completo es
+          demasiado. Para algo más concreto (un regalo específico, un comando del chat) crea un Evento con el comando
+          “Timer: sumar/restar segundos”.
+        </div>
         <div style={grid3}>
           {PER_TYPE_FIELDS.map((f) => (
             <Field key={f.key} label={f.label} hint={f.hint}>
@@ -179,7 +193,7 @@ function TimerPage({
           <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>multiplica todos los segundos de arriba</span>
         </div>
         <div style={{ fontSize: 11.5, color: "#9A9CA5" }}>
-          Los espectadores solo suman mientras el timer está corriendo.
+          Los espectadores suman mientras el timer corre o, con “Iniciar solo”, también desde 0. En pausa no suma.
         </div>
 
         <ExpireActions client={client} ids={tc.onExpireAccionIds} onChange={(ids) => patchTimer({ onExpireAccionIds: ids })} />

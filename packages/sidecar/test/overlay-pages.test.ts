@@ -1,4 +1,4 @@
-import { overlayPage } from "@streamtok/shared";
+import { FORMAT_TIMER_JS, formatTimerMs, overlayPage } from "@streamtok/shared";
 import { describe, expect, it } from "vitest";
 
 describe("overlayPage (compartida entre el servidor y la vista previa de la app)", () => {
@@ -17,5 +17,34 @@ describe("overlayPage (compartida entre el servidor y la vista previa de la app)
   it("un diseño con comillas no rompe el script", () => {
     const html = overlayPage("timer", 7331, { design: 'x"</script><b>' });
     expect(html).not.toContain('</script><b>');
+  });
+});
+
+describe("formato del tiempo del timer", () => {
+  const casos: [number, string][] = [
+    [0, "00:00"],
+    [1, "00:01"],
+    [25_000, "00:25"],
+    [60_000, "01:00"],
+    [3_599_000, "59:59"],
+    [3_600_000, "01:00:00"],
+    [3_661_000, "01:01:01"],
+    [36_000_000, "10:00:00"],
+    [90_061_000, "25:01:01"],
+  ];
+
+  it.each(casos)("formatTimerMs(%i) = %s", (ms, esperado) => {
+    expect(formatTimerMs(ms)).toBe(esperado);
+  });
+
+  it("la copia en JavaScript de la página da lo mismo que la de TypeScript", () => {
+    const fmtTimer = new Function(`${FORMAT_TIMER_JS}; return fmtTimer;`)() as (ms: number) => string;
+    for (const ms of [0, 1, 999, 1000, 25_000, 59_999, 60_000, 3_599_001, 3_600_000, 7_325_500, 86_400_000]) {
+      expect(fmtTimer(ms)).toBe(formatTimerMs(ms));
+    }
+  });
+
+  it("la página del timer incluye la función", () => {
+    expect(overlayPage("timer", 7331)).toContain("function fmtTimer(ms)");
   });
 });
