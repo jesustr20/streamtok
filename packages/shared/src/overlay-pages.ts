@@ -52,13 +52,19 @@ const TIMER_BODY = `
   <div id="root"><div class="box"><span class="label">Tiempo</span><span id="time">00:00</span></div></div>
 `;
 
+/** Copia en JavaScript de `formatTimerMs` (overlays.ts) para la página del overlay. */
+export const FORMAT_TIMER_JS = `
+  function fmtTimer(ms) {
+    var total = Math.max(0, Math.ceil(ms / 1000));
+    var h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), sec = total % 60;
+    function two(n) { return n < 10 ? "0" + n : String(n); }
+    return h > 0 ? two(h) + ":" + two(m) + ":" + two(sec) : two(m) + ":" + two(sec);
+  }
+`;
+
 const TIMER_JS = `
   var timeEl = document.getElementById("time");
-  function two(n) { return n < 10 ? "0" + n : "" + n; }
-  function fmt(ms) {
-    var s = Math.ceil(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-    return h > 0 ? h + ":" + two(m) + ":" + two(s % 60) : two(m) + ":" + two(s % 60);
-  }
+  ${FORMAT_TIMER_JS}
   function remaining() {
     if (!state) return 0;
     var t = state.timer;
@@ -66,7 +72,7 @@ const TIMER_JS = `
   }
   function render() {
     if (!state) return;
-    timeEl.textContent = fmt(remaining());
+    timeEl.textContent = fmtTimer(remaining());
     document.body.classList.toggle("finished", state.timer.status === "finished");
     document.body.classList.toggle("paused", state.timer.status === "paused");
   }

@@ -1,4 +1,4 @@
-import type { Accion, AccionesMessage, OverlaysConfig, OverlaysState, TimerConfig, TimerPerType } from "@streamtok/shared";
+import { formatTimerMs, type Accion, type AccionesMessage, type OverlaysConfig, type OverlaysState, type TimerConfig, type TimerPerType } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { useOverlays, type Ov } from "../lib/use-overlays";
 import type { SidecarClient } from "../lib/ws-client";
@@ -49,14 +49,6 @@ function useRemaining(state: OverlaysState): number {
   return t.remainingMs;
 }
 
-function fmtTime(ms: number): string {
-  const s = Math.ceil(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const two = (n: number) => String(n).padStart(2, "0");
-  return h > 0 ? `${h}:${two(m)}:${two(s % 60)}` : `${two(m)}:${two(s % 60)}`;
-}
-
 const STATUS_LABEL = { idle: "Detenido", running: "Corriendo", paused: "En pausa", finished: "Terminado" } as const;
 
 const PER_TYPE_FIELDS: { key: keyof TimerPerType; label: string; hint: string }[] = [
@@ -105,7 +97,7 @@ function TimerPage({
                 color: status === "finished" ? "#E5484D" : "#F4F4F5",
               }}
             >
-              {fmtTime(remaining)}
+              {formatTimerMs(remaining)}
             </div>
             <div style={{ fontSize: 12, color: "#9A9CA5" }}>{STATUS_LABEL[status]}</div>
           </div>
@@ -130,7 +122,7 @@ function TimerPage({
 
       <Card title="Configuración">
         <div style={grid2}>
-          <Field label="Tiempo inicial (s)" hint="con lo que arranca al comenzar o reiniciar">
+          <Field label="Tiempo inicial (s)" hint={`= ${formatTimerMs(tc.startSeconds * 1000)} · se aplica al Comenzar o Reiniciar; no cambia un timer que ya corre`}>
             <NumberField value={tc.startSeconds} min={1} onCommit={(v) => patchTimer({ startSeconds: v })} />
           </Field>
           <Field label="Tiempo máximo (s)" hint="0 = sin máximo">

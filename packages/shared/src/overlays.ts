@@ -150,6 +150,20 @@ export type OverlaysMessage = z.infer<typeof OverlaysMessageSchema>;
 // Servidor de overlays y diseños
 // ---------------------------------------------------------------------------
 
+/**
+ * Tiempo del timer como texto: `MM:SS` y, desde 1 hora, `HH:MM:SS` (01:00:00).
+ * Redondea hacia arriba los milisegundos. La página del overlay tiene su propia
+ * copia en JavaScript (`FORMAT_TIMER_JS`, overlay-pages.ts); un test las compara.
+ */
+export function formatTimerMs(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const two = (n: number) => (n < 10 ? "0" + n : String(n));
+  return h > 0 ? two(h) + ":" + two(m) + ":" + two(sec) : two(m) + ":" + two(sec);
+}
+
 /** Puerto por defecto del servidor HTTP de overlays del sidecar (127.0.0.1). */
 export const OVERLAY_DEFAULT_PORT = 7340;
 
