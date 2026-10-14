@@ -580,3 +580,23 @@ describe("OverlayCounters — persistencia", () => {
     expect(c.getState().timer.endsAt).toBe(T0 + 60_000);
   });
 });
+
+describe("OverlayCounters — Timer: restar tiempo", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("app.timer.remove resta siempre, venga el número con el signo que venga", () => {
+    const c = new OverlayCounters({ store: memoryStore({ config: cfg({ startSeconds: 100 }) }) });
+    c.timerStart();
+    expect(c.applyAppCommand("app.timer.remove", { seconds: 30 }).ok).toBe(true);
+    expect(c.getState().timer.remainingMs).toBe(70_000);
+    expect(c.applyAppCommand("app.timer.remove", { seconds: -10 }).ok).toBe(true);
+    expect(c.getState().timer.remainingMs).toBe(60_000);
+    expect(c.applyAppCommand("app.timer.remove", {})).toMatchObject({ ok: false });
+    c.applyAppCommand("app.timer.remove", { seconds: 999 }); // más de lo que queda: termina
+    expect(c.getState().timer.status).toBe("finished");
+  });
+});

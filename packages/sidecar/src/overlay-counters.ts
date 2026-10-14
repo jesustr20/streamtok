@@ -465,6 +465,12 @@ export class OverlayCounters extends EventEmitter {
         this.timerAdd(s);
         return { ok: true };
       }
+      case "app.timer.remove": {
+        const s = num("seconds");
+        if (s === undefined) return need("seconds");
+        this.timerAdd(-Math.abs(s)); // "restar" siempre resta
+        return { ok: true };
+      }
       case "app.timer.set": {
         const s = num("seconds");
         if (s === undefined) return need("seconds");

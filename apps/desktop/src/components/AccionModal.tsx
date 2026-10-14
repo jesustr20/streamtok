@@ -1,7 +1,14 @@
 import { SearchSelect } from "./SearchSelect";
 import { useState } from "react";
-import { withAppCommands, type Accion, type AccionMedia, type ModAction, type ModHelloPayload } from "@streamtok/shared";
-import { getCategoryIcon } from "../lib/categoryIcons";
+import {
+  APP_COMMANDS,
+  isAppCommand,
+  type Accion,
+  type AccionMedia,
+  type ModAction,
+  type ModHelloPayload,
+} from "@streamtok/shared";
+import { getCategoryIcon, TimerIcon, TrophyIcon } from "../lib/categoryIcons";
 import {
   defaultParamValues,
   ParamEditor,
@@ -11,6 +18,8 @@ import {
 
 type ComandoDraft = {
   key: string;
+  /** "mod": comando del juego; "app": acción de Timer/Wins (la ejecuta la app, no el mod). */
+  kind: "mod" | "app";
   modActionId: string;
   params: ParamValues;
 };
@@ -77,6 +86,7 @@ export function AccionModal({
   const [comandos, setComandos] = useState<ComandoDraft[]>(
     initial?.comandos.map((c) => ({
       key: newId(),
+      kind: isAppCommand(c.modActionId) ? ("app" as const) : ("mod" as const),
       modActionId: c.modActionId,
       params: toParamValues(c.params),
     })) ?? [],
@@ -88,16 +98,38 @@ export function AccionModal({
   const [cooldownUsuario, setCooldownUsuario] = useState(String(initial?.cooldownUsuarioSeg ?? 0));
   const [error, setError] = useState<string | null>(null);
 
-  // Comandos del mod + comandos internos de la app (Timer/Wins, ADR 0011).
-  const modActionCount = catalog?.actions.length ?? 0;
-  const actions = withAppCommands(catalog?.actions ?? []);
+  // Solo los comandos del mod. Los de Timer/Wins (ADR 0011) van en su propio bloque.
+  const actions = catalog?.actions ?? [];
+  const [extraOn, setExtraOn] = useState(() => comandos.some((c) => c.kind === "app"));
+  const modComandos = comandos.filter((c) => c.kind === "mod");
+  const appComandos = comandos.filter((c) => c.kind === "app");
 
   function toggleGeneral(label: string) {
     setGenerales((prev) => ({ ...prev, [label]: !prev[label] }));
   }
 
   function addComando() {
-    setComandos((prev) => [...prev, { key: newId(), modActionId: "", params: {} }]);
+    setComandos((prev) => [...prev, { key: newId(), kind: "mod", modActionId: "", params: {} }]);
+  }
+
+  function addAppComando() {
+    setComandos((prev) => [...prev, { key: newId(), kind: "app", modActionId: "", params: {} }]);
+  }
+
+  /** Marcar/desmarcar "Timer y Wins". Al desmarcar se quitan sus acciones. */
+  function toggleExtra() {
+    if (extraOn) {
+      setComandos((prev) => prev.filter((c) => c.kind !== "app"));
+      setExtraOn(false);
+    } else {
+      setExtraOn(true);
+      if (!comandos.some((c) => c.kind === "app")) addAppComando();
+    }
+  }
+
+  function selectAppAction(key: string, id: string) {
+    const action = APP_COMMANDS.find((a) => a.id === id);
+    patchComando(key, { modActionId: id, params: action ? defaultParamValues(action.params) : {} });
   }
 
   function patchComando(key: string, patch: Partial<ComandoDraft>) {
@@ -125,10 +157,18 @@ export function AccionModal({
 
     const validComandos = comandos
       .filter((c) => c.modActionId !== "")
-      .map((c) => ({
-        modActionId: c.modActionId,
-        params: onlyKnownParams(sanitizeParamValues(c.params), actions.find((a) => a.id === c.modActionId)),
-      }));
+      .map((c) => {
+        if (c.kind === "app") {
+          const def = APP_COMMANDS.find((a) => a.id === c.modActionId);
+          // Lo que falte o esté vacío vuelve al valor por defecto del comando.
+          const params = onlyKnownParams({ ...defaultParamValues(def?.params ?? []), ...sanitizeParamValues(c.params) }, def);
+          return { modActionId: c.modActionId, params };
+        }
+        return {
+          modActionId: c.modActionId,
+          params: onlyKnownParams(sanitizeParamValues(c.params), actions.find((a) => a.id === c.modActionId)),
+        };
+      });
 
     onSave({
       id: initial?.id ?? newId(),
@@ -188,49 +228,70 @@ export function AccionModal({
           >
             » ¿Qué deseas realizar?
           </div>
-          {GENERALES.map((g) => {
-            const checked = generales[g] === true;
-            return (
+          {GENERALES.map((g) => (
+            <CheckRow key={g} label={g} checked={generales[g] === true} onClick={() => toggleGeneral(g)} />
+          ))}
+          <CheckRow
+            label="Timer y Wins (overlays)"
+            hint="Suma o resta tiempo, suma o quita wins"
+            checked={extraOn}
+            onClick={toggleExtra}
+          />
+          {extraOn && (
+            <div
+              style={{
+                padding: "4px 14px 12px 40px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              {appComandos.map((c) => {
+                const def = APP_COMMANDS.find((a) => a.id === c.modActionId);
+                return (
+                  <div key={c.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <AppCommandPicker value={c.modActionId} onSelect={(id) => selectAppAction(c.key, id)} />
+                      </div>
+                      <button
+                        type="button"
+                        title="Quitar"
+                        onClick={() => removeComando(c.key)}
+                        style={closeCommandStyle}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {def && (
+                      <AppAmount
+                        key={`${c.key}-${def.id}`}
+                        action={def}
+                        values={c.params}
+                        onChange={(v) => patchComando(c.key, { params: v })}
+                      />
+                    )}
+                  </div>
+                );
+              })}
               <button
-                key={g}
                 type="button"
-                onClick={() => toggleGeneral(g)}
+                onClick={addAppComando}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 14px",
-                  border: "none",
-                  borderTop: "1px solid #1E2027",
+                  color: "#34D399",
                   background: "none",
-                  width: "100%",
+                  border: "none",
                   cursor: "pointer",
-                  textAlign: "left",
-                  color: "#F4F4F5",
+                  padding: 0,
+                  alignSelf: "flex-start",
+                  fontSize: 11.5,
+                  fontWeight: 700,
                 }}
               >
-                <div
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 4,
-                    border: `1px solid ${checked ? ACCENT : "#2A2C33"}`,
-                    background: checked ? ACCENT : "transparent",
-                    flexShrink: 0,
-                    boxSizing: "border-box",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {checked && (
-                    <span style={{ fontSize: 9, color: "#FFFFFF", lineHeight: 1 }}>✓</span>
-                  )}
-                </div>
-                <span style={{ fontSize: 12.5 }}>{g}</span>
+                + otra
               </button>
-            );
-          })}
+            </div>
+          )}
         </div>
 
         {/* Commands */}
@@ -247,7 +308,7 @@ export function AccionModal({
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#C4C5CC" }}>
-              Commands {comandos.length}/10 · GTA V Chaos Mod
+              Commands {modComandos.length}/10 · GTA V Chaos Mod
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 11, color: "#9A9CA5" }}>Delay #1:</span>
@@ -269,13 +330,13 @@ export function AccionModal({
             </div>
           </div>
 
-          {modActionCount === 0 && (
+          {actions.length === 0 && (
             <div style={{ fontSize: 12, color: "#5B5D66" }}>
-              Sin catálogo del mod: solo están los comandos de la app (Timer/Wins). Conecta el mod a ws://localhost:7331 para ver los suyos.
+              Sin catálogo del mod: no hay comandos para elegir. Conecta el mod a ws://localhost:7331.
             </div>
           )}
 
-          {comandos.map((c, i) => {
+          {modComandos.map((c, i) => {
             const action = actions.find((a) => a.id === c.modActionId);
             return (
               <div
@@ -534,6 +595,125 @@ export function AccionModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Fila con casilla de "¿Qué deseas realizar?". */
+function CheckRow({
+  label,
+  hint,
+  checked,
+  onClick,
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 14px",
+        border: "none",
+        borderTop: "1px solid #1E2027",
+        background: "none",
+        width: "100%",
+        cursor: "pointer",
+        textAlign: "left",
+        color: "#F4F4F5",
+      }}
+    >
+      <div
+        style={{
+          width: 16,
+          height: 16,
+          borderRadius: 4,
+          border: `1px solid ${checked ? ACCENT : "#2A2C33"}`,
+          background: checked ? ACCENT : "transparent",
+          flexShrink: 0,
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {checked && <span style={{ fontSize: 9, color: "#FFFFFF", lineHeight: 1 }}>✓</span>}
+      </div>
+      <span style={{ fontSize: 12.5 }}>{label}</span>
+      {hint && <span style={{ fontSize: 11, color: "#9A9CA5" }}>· {hint}</span>}
+    </button>
+  );
+}
+
+function appIcon(icon: string) {
+  return icon === "trophy" ? <TrophyIcon size={16} /> : <TimerIcon size={16} />;
+}
+
+/** Selector de acciones de Timer y Wins, con su ícono (reloj o copa). */
+function AppCommandPicker({ value, onSelect }: { value: string; onSelect: (id: string) => void }) {
+  const options = APP_COMMANDS.map((a) => ({ value: a.id, label: a.name, icon: appIcon(a.icon) }));
+  return <SearchSelect value={value} options={options} onChange={onSelect} placeholder="Elegir qué hacer…" />;
+}
+
+/**
+ * La cantidad de una acción de Timer/Wins, compacta, como el "#:" de Interactive:
+ * solo un número. Si suma o resta lo decide la opción elegida (p. ej. "Wins:
+ * quitar" con 5 resta 5), no el signo del número.
+ */
+function AppAmount({
+  action,
+  values,
+  onChange,
+}: {
+  action: ModAction;
+  values: ParamValues;
+  onChange: (v: ParamValues) => void;
+}) {
+  const param = action.params[0];
+  const [text, setText] = useState(() => String(values[param?.name ?? ""] ?? param?.default ?? ""));
+  if (!param) return null; // iniciar, pausar, reiniciar…: no llevan cantidad
+  // Solo "fijar conteo" puede llevar un número negativo; el resto son cantidades positivas.
+  const allowNegative = action.id === "app.wins.set";
+  const n = Number(text);
+  const valid = /^-?\d+$/.test(text);
+  const outOfRange = valid && ((param.min !== undefined && n < param.min) || (param.max !== undefined && n > param.max));
+  const unit = action.id.startsWith("app.timer.") ? "seg" : "";
+
+  function change(raw: string) {
+    const cleaned = allowNegative ? raw.replace(/(?!^-)[^\d]/g, "") : raw.replace(/\D/g, "");
+    setText(cleaned);
+    const num = Number(cleaned);
+    onChange(/^-?\d+$/.test(cleaned) && Number.isFinite(num) ? { [param.name]: num } : {});
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>#:</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={text}
+        onChange={(e) => change(e.target.value)}
+        title={outOfRange ? `Entre ${param.min} y ${param.max}` : undefined}
+        style={{
+          width: 90,
+          height: 30,
+          padding: "0 8px",
+          background: "#0E0F12",
+          border: `1px solid ${outOfRange || !valid ? ACCENT : "#2A2C33"}`,
+          borderRadius: 6,
+          color: "#F4F4F5",
+          fontSize: 12.5,
+          boxSizing: "border-box",
+        }}
+      />
+      {unit && <span style={{ fontSize: 11, color: "#9A9CA5" }}>{unit}</span>}
     </div>
   );
 }
