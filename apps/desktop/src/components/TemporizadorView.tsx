@@ -122,13 +122,29 @@ function TimerPage({
 
       <Card title="Configuración">
         <div style={grid2}>
-          <Field label="Tiempo inicial (s)" hint={`= ${formatTimerMs(tc.startSeconds * 1000)} · se aplica al Comenzar o Reiniciar; no cambia un timer que ya corre`}>
-            <NumberField value={tc.startSeconds} min={1} onCommit={(v) => patchTimer({ startSeconds: v })} />
+          <Field
+            label="Tiempo inicial (s)"
+            hint={
+              tc.startSeconds === 0
+                ? "0 = sin tiempo inicial: arranca con la primera interacción"
+                : `= ${formatTimerMs(tc.startSeconds * 1000)} · se aplica al Comenzar o Reiniciar; no cambia un timer que ya corre`
+            }
+          >
+            <NumberField value={tc.startSeconds} min={0} onCommit={(v) => patchTimer({ startSeconds: v })} />
           </Field>
           <Field label="Tiempo máximo (s)" hint="0 = sin máximo">
             <NumberField value={tc.maxSeconds} min={0} onCommit={(v) => patchTimer({ maxSeconds: v })} />
           </Field>
         </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={tc.autoStart}
+            onChange={(e) => patchTimer({ autoStart: e.target.checked })}
+          />
+          Iniciar solo: si está en 0 o detenido, la primera interacción que suma tiempo lo inicia
+        </label>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
           <input
@@ -177,7 +193,7 @@ function TimerPage({
           <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>multiplica todos los segundos de arriba</span>
         </div>
         <div style={{ fontSize: 11.5, color: "#9A9CA5" }}>
-          Los espectadores solo suman mientras el timer está corriendo.
+          Los espectadores suman mientras el timer corre o, con “Iniciar solo”, también desde 0. En pausa no suma.
         </div>
 
         <ExpireActions client={client} ids={tc.onExpireAccionIds} onChange={(ids) => patchTimer({ onExpireAccionIds: ids })} />

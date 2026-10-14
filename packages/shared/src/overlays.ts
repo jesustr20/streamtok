@@ -30,8 +30,10 @@ export const TimerPerTypeSchema = z.object({
 export type TimerPerType = z.infer<typeof TimerPerTypeSchema>;
 
 export const TimerConfigSchema = z.object({
-  /** valor inicial por defecto, en segundos */
-  startSeconds: z.number().positive().default(60),
+  /** valor inicial por defecto, en segundos (0 = sin valor inicial: arranca con la primera interacción) */
+  startSeconds: z.number().nonnegative().default(0),
+  /** si está en 0 o detenido, la primera interacción que suma tiempo lo inicia sola */
+  autoStart: z.boolean().default(true),
   /** tiempo máximo en segundos; 0 = sin máximo */
   maxSeconds: z.number().nonnegative().default(0),
   /** al cerrar la app con el timer activo, se restaura en pausa al volver */

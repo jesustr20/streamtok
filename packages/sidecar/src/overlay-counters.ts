@@ -361,9 +361,31 @@ export class OverlayCounters extends EventEmitter {
       default:
         return;
     }
-    if (this.status !== "running" || seconds === 0) return;
+    if (seconds === 0) return;
     const mult = this.config.timer.multiplier;
-    this.timerAdd(seconds * (mult.active ? mult.value : 1));
+    const total = seconds * (mult.active ? mult.value : 1);
+    if (this.status === "running") {
+      this.timerAdd(total);
+    } else if (total > 0 && this.config.timer.autoStart && (this.status === "idle" || this.status === "finished")) {
+      this.timerAutoStart(total);
+    }
+    // En pausa no suma: pausar es una decisión del streamer.
+  }
+
+  /**
+   * La primera interacción que suma tiempo, con el timer detenido o en 0, lo
+   * inicia sola: cuenta atrás desde lo que se ve (0 tras terminar, o el tiempo
+   * inicial si aún no se había arrancado) más lo que acaba de sumar.
+   */
+  private timerAutoStart(seconds: number) {
+    const base = this.status === "idle" ? this.remainingMs : 0;
+    const rem = this.clampMs(base + Math.round(seconds * 1000));
+    if (rem <= 0) return;
+    this.status = "running";
+    this.remainingMs = rem;
+    this.endsAt = Date.now() + rem;
+    this.scheduleExpiry();
+    this.changed();
   }
 
   /** Nueva sesión de LIVE: se olvidan los combos en curso. */

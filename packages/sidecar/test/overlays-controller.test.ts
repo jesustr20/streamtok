@@ -7,7 +7,7 @@ import { StreamTokWsServer } from "../src/ws-server.js";
 
 function memoryStore() {
   return {
-    load: (): PersistedOverlays => ({ config: OverlaysConfigSchema.parse({}) }),
+    load: (): PersistedOverlays => ({ config: OverlaysConfigSchema.parse({ timer: { startSeconds: 60 } }) }),
     save: async () => {},
   };
 }
