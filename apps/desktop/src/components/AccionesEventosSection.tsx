@@ -12,6 +12,7 @@ import type { SidecarClient } from "../lib/ws-client";
 import { describeQuien, PORQUE_LABELS } from "../lib/labels";
 import { AccionModal } from "./AccionModal";
 import { EventoModal } from "./EventoModal";
+import { findGift } from "./GiftPicker";
 import { Pagination, usePagination } from "./Pagination";
 import { matchesQuery } from "../lib/search";
 
@@ -52,7 +53,8 @@ type TriggerInfo =
 function triggerFor(e: Evento, gifts: GiftCatalogEntry[]): TriggerInfo {
   switch (e.porque) {
     case "regaloEspecifico": {
-      const g = gifts.find((x) => (e.giftId && x.id === e.giftId) || (e.giftName && x.name === e.giftName));
+      // Por id primero (hay nombres repetidos con distinto id); nombre solo si no hay id.
+      const g = findGift(gifts, e.giftName || e.giftId ? { id: e.giftId, name: e.giftName ?? "" } : null);
       return {
         kind: "gift",
         name: g?.name ?? e.giftName ?? `ID ${e.giftId}`,
