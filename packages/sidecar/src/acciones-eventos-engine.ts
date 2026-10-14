@@ -112,13 +112,36 @@ export class AccionesEventosEngine extends EventEmitter {
   private streakFired = new Map<string, number>();
   /** Monedas acumuladas por handle durante la sesión (ranking de donantes). */
   private gifterCoins = new Map<string, number>();
+  /** Cooldowns (ADR 0010): epoch ms hasta el que sigue bloqueada una acción
+   * (global, clave accionId) o una acción para un usuario (clave accionId|handle). */
+  private cooldownGlobalUntil = new Map<string, number>();
+  private cooldownUserUntil = new Map<string, number>();
 
   constructor(private modBridge: ModBridge) {
     super();
   }
 
   setAcciones(acciones: Accion[]) {
+    // Cooldowns (ADR 0010): se reinician los de las acciones borradas o cuyos
+    // segundos cambiaron; editar otra cosa (nombre, comandos) no los toca.
+    const next = new Map(acciones.map((a) => [a.id, a]));
+    for (const prev of this.acciones) {
+      const now = next.get(prev.id);
+      if (
+        !now ||
+        (now.cooldownGlobalSeg ?? 0) !== (prev.cooldownGlobalSeg ?? 0) ||
+        (now.cooldownUsuarioSeg ?? 0) !== (prev.cooldownUsuarioSeg ?? 0)
+      ) {
+        this.clearCooldowns(prev.id);
+      }
+    }
     this.acciones = acciones;
+  }
+
+  private clearCooldowns(accionId: string) {
+    this.cooldownGlobalUntil.delete(accionId);
+    const prefix = `${accionId}|`;
+    for (const k of [...this.cooldownUserUntil.keys()]) if (k.startsWith(prefix)) this.cooldownUserUntil.delete(k);
   }
 
   getAcciones(): Accion[] {
@@ -141,6 +164,8 @@ export class AccionesEventosEngine extends EventEmitter {
     this.gifterCoins.clear();
     this.likeCounts.clear();
     this.streakFired.clear();
+    this.cooldownGlobalUntil.clear();
+    this.cooldownUserUntil.clear();
   }
 
   private quienMatches(ev: Evento, live: LiveEvent): boolean {
@@ -365,17 +390,82 @@ export class AccionesEventosEngine extends EventEmitter {
         if (this.streakFired.size > 2000) this.streakFired.clear(); // streaks abandonados
         this.streakFired.set(repeatKey, already + times);
       }
-      for (let i = 0; i < times; i++) {
-        await this.executeAccion(evento, accion, evt);
+      // Cooldown (ADR 0010). Va DESPUÉS del conteo del streak: lo bloqueado cuenta
+      // como ya procesado y no se ejecuta en bloque cuando termine el cooldown.
+      const handle = normalizeHandle(evt.username);
+      const now = Date.now();
+      const blocked = this.cooldownRemaining(accion, handle, now);
+      if (blocked) {
+        const who = blocked.kind === "global" ? "global" : `de ${evt.nickname ?? evt.username}`;
+        this.emitEntry({
+          status: "discarded",
+          event: evt.event,
+          reason: "cooldown",
+          accionId: accion.id,
+          eventoId: evento.id,
+          message: `cooldown ${who} de "${accion.nombre}": faltan ${Math.ceil(blocked.remainingMs / 1000)} s`,
+        });
+        continue;
       }
+      // Se reserva ANTES de enviar: dos eventos casi simultáneos no pasan los dos.
+      const reservation = this.reserveCooldown(accion, handle, now);
+      let anyOk = false;
+      for (let i = 0; i < times; i++) {
+        if (await this.executeAccion(evento, accion, evt)) anyOk = true;
+      }
+      // Si el mod rechazó todos los comandos, la acción no se ejecutó de verdad.
+      if (!anyOk) this.releaseCooldown(reservation);
       fired = true;
     }
     return fired;
   }
 
-  private async executeAccion(evento: Evento, accion: Accion, evt: LiveEvent) {
+  /** Cuánto falta para que `accion` pueda correr para `handle` (null = libre). */
+  private cooldownRemaining(
+    accion: Accion,
+    handle: string,
+    now: number,
+  ): { kind: "global" | "usuario"; remainingMs: number } | null {
+    const global = this.cooldownGlobalUntil.get(accion.id) ?? 0;
+    if (global > now) return { kind: "global", remainingMs: global - now };
+    const user = this.cooldownUserUntil.get(`${accion.id}|${handle}`) ?? 0;
+    if (user > now) return { kind: "usuario", remainingMs: user - now };
+    return null;
+  }
+
+  private reserveCooldown(accion: Accion, handle: string, now: number) {
+    const userKey = `${accion.id}|${handle}`;
+    const reservation = {
+      accionId: accion.id,
+      userKey,
+      prevGlobal: this.cooldownGlobalUntil.get(accion.id),
+      prevUser: this.cooldownUserUntil.get(userKey),
+    };
+    const globalSeg = accion.cooldownGlobalSeg ?? 0;
+    const userSeg = accion.cooldownUsuarioSeg ?? 0;
+    if (globalSeg > 0) this.cooldownGlobalUntil.set(accion.id, now + globalSeg * 1000);
+    if (userSeg > 0) {
+      if (this.cooldownUserUntil.size > 5000) {
+        for (const [k, until] of this.cooldownUserUntil) if (until <= now) this.cooldownUserUntil.delete(k);
+      }
+      this.cooldownUserUntil.set(userKey, now + userSeg * 1000);
+    }
+    return reservation;
+  }
+
+  private releaseCooldown(r: { accionId: string; userKey: string; prevGlobal?: number; prevUser?: number }) {
+    if (r.prevGlobal === undefined) this.cooldownGlobalUntil.delete(r.accionId);
+    else this.cooldownGlobalUntil.set(r.accionId, r.prevGlobal);
+    if (r.prevUser === undefined) this.cooldownUserUntil.delete(r.userKey);
+    else this.cooldownUserUntil.set(r.userKey, r.prevUser);
+  }
+
+  /** Devuelve true si al menos un comando de la acción fue aceptado por el mod. */
+  private async executeAccion(evento: Evento, accion: Accion, evt: LiveEvent): Promise<boolean> {
+    let anyOk = false;
     for (const comando of accion.comandos) {
       const ack = await this.dispatchCommand(comando.modActionId, comando.params, evt);
+      if (ack.ok) anyOk = true;
       this.emitCommandOutcome(ack, evt, {
         modActionId: comando.modActionId,
         accionId: accion.id,
@@ -383,6 +473,7 @@ export class AccionesEventosEngine extends EventEmitter {
         porque: evento.porque,
       });
     }
+    return anyOk;
   }
 
   private async dispatchCommand(

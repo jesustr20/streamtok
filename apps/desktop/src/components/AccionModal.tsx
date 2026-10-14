@@ -83,6 +83,9 @@ export function AccionModal({
   );
   const [generales, setGenerales] = useState<Record<string, boolean>>({});
   const [repetirConCombo, setRepetirConCombo] = useState(initial?.repetirConComboDeRegalos ?? false);
+  // Cooldowns en segundos (ADR 0010). Como texto para poder borrar el campo mientras se escribe.
+  const [cooldownGlobal, setCooldownGlobal] = useState(String(initial?.cooldownGlobalSeg ?? 0));
+  const [cooldownUsuario, setCooldownUsuario] = useState(String(initial?.cooldownUsuarioSeg ?? 0));
   const [error, setError] = useState<string | null>(null);
 
   const actions = catalog?.actions ?? [];
@@ -135,6 +138,8 @@ export function AccionModal({
       media: initial?.media ?? emptyMedia(),
       comandos: validComandos,
       repetirConComboDeRegalos: repetirConCombo,
+      cooldownGlobalSeg: parseSeconds(cooldownGlobal),
+      cooldownUsuarioSeg: parseSeconds(cooldownUsuario),
     });
   }
 
@@ -420,6 +425,43 @@ export function AccionModal({
               0 seg
             </div>
           </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
+              <label style={{ fontSize: 10.5, color: "#9A9CA5" }}>Cooldown global</label>
+              <div style={secondsFieldStyle}>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={cooldownGlobal}
+                  onChange={(e) => setCooldownGlobal(e.target.value)}
+                  style={secondsInputStyle}
+                  aria-label="Cooldown global en segundos"
+                />
+                <span style={{ fontSize: 11, color: "#5B5D66" }}>seg</span>
+              </div>
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
+              <label style={{ fontSize: 10.5, color: "#9A9CA5" }}>Cooldown por usuario</label>
+              <div style={secondsFieldStyle}>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={cooldownUsuario}
+                  onChange={(e) => setCooldownUsuario(e.target.value)}
+                  style={secondsInputStyle}
+                  aria-label="Cooldown por usuario en segundos"
+                />
+                <span style={{ fontSize: 11, color: "#5B5D66" }}>seg</span>
+              </div>
+            </div>
+          </div>
+          <p style={{ margin: 0, fontSize: 10.5, color: "#5B5D66", lineHeight: 1.5 }}>
+            Después de ejecutarse, la acción queda bloqueada: el global para todo el chat y el de
+            usuario solo para quien la usó. Lo que llegue durante el bloqueo no se ejecuta. 0 = sin
+            cooldown.
+          </p>
           <button
             type="button"
             onClick={() => setRepetirConCombo((v) => !v)}
@@ -578,6 +620,34 @@ const closeCommandStyle: React.CSSProperties = {
 
 
 
+
+/** Segundos enteros >= 0; vacío o inválido = 0 (sin cooldown). */
+function parseSeconds(raw: string): number {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+const secondsFieldStyle: React.CSSProperties = {
+  height: 32,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "0 10px",
+  background: "#17181D",
+  border: "1px solid #2A2C33",
+  borderRadius: 7,
+};
+
+const secondsInputStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  background: "none",
+  border: "none",
+  outline: "none",
+  color: "#F4F4F5",
+  fontSize: 12,
+  fontFamily: "'Manrope', sans-serif",
+};
 
 const additionalSelectStyle: React.CSSProperties = {
   width: "100%",

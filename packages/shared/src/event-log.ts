@@ -25,6 +25,7 @@ export type EventLogStatus = z.infer<typeof EventLogStatusSchema>;
  *  - ack-timeout            sendCommand expiró esperando mod-ack
  *  - command-error          sendCommand falló con otro error del ack
  *  - accion-no-encontrada   un Evento referencia una Acción que no existe
+ *  - cooldown               la Acción está en cooldown (global o del usuario; ADR 0010)
  */
 export const EventLogReasonSchema = z.enum([
   "gift-in-progress",
@@ -35,6 +36,7 @@ export const EventLogReasonSchema = z.enum([
   "ack-timeout",
   "command-error",
   "accion-no-encontrada",
+  "cooldown",
 ]);
 export type EventLogReason = z.infer<typeof EventLogReasonSchema>;
 

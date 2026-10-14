@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Accion, Evento, EventLogEntry, LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine, computeGifterRank, describeLiveEvent } from "../src/acciones-eventos-engine.js";
 import type { ModBridge } from "../src/mod-bridge.js";
@@ -727,5 +727,169 @@ describe("mensajes del log del motor", () => {
     const fired = entries.find((e) => e.status === "fired")!;
     expect(fired.eventoId).toBe("ev-heart");
     expect(fired.message).toBe("regalo Heart (id 5576, 10 monedas) de Satoru → earthquake");
+  });
+});
+
+describe("AccionesEventosEngine — cooldown (ADR 0010)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-13T20:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const follow = (username: string): LiveEvent => ({ event: "follow", username, nickname: username, timestamp: 0 });
+
+  function setup(acc: Partial<Accion>, bridge = makeBridge()) {
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion(acc)]);
+    engine.setEventos([evento({ porque: "seguir" })]);
+    const { entries } = collect(engine);
+    return { engine, bridge, entries };
+  }
+
+  it("sin cooldown (0 o ausente): se dispara siempre", async () => {
+    const { engine, bridge } = setup({ cooldownGlobalSeg: 0, cooldownUsuarioSeg: 0 });
+    await engine.handleEvent(follow("@a"));
+    await engine.handleEvent(follow("@a"));
+    expect(bridge.calls).toHaveLength(2);
+  });
+
+  it("global: tras ejecutarse nadie puede usarla hasta que pase el tiempo", async () => {
+    const { engine, bridge, entries } = setup({ cooldownGlobalSeg: 60 });
+    await engine.handleEvent(follow("@a"));
+    await engine.handleEvent(follow("@b")); // otro usuario, igual bloqueado
+    expect(bridge.calls).toHaveLength(1);
+    const blocked = entries.find((e) => e.reason === "cooldown");
+    expect(blocked?.status).toBe("discarded");
+    expect(blocked?.message).toContain("global");
+
+    vi.advanceTimersByTime(59_000);
+    await engine.handleEvent(follow("@b"));
+    expect(bridge.calls).toHaveLength(1);
+
+    vi.advanceTimersByTime(1_000);
+    await engine.handleEvent(follow("@b"));
+    expect(bridge.calls).toHaveLength(2);
+  });
+
+  it("por usuario: solo bloquea a quien la usó; cada usuario tiene su propio tiempo", async () => {
+    const { engine, bridge } = setup({ cooldownUsuarioSeg: 600 });
+    await engine.handleEvent(follow("@a")); // t=0: a ejecuta
+    await engine.handleEvent(follow("@a")); // bloqueado
+    await engine.handleEvent(follow("@b")); // b no está afectado: ejecuta
+    expect(bridge.calls).toHaveLength(2);
+
+    vi.advanceTimersByTime(300_000); // t=300 s
+    await engine.handleEvent(follow("@c")); // c ejecuta; su cooldown termina en t=900 s
+    expect(bridge.calls).toHaveLength(3);
+
+    vi.advanceTimersByTime(300_000); // t=600 s: a y b cumplieron, c no
+    await engine.handleEvent(follow("@a"));
+    await engine.handleEvent(follow("@b"));
+    await engine.handleEvent(follow("@c"));
+    expect(bridge.calls).toHaveLength(5);
+
+    vi.advanceTimersByTime(300_000); // t=900 s: c cumple
+    await engine.handleEvent(follow("@c"));
+    expect(bridge.calls).toHaveLength(6);
+  });
+
+  it("por usuario: se identifica por @username, no por el nombre visible", async () => {
+    const { engine, bridge } = setup({ cooldownUsuarioSeg: 600 });
+    await engine.handleEvent({ event: "follow", username: "@Ana", nickname: "Ana 1", timestamp: 0 });
+    await engine.handleEvent({ event: "follow", username: "ana", nickname: "Otro nombre", timestamp: 0 });
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("ambos: debe cumplirse el global Y el del usuario", async () => {
+    const { engine, bridge } = setup({ cooldownGlobalSeg: 10, cooldownUsuarioSeg: 100 });
+    await engine.handleEvent(follow("@a"));
+    vi.advanceTimersByTime(10_000);
+    await engine.handleEvent(follow("@a")); // global libre, pero @a sigue en el suyo
+    await engine.handleEvent(follow("@b")); // global libre y @b no tiene cooldown
+    expect(bridge.calls).toHaveLength(2);
+    await engine.handleEvent(follow("@c")); // global recién reiniciado por @b
+    expect(bridge.calls).toHaveLength(2);
+  });
+
+  it("el intento bloqueado deja una entrada con reason cooldown y los segundos que faltan", async () => {
+    const { engine, entries } = setup({ cooldownUsuarioSeg: 90, nombre: "Atacar" });
+    await engine.handleEvent(follow("@a"));
+    vi.advanceTimersByTime(30_000);
+    await engine.handleEvent(follow("@a"));
+    const blocked = entries.find((e) => e.reason === "cooldown")!;
+    expect(blocked.message).toContain("Atacar");
+    expect(blocked.message).toContain("60");
+    expect(blocked.accionId).toBe("a1");
+  });
+
+  it("si el mod rechaza todos los comandos, el cooldown no se queda activado", async () => {
+    const { engine, bridge } = setup({ cooldownGlobalSeg: 60 }, makeBridge("Mod no conectado"));
+    await engine.handleEvent(follow("@a"));
+    await engine.handleEvent(follow("@a"));
+    expect(bridge.calls).toHaveLength(2); // el segundo intento no estaba bloqueado
+  });
+
+  it("dos eventos casi simultáneos: solo pasa uno (se reserva antes de enviar)", async () => {
+    const { engine, bridge } = setup({ cooldownGlobalSeg: 60 });
+    await Promise.all([engine.handleEvent(follow("@a")), engine.handleEvent(follow("@b"))]);
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("resetSession (reconexión al LIVE) lo pone todo en 0", async () => {
+    const { engine, bridge } = setup({ cooldownGlobalSeg: 600, cooldownUsuarioSeg: 600 });
+    await engine.handleEvent(follow("@a"));
+    engine.resetSession();
+    await engine.handleEvent(follow("@a"));
+    expect(bridge.calls).toHaveLength(2);
+  });
+
+  it("editar la acción reinicia su cooldown solo si cambiaron los segundos", async () => {
+    const { engine, bridge } = setup({ cooldownGlobalSeg: 600 });
+    await engine.handleEvent(follow("@a"));
+    engine.setAcciones([accion({ cooldownGlobalSeg: 600, nombre: "Otro nombre" })]);
+    await engine.handleEvent(follow("@a"));
+    expect(bridge.calls).toHaveLength(1); // mismo cooldown: sigue bloqueada
+
+    engine.setAcciones([accion({ cooldownGlobalSeg: 5 })]);
+    await engine.handleEvent(follow("@a"));
+    expect(bridge.calls).toHaveLength(2); // cambió: arranca de cero
+  });
+
+  it("cada acción tiene su propio cooldown", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([
+      accion({ id: "a1", cooldownGlobalSeg: 600 }),
+      accion({ id: "a2", comandos: [{ modActionId: "otra", params: {} }] }),
+    ]);
+    engine.setEventos([evento({ porque: "seguir", accionesTodas: ["a1", "a2"] })]);
+    await engine.handleEvent(follow("@a"));
+    await engine.handleEvent(follow("@a"));
+    expect(bridge.calls.map((c) => c.action)).toEqual(["arena_join", "otra", "otra"]);
+  });
+
+  it("repetir con combo: el cooldown corta las repeticiones y lo bloqueado no se ejecuta en bloque después", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: true, cooldownUsuarioSeg: 5 })]);
+    engine.setEventos([evento({ porque: "regaloValorMinimo", valorMinimoMonedas: 1 })]);
+    const gift = (repeatCount: number, repeatEnd: boolean): LiveEvent => ({
+      event: "gift", username: "@a", coins: 1, giftId: "5655", repeatCount, repeatEnd, timestamp: 0,
+    });
+    await engine.handleEvent(gift(1, false)); // ejecuta 1 y arranca el cooldown
+    await engine.handleEvent(gift(3, false)); // bloqueado: se descartan 2 regalos
+    vi.advanceTimersByTime(6_000);
+    await engine.handleEvent(gift(3, true)); // cierre: ya estaban contados, no se ejecutan
+    expect(bridge.calls).toHaveLength(1);
+  });
+
+  it("el simulador (mismo handleEvent) también respeta el cooldown", async () => {
+    const { engine, bridge } = setup({ cooldownGlobalSeg: 30 });
+    await engine.handleEvent({ ...follow("@sim"), timestamp: 123 });
+    await engine.handleEvent({ ...follow("@sim"), timestamp: 124 });
+    expect(bridge.calls).toHaveLength(1);
   });
 });
