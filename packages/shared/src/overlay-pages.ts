@@ -15,7 +15,8 @@ import type { OverlayKind } from "./overlays.js";
  */
 
 const BASE_CSS = `
-  html, body { margin: 0; background: transparent; overflow: hidden; }
+  html { overflow: hidden; }
+  html, body { margin: 0; background: transparent; }
   body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--text, #fff); }
   #root { display: inline-block; padding: 8px; transform-origin: top left; transform: scale(var(--scale, 1)); }
   .hidden { display: none !important; }
@@ -196,7 +197,8 @@ const COMMON_JS = `
     var root = document.documentElement.style;
     var vars = { "--text": style.textColor, "--accent": style.accentColor, "--bg": style.backgroundColor };
     for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }
-    root.setProperty("--scale", style.scale || 1);
+    // El temporizador tiene tamaño fijo (se agranda en LIVE Studio/OBS); solo Wins admite escala.
+    root.setProperty("--scale", KIND === "timer" ? 1 : style.scale || 1);
   }
 
   function schedule() { retry = Math.min(retry + 1, 6); setTimeout(connect, 500 * retry); }

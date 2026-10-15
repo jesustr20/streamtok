@@ -102,8 +102,8 @@ export function App() {
         {view === "gestionar-perfiles" && (
           <GestionarPerfiles client={client} onBack={() => setView("juego-detalle")} />
         )}
-        {view === "overlays" && <OverlaysView client={client} onOpenModule={setView} />}
-        {view === "temporizador" && <TemporizadorView client={client} onCustomize={() => setView("overlays")} />}
+        {view === "overlays" && <OverlaysView client={client} onOpenWins={() => setView("wins")} />}
+        {view === "temporizador" && <TemporizadorView client={client} />}
         {view === "wins" && <WinsView client={client} onCustomize={() => setView("overlays")} />}
       </main>
     </div>
