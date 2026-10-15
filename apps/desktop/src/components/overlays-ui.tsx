@@ -5,7 +5,7 @@ import {
   type OverlayKind,
   type OverlayStyle,
 } from "@streamtok/shared";
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 export const ACCENT = "#E23A57";
 export const LOCAL_HOST = `http://localhost:${OVERLAY_DEFAULT_PORT}`;
@@ -35,20 +35,23 @@ function useOverlayServerStatus(): "checking" | "up" | "down" {
 }
 
 /**
- * Enlaces del overlay (LIVE Studio y OBS). Con `showPreview` muestra además la
- * vista previa y el botón "Personalizar" que lleva a la sección Overlays.
+ * Enlaces del overlay (LIVE Studio y OBS). Con `onCustomize` muestra además la
+ * vista previa (a su tamaño real, sin recortes) y el botón de personalizar.
  */
 export function UrlCard({
   kind,
   title = "Enlace del overlay",
   onCustomize,
+  customizeLabel = "Personalizar diseño",
 }: {
   kind: OverlayKind;
   title?: string;
   onCustomize?: () => void;
+  customizeLabel?: string;
 }) {
   const path = `/overlay/${kind}`;
   const server = useOverlayServerStatus();
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   return (
     <Card title={title}>
       <UrlRow
@@ -64,13 +67,27 @@ export function UrlCard({
         </div>
       )}
       {onCustomize && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <Preview kind={kind} designId={undefined} width={420} height={130} scale={0.5} />
-          <Btn onClick={onCustomize}>Personalizar diseño</Btn>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <Preview kind={kind} designId={undefined} maxWidth={560} onSize={setSize} />
+          <Btn onClick={onCustomize}>{customizeLabel}</Btn>
+        </div>
+      )}
+      {onCustomize && size && (
+        <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.5 }}>
+          En TikTok LIVE Studio, si activas <b>Resolución personalizada</b>, usa al menos{" "}
+          <b style={{ color: "#F4F4F5" }}>
+            {roundUp(size.w)} × {roundUp(size.h)}
+          </b>{" "}
+          para que no se corte nada. Luego lo agrandas arrastrando las esquinas del cuadro en el lienzo.
         </div>
       )}
     </Card>
   );
+}
+
+/** Redondea hacia arriba al siguiente múltiplo de 10 (un poco de margen). */
+function roundUp(n: number): number {
+  return Math.ceil(n / 10) * 10 + 10;
 }
 
 function UrlRow({ label, url, note }: { label: string; url: string; note: string }) {
@@ -102,17 +119,24 @@ function UrlRow({ label, url, note }: { label: string; url: string; note: string
   );
 }
 
-/** Elección de diseño (miniaturas), vista previa y personalización de colores/tamaño. */
+/**
+ * Elección de diseño (miniaturas), vista previa y personalización de colores.
+ * El tamaño solo se puede cambiar en los overlays que lo admiten (Wins); el
+ * timer tiene tamaño fijo y se agranda en TikTok LIVE Studio.
+ */
 export function DesignCard({
   kind,
   style,
   onChange,
+  showPreview = true,
 }: {
   kind: OverlayKind;
   style: OverlayStyle;
   onChange: (s: OverlayStyle) => void;
+  showPreview?: boolean;
 }) {
   const designs = OVERLAY_DESIGNS[kind];
+  const allowScale = kind !== "timer";
   return (
     <Card title="Diseño">
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -134,32 +158,43 @@ export function DesignCard({
                 textAlign: "left",
               }}
             >
-              <Preview kind={kind} designId={d.id} width={212} height={96} scale={0.3} />
+              <Preview kind={kind} designId={d.id} box={{ w: 212, h: 110 }} />
               <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>{d.name}</div>
             </button>
           );
         })}
       </div>
 
-      <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>Vista previa</div>
-      <Preview kind={kind} designId={style.designId} width={920} height={220} scale={1} />
+      {showPreview && (
+        <>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>Vista previa</div>
+          <Preview kind={kind} designId={style.designId} maxWidth={920} />
+        </>
+      )}
 
       <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>Personalizar</div>
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-end" }}>
         <ColorField label="Texto" value={style.textColor} onChange={(v) => onChange({ ...style, textColor: v })} />
         <ColorField label="Acento" value={style.accentColor} onChange={(v) => onChange({ ...style, accentColor: v })} />
         <ColorField label="Fondo" value={style.backgroundColor} onChange={(v) => onChange({ ...style, backgroundColor: v })} />
-        <Field label={`Tamaño ×${style.scale}`} hint="">
-          <input
-            type="range"
-            min={0.5}
-            max={2}
-            step={0.1}
-            value={style.scale}
-            onChange={(e) => onChange({ ...style, scale: Number(e.target.value) })}
-          />
-        </Field>
+        {allowScale && (
+          <Field label={`Tamaño ×${style.scale}`} hint="">
+            <input
+              type="range"
+              min={0.5}
+              max={2}
+              step={0.1}
+              value={style.scale}
+              onChange={(e) => onChange({ ...style, scale: Number(e.target.value) })}
+            />
+          </Field>
+        )}
       </div>
+      {!allowScale && (
+        <div style={{ fontSize: 12, color: "#9A9CA5" }}>
+          El temporizador tiene un tamaño fijo: agrándalo o achícalo en TikTok LIVE Studio u OBS.
+        </div>
+      )}
     </Card>
   );
 }
@@ -169,51 +204,116 @@ export function DesignCard({
  * (`srcDoc`) para no depender del servidor HTTP ni de la red local. Solo se
  * conecta por WebSocket al sidecar, igual que la app. Sin `designId` usa el
  * diseño elegido en la configuración.
+ *
+ * Mide el contenido real de la página y se ajusta a él: nunca se recorta, ni
+ * con título y equivalencia, ni con otro tamaño. Con `box` (miniaturas) el
+ * contenido se reduce para caber en ese cuadro fijo; sin `box` se muestra a su
+ * tamaño real (reduciéndolo solo si no cabe en `maxWidth`).
  */
 export function Preview({
   kind,
   designId,
-  width,
-  height,
-  scale,
+  maxWidth = 920,
+  box,
+  onSize,
 }: {
   kind: OverlayKind;
   designId: string | undefined;
-  width: number;
-  height: number;
-  scale: number;
+  maxWidth?: number;
+  box?: { w: number; h: number };
+  onSize?: (size: { w: number; h: number }) => void;
 }) {
   const html = useMemo(
     () => overlayPage(kind, SIDECAR_WS_PORT, designId ? { design: designId } : {}),
     [kind, designId],
   );
+  const frame = useRef<HTMLIFrameElement>(null);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onSizeRef = useRef(onSize);
+  onSizeRef.current = onSize;
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => () => stopMeasuring(), []);
+
+  function stopMeasuring() {
+    if (timer.current) clearInterval(timer.current);
+    timer.current = null;
+  }
+
+  // El contenido cambia solo (hora, título, tamaño): se vuelve a medir cada 250 ms.
+  function startMeasuring() {
+    stopMeasuring();
+    const measure = () => {
+      const root = frame.current?.contentDocument?.getElementById("root");
+      if (!root) return;
+      const r = root.getBoundingClientRect();
+      const next = { w: Math.ceil(r.right), h: Math.ceil(r.bottom) };
+      if (next.w <= 0 || next.h <= 0) return;
+      setSize((prev) => {
+        if (prev && prev.w === next.w && prev.h === next.h) return prev;
+        onSizeRef.current?.(next);
+        return next;
+      });
+    };
+    measure();
+    timer.current = setInterval(measure, 250);
+  }
+
+  const natural = size ?? { w: 1400, h: 600 }; // hasta medir, lienzo grande para que nada se corte
+  const fit = size
+    ? box
+      ? Math.min(1, (box.w - 16) / size.w, (box.h - 16) / size.h)
+      : Math.min(1, (maxWidth - 24) / size.w)
+    : 1;
+  const outerW = box ? box.w : Math.round(natural.w * fit) + 24;
+  const outerH = box ? box.h : Math.round(natural.h * fit) + 24;
   return (
     <div
       style={{
-        width,
+        width: size ? outerW : 120,
         maxWidth: "100%",
-        height,
+        height: size ? outerH : 60,
         overflow: "hidden",
         borderRadius: 8,
         background: "repeating-conic-gradient(#1b1c21 0% 25%, #23252c 0% 50%) 0 0 / 16px 16px",
         position: "relative",
         flexShrink: 0,
+        display: "flex",
+        alignItems: box ? "center" : "flex-start",
+        justifyContent: box ? "center" : "flex-start",
+        padding: box ? 0 : 12,
+        boxSizing: "border-box",
       }}
     >
-      <iframe
-        title={`preview-${kind}-${designId ?? "actual"}`}
-        srcDoc={html}
+      <div
         style={{
-          border: 0,
-          width: width / scale,
-          height: height / scale,
-          transform: `scale(${scale})`,
-          transformOrigin: "top left",
-          background: "transparent",
-          pointerEvents: "none",
-          colorScheme: "normal",
+          width: Math.round(natural.w * fit),
+          height: Math.round(natural.h * fit),
+          position: "relative",
+          flexShrink: 0,
+          visibility: size ? "visible" : "hidden",
         }}
-      />
+      >
+        <iframe
+          ref={frame}
+          title={`preview-${kind}-${designId ?? "actual"}`}
+          srcDoc={html}
+          onLoad={startMeasuring}
+          style={{
+            border: 0,
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: natural.w,
+            height: natural.h,
+            transform: `scale(${fit})`,
+            transformOrigin: "top left",
+            background: "transparent",
+            pointerEvents: "none",
+            colorScheme: "normal",
+          }}
+        />
+      </div>
     </div>
   );
 }

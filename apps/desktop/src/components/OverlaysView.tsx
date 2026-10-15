@@ -1,28 +1,20 @@
-import { useState } from "react";
 import { useOverlays } from "../lib/use-overlays";
 import type { SidecarClient } from "../lib/ws-client";
-import { ACCENT, Btn, DesignCard, UrlCard, cardStyle } from "./overlays-ui";
-
-type Sub = "timer" | "wins";
-
-const SUBS: { id: Sub; label: string; hint: string }[] = [
-  { id: "timer", label: "Timer", hint: "Cuenta atrás que tus espectadores alargan" },
-  { id: "wins", label: "Wins", hint: "Meta y conteo, p. ej. 2 / 6" },
-];
+import { Btn, DesignCard, UrlCard, cardStyle } from "./overlays-ui";
 
 /**
- * Sección "Overlays": lo que se ve en el stream. Por cada overlay, su enlace,
- * la lista de diseños, la vista previa y la personalización. El control y la
- * configuración de cada uno están en su propio módulo (Temporizador, Wins).
+ * Sección "Overlays": galería de lo que se ve en el stream. Por cada overlay, su
+ * enlace, la lista de diseños, la vista previa y la personalización. Hoy solo
+ * tiene Wins: el temporizador vive entero en su módulo (con tamaño fijo, como en
+ * Interactive). El control y la configuración de Wins están en el módulo Wins.
  */
 export function OverlaysView({
   client,
-  onOpenModule,
+  onOpenWins,
 }: {
   client: SidecarClient | null;
-  onOpenModule: (id: "temporizador" | "wins") => void;
+  onOpenWins: () => void;
 }) {
-  const [sub, setSub] = useState<Sub>("timer");
   const ov = useOverlays(client);
 
   return (
@@ -30,29 +22,16 @@ export function OverlaysView({
       <div>
         <h1 style={{ margin: 0, fontSize: 26, fontFamily: "'Space Grotesk', sans-serif" }}>Overlays</h1>
         <p style={{ margin: "6px 0 0", fontSize: 13, color: "#9A9CA5" }}>
-          Elementos que se ven en tu stream. Pega el enlace como fuente en TikTok LIVE Studio u OBS.
+          Elementos que se ven en tu stream. Pega el enlace como fuente en TikTok LIVE Studio u OBS. El temporizador
+          tiene su propio módulo.
         </p>
       </div>
 
       <div style={{ display: "flex", gap: 10 }}>
-        {SUBS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setSub(s.id)}
-            style={{
-              ...cardStyle,
-              cursor: "pointer",
-              textAlign: "left",
-              flex: 1,
-              borderColor: sub === s.id ? ACCENT : "#2A2C33",
-              color: "inherit",
-            }}
-          >
-            <div style={{ fontSize: 15, fontWeight: 700 }}>{s.label}</div>
-            <div style={{ fontSize: 12, color: "#9A9CA5", marginTop: 3 }}>{s.hint}</div>
-          </button>
-        ))}
+        <div style={{ ...cardStyle, flex: 1, borderColor: "#E23A57" }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Wins</div>
+          <div style={{ fontSize: 12, color: "#9A9CA5", marginTop: 3 }}>Meta y conteo, p. ej. 2 / 6</div>
+        </div>
       </div>
 
       {!ov.config ? (
@@ -60,20 +39,14 @@ export function OverlaysView({
       ) : (
         <>
           {ov.error && <div style={{ color: "#E5484D", fontSize: 12.5 }}>{ov.error}</div>}
-          <UrlCard kind={sub} />
+          <UrlCard kind="wins" />
           <DesignCard
-            kind={sub}
-            style={sub === "timer" ? ov.config.timerStyle : ov.config.winsStyle}
-            onChange={(s) =>
-              ov.saveConfig(
-                sub === "timer" ? { ...ov.config!, timerStyle: s } : { ...ov.config!, winsStyle: s },
-              )
-            }
+            kind="wins"
+            style={ov.config.winsStyle}
+            onChange={(s) => ov.saveConfig({ ...ov.config!, winsStyle: s })}
           />
           <div>
-            <Btn onClick={() => onOpenModule(sub === "timer" ? "temporizador" : "wins")}>
-              Ir a {sub === "timer" ? "Temporizador" : "Wins"} (control y configuración)
-            </Btn>
+            <Btn onClick={onOpenWins}>Ir a Wins (control y configuración)</Btn>
           </div>
         </>
       )}

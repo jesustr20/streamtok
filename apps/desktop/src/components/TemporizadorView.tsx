@@ -2,16 +2,10 @@ import { formatTimerMs, timerRateText, type Accion, type AccionesMessage, type O
 import { useEffect, useState } from "react";
 import { useOverlays, type Ov } from "../lib/use-overlays";
 import type { SidecarClient } from "../lib/ws-client";
-import { Btn, Card, Field, NumberField, UrlCard, grid2, grid3, inputStyle } from "./overlays-ui";
+import { Btn, Card, DesignCard, Field, NumberField, UrlCard, grid2, grid3, inputStyle } from "./overlays-ui";
 
 /** Módulo "Temporizador": enlace del overlay, control y configuración (como TikFinity). */
-export function TemporizadorView({
-  client,
-  onCustomize,
-}: {
-  client: SidecarClient | null;
-  onCustomize: () => void;
-}) {
+export function TemporizadorView({ client }: { client: SidecarClient | null }) {
   const ov = useOverlays(client);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 980 }}>
@@ -28,7 +22,7 @@ export function TemporizadorView({
       ) : (
         <>
           {ov.error && <div style={{ color: "#E5484D", fontSize: 12.5 }}>{ov.error}</div>}
-          <TimerPage client={client} state={ov.state} config={ov.config} ov={ov} onCustomize={onCustomize} />
+          <TimerPage client={client} state={ov.state} config={ov.config} ov={ov} />
         </>
       )}
     </div>
@@ -65,14 +59,13 @@ function TimerPage({
   state,
   config,
   ov,
-  onCustomize,
 }: {
   client: SidecarClient | null;
   state: OverlaysState;
   config: OverlaysConfig;
   ov: Ov;
-  onCustomize: () => void;
 }) {
+  const [customizing, setCustomizing] = useState(false);
   const remaining = useRemaining(state);
   const [step, setStep] = useState(10);
   const tc = config.timer;
@@ -87,7 +80,21 @@ function TimerPage({
 
   return (
     <>
-      <UrlCard kind="timer" title="Overlay" onCustomize={onCustomize} />
+      <UrlCard
+        kind="timer"
+        title="Overlay"
+        onCustomize={() => setCustomizing((v) => !v)}
+        customizeLabel={customizing ? "Cerrar personalización" : "Personalizar diseño"}
+      />
+
+      {customizing && (
+        <DesignCard
+          kind="timer"
+          showPreview={false}
+          style={config.timerStyle}
+          onChange={(s) => ov.saveConfig({ ...config, timerStyle: s })}
+        />
+      )}
 
       <Card title="Control">
         <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>

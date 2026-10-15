@@ -98,3 +98,25 @@ describe("título y equivalencia del timer", () => {
     expect(overlayPage("timer", 7331)).toContain("ttlEl.textContent");
   });
 });
+
+describe("tamaño del temporizador", () => {
+  it("el timer ignora la escala guardada: tiene tamaño fijo", () => {
+    expect(overlayPage("timer", 7331)).toContain('KIND === "timer" ? 1 : style.scale || 1');
+  });
+
+  it("Wins sigue admitiendo escala", () => {
+    expect(overlayPage("wins", 7331)).toContain('var KIND = "wins";');
+    expect(overlayPage("wins", 7331)).toContain('"--scale"');
+  });
+});
+
+describe("la página no recorta su propio contenido", () => {
+  it("el recorte lo hace solo la ventana (html), no el body: con escala > 1 el contenido sale de la caja del body", () => {
+    for (const kind of ["timer", "wins"] as const) {
+      const html = overlayPage(kind, 7331);
+      expect(html).toMatch(/html \{ overflow: hidden; \}/);
+      expect(html).not.toMatch(/html, body \{[^}]*overflow: hidden/);
+      expect(html).not.toMatch(/body \{[^}]*overflow: hidden/);
+    }
+  });
+});
