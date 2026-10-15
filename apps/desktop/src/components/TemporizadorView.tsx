@@ -1,4 +1,4 @@
-import { formatTimerMs, type Accion, type AccionesMessage, type OverlaysConfig, type OverlaysState, type TimerConfig, type TimerPerType } from "@streamtok/shared";
+import { formatTimerMs, timerRateText, type Accion, type AccionesMessage, type OverlaysConfig, type OverlaysState, type TimerConfig, type TimerPerType } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { useOverlays, type Ov } from "../lib/use-overlays";
 import type { SidecarClient } from "../lib/ws-client";
@@ -77,6 +77,9 @@ function TimerPage({
   const [step, setStep] = useState(10);
   const tc = config.timer;
   const status = state.timer.status;
+  const [title, setTitle] = useState(tc.title);
+  useEffect(() => setTitle(tc.title), [tc.title]);
+  const rate = timerRateText(tc);
 
   function patchTimer(patch: Partial<TimerConfig>) {
     ov.saveConfig({ ...config, timer: { ...tc, ...patch } });
@@ -121,6 +124,30 @@ function TimerPage({
       </Card>
 
       <Card title="Configuración">
+        <Field label="Título" hint="se muestra sobre el temporizador, p. ej. EXTENSIBLE. Vacío = sin título">
+          <input
+            value={title}
+            maxLength={60}
+            placeholder="EXTENSIBLE"
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => title !== tc.title && patchTimer({ title })}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            style={inputStyle}
+          />
+        </Field>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={tc.showRate}
+            onChange={(e) => patchTimer({ showRate: e.target.checked })}
+          />
+          Mostrar cuánto suma cada moneda bajo el título
+          <span style={{ color: "#9A9CA5" }}>
+            {rate ? `(ahora: ${rate})` : "(aparece cuando “Por moneda” suma o resta segundos)"}
+          </span>
+        </label>
+
         <div style={grid2}>
           <Field
             label="Tiempo inicial (s)"

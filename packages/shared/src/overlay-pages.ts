@@ -31,6 +31,18 @@ const TIMER_CSS = `
   body.paused #time { opacity: .7; }
   .label { display: none; }
 
+  /* Título y equivalencia por moneda, sobre el temporizador */
+  .head { text-align: center; line-height: 1.15; }
+  .head b { display: block; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+  .head span { display: block; font-weight: 600; opacity: .85; }
+  body.has-title .label { display: none !important; }
+  body[data-design="interactive"] .head b { font-size: 34px; }
+  body[data-design="interactive"] .head span { font-size: 26px; }
+  body[data-design="tikfinity"] .head b { font-size: 20px; }
+  body[data-design="tikfinity"] .head span { font-size: 15px; }
+  body[data-design="streamtok"] .head b { font-size: 24px; color: var(--accent, #ff3d71); }
+  body[data-design="streamtok"] .head span { font-size: 18px; }
+
   /* Dígitos grandes: cuadro oscuro con números gruesos */
   body[data-design="interactive"] .box { background: var(--bg, rgba(0,0,0,.72)); border-radius: 14px; padding: 6px 30px; }
   body[data-design="interactive"] #time { font: 800 120px/1.05 Consolas, "SF Mono", "Courier New", monospace; letter-spacing: 4px; }
@@ -49,7 +61,7 @@ const TIMER_CSS = `
 `;
 
 const TIMER_BODY = `
-  <div id="root"><div class="box"><span class="label">Tiempo</span><span id="time">00:00</span></div></div>
+  <div id="root"><div class="box"><span class="label">Tiempo</span><div class="head hidden" id="head"><b id="ttl"></b><span id="rate"></span></div><span id="time">00:00</span></div></div>
 `;
 
 /** Copia en JavaScript de `formatTimerMs` (overlays.ts) para la página del overlay. */
@@ -62,9 +74,20 @@ export const FORMAT_TIMER_JS = `
   }
 `;
 
+/** Copia en JavaScript de `timerRateText` (overlays.ts) para la página del overlay. */
+export const RATE_TEXT_JS = `
+  function rateText(t) {
+    var mult = t.multiplier.active ? t.multiplier.value : 1;
+    var seconds = Math.round(t.perType.coin * mult * 100) / 100;
+    return seconds ? "1 coin = " + String(seconds) + " s" : "";
+  }
+`;
+
 const TIMER_JS = `
   var timeEl = document.getElementById("time");
+  var headEl = document.getElementById("head"), ttlEl = document.getElementById("ttl"), rateEl = document.getElementById("rate");
   ${FORMAT_TIMER_JS}
+  ${RATE_TEXT_JS}
   function remaining() {
     if (!state) return 0;
     var t = state.timer;
@@ -73,6 +96,14 @@ const TIMER_JS = `
   function render() {
     if (!state) return;
     timeEl.textContent = fmtTimer(remaining());
+    var title = config && config.timer.title ? config.timer.title : "";
+    var rate = config && config.timer.showRate ? rateText(config.timer) : "";
+    ttlEl.textContent = title;
+    rateEl.textContent = rate;
+    ttlEl.classList.toggle("hidden", !title);
+    rateEl.classList.toggle("hidden", !rate);
+    headEl.classList.toggle("hidden", !title && !rate);
+    document.body.classList.toggle("has-title", !!title);
     document.body.classList.toggle("finished", state.timer.status === "finished");
     document.body.classList.toggle("paused", state.timer.status === "paused");
   }
