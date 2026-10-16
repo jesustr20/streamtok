@@ -41,6 +41,7 @@ export const META_NAV: { id: string; label: string }[] = [
   { id: "monedas", label: "Monedas" },
   { id: "superfans", label: "Super Fans" },
   { id: "regalos", label: "Regalos" },
+  { id: "espectadores", label: "Espectadores" },
   { id: "personalizadas", label: "Personalizadas" },
 ];
 

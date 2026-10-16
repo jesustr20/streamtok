@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { GoalsFileSchema, type Goal, type GoalConfig, type GoalOp, type LiveEvent } from "@streamtok/shared";
+import { GOAL_PRESET_IDS_V1, GoalsFileSchema, type Goal, type GoalConfig, type GoalOp, type LiveEvent } from "@streamtok/shared";
 import { appDataDir } from "./mapping-rules.js";
 
 /**
@@ -76,6 +76,7 @@ export interface GoalsEngineOptions {
 export class GoalsEngine extends EventEmitter {
   private goals: Goal[];
   private seeded: boolean;
+  private seededIds: string[];
   /** Combos en curso: usuario|regalo → monedas / unidades ya contadas. */
   private coinStreaks = new Map<string, number>();
   private unitStreaks = new Map<string, number>();
@@ -89,12 +90,19 @@ export class GoalsEngine extends EventEmitter {
     const loaded = this.store.load();
     this.goals = loaded.goals;
     this.seeded = loaded.seeded;
-    if (!this.seeded && opts.presets) {
-      for (const config of opts.presets) {
-        if (!this.find(config.id)) {
-          this.goals.push({ config, state: { id: config.id, current: 0, target: config.target, reached: 0 } });
-        }
+    // Archivos de la primera versión: solo sabían que "ya se sembró" (con las seis de entonces).
+    this.seededIds = loaded.seededIds.length === 0 && loaded.seeded ? [...GOAL_PRESET_IDS_V1] : [...loaded.seededIds];
+    // Cada meta de fábrica se crea UNA vez: una que borres no reaparece, y una nueva en una versión futura sí se añade.
+    let added = false;
+    for (const config of opts.presets ?? []) {
+      if (this.seededIds.includes(config.id)) continue;
+      this.seededIds.push(config.id);
+      added = true;
+      if (!this.find(config.id)) {
+        this.goals.push({ config, state: { id: config.id, current: 0, target: config.target, reached: 0 } });
       }
+    }
+    if (added) {
       this.seeded = true;
       this.persist();
     }
@@ -121,7 +129,7 @@ export class GoalsEngine extends EventEmitter {
       while (this.dirty) {
         this.dirty = false;
         try {
-          await this.store.save({ goals: this.getGoals(), seeded: this.seeded });
+          await this.store.save({ goals: this.getGoals(), seeded: this.seeded, seededIds: this.seededIds });
         } catch (err) {
           this.emit("log", { level: "warn", message: `No se pudo guardar las metas: ${(err as Error).message}` });
         }
@@ -241,6 +249,17 @@ export class GoalsEngine extends EventEmitter {
         this.advance(g, delta);
         touched = true;
       }
+    }
+    if (touched) this.changed();
+  }
+
+  /** Espectadores de la sala: las metas de espectadores copian el número (no acumulan). */
+  handleViewers(count: number) {
+    let touched = false;
+    for (const g of this.goals) {
+      if (g.config.metric !== "viewers" || g.state.current === count) continue;
+      this.advance(g, count - g.state.current);
+      touched = true;
     }
     if (touched) this.changed();
   }

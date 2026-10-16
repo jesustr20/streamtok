@@ -7,7 +7,7 @@ import { OVERLAY_DESIGNS, OverlayStyleSchema } from "./overlays.js";
  * Concepto UI/overlay ↔ sidecar; NO es parte del protocolo del mod ni del LiveEvent.
  */
 
-export const GoalMetricSchema = z.enum(["coins", "gifts", "likes", "follows", "shares", "subscribes", "comments"]);
+export const GoalMetricSchema = z.enum(["coins", "gifts", "likes", "follows", "shares", "subscribes", "comments", "viewers"]);
 export type GoalMetric = z.infer<typeof GoalMetricSchema>;
 
 export const GOAL_METRICS: Array<{ id: GoalMetric; name: string; unit: string }> = [
@@ -18,6 +18,8 @@ export const GOAL_METRICS: Array<{ id: GoalMetric; name: string; unit: string }>
   { id: "shares", name: "Compartidos", unit: "compartidos" },
   { id: "subscribes", name: "Suscripciones", unit: "suscripciones" },
   { id: "comments", name: "Comentarios", unit: "comentarios" },
+  /** copia el número de espectadores de la sala; no acumula (ADR 0013) */
+  { id: "viewers", name: "Espectadores", unit: "espectadores" },
 ];
 
 /** Qué pasa al llegar al objetivo: `stay` se queda lleno, `grow` suma `step` al objetivo, `reset` vuelve a 0. */
@@ -71,6 +73,8 @@ export const GoalsFileSchema = z.object({
   goals: z.array(GoalSchema).default([]),
   /** las metas por defecto ya se crearon una vez (así borrar una no la hace reaparecer) */
   seeded: z.boolean().default(false),
+  /** ids de las metas de fábrica ya creadas: una que añadamos en el futuro se crea una vez, y una borrada no reaparece */
+  seededIds: z.array(z.string()).default([]),
 });
 export type GoalsFile = z.infer<typeof GoalsFileSchema>;
 
@@ -117,10 +121,12 @@ export const GOAL_DESIGNS = OVERLAY_DESIGNS.meta;
 /** Id reservado: el overlay que va mostrando, una a una, las metas con `rotate`. */
 export const GOAL_ROTATION_ID = "rotativa";
 
+/** Las metas de fábrica con las que se estrenó el módulo, antes de que existiera `seededIds` (migración). */
+export const GOAL_PRESET_IDS_V1 = ["likes", "seguidores", "compartidos", "monedas", "superfans", "regalos"];
+
 /**
  * Metas que vienen ya creadas (ids fijos). Se crean la primera vez que arranca el
- * sidecar; después son editables y se pueden borrar. No hay "espectadores": TikTok
- * no manda ese dato al sidecar (ver ADR 0012).
+ * sidecar; después son editables y se pueden borrar.
  */
 export const GOAL_PRESETS: GoalConfig[] = [
   { id: "likes", title: "Meta Likes", metric: "likes", target: 5000, accent: "#e23a57" },
@@ -129,6 +135,7 @@ export const GOAL_PRESETS: GoalConfig[] = [
   { id: "monedas", title: "Monedas", metric: "coins", target: 500, accent: "#c28a1d" },
   { id: "superfans", title: "Super Fans", metric: "subscribes", target: 10, accent: "#7b61d9" },
   { id: "regalos", title: "Meta Regalos", metric: "gifts", target: 50, accent: "#d9577f" },
+  { id: "espectadores", title: "Espectadores", metric: "viewers", target: 100, accent: "#3a8fb7" },
 ].map((p) =>
   GoalConfigSchema.parse({
     id: p.id,

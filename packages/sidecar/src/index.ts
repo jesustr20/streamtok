@@ -14,6 +14,7 @@ import {
   OverlaysStore,
   defaultOverlaysFilePath,
 } from "./overlay-counters.js";
+import { RoomController, RoomStateEngine } from "./room-state.js";
 import { GoalsController } from "./goals-controller.js";
 import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
 import { OverlayHttpServer, overlayPortFromEnv } from "./overlay-server.js";
@@ -147,6 +148,11 @@ goals.on("goal-reached", (goal: Goal) => {
 });
 new GoalsController(server, goals);
 
+// Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
+const room = new RoomStateEngine();
+new RoomController(server, room);
+room.on("viewers", (count: number) => goals.handleViewers(count));
+
 // Los comandos internos `app.*` de las Acciones: `app.goal.*` van a las metas, el resto a Timer/Wins.
 const appCommands = {
   applyAppCommand: (id: string, params: Record<string, unknown>) =>
@@ -220,10 +226,16 @@ const tiktokConnection = new TiktokConnectionController(server, {
     });
   },
   onGift: (entry) => giftCatalogController.learn(entry),
+  onRoom: (kind, raw) => {
+    if (kind === "roomUser") room.ingestRoomUser(raw);
+    else if (kind === "battleArmies") room.ingestBattleArmies(raw);
+    else room.ingestBattleHosts(raw);
+  },
   onConnected: () => {
     engine.resetSession();
     overlayCounters.resetSession();
     goals.resetSession();
+    room.reset();
   },
 });
 tiktokConnection.on("log", (entry) => {

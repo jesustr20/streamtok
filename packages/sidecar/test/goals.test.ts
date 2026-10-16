@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { APP_COMMANDS, GOAL_COMMAND_IDS, GOAL_PRESETS, GOAL_ROTATION_ID, GoalConfigSchema, type Goal, type GoalConfig, type LiveEvent } from "@streamtok/shared";
 import { GoalsEngine, type PersistedGoals } from "../src/goals.js";
 
-function memoryStore(initial: PersistedGoals = { goals: [], seeded: false }) {
+function memoryStore(initial: PersistedGoals = { goals: [], seeded: false, seededIds: [] }) {
   const saved: PersistedGoals[] = [];
   return {
     saved,
@@ -53,7 +53,7 @@ describe("GoalsEngine — configuración", () => {
 
   it("carga lo guardado y emite state al cambiar", () => {
     const goal: Goal = { config: cfg({ id: "a" }), state: { id: "a", current: 7, target: 100, reached: 1 } };
-    const g = new GoalsEngine({ store: memoryStore({ goals: [goal], seeded: true }) });
+    const g = new GoalsEngine({ store: memoryStore({ goals: [goal], seeded: true, seededIds: ["a"] }) });
     expect(g.getGoals()[0].state.current).toBe(7);
     const fn = vi.fn();
     g.on("state", fn);
@@ -72,19 +72,25 @@ describe("GoalsEngine — metas por defecto", () => {
   });
 
   it("si ya se sembraron, no reaparecen las que el usuario borró", () => {
-    const g = new GoalsEngine({ store: memoryStore({ goals: [], seeded: true }), presets: GOAL_PRESETS });
+    const g = new GoalsEngine({ store: memoryStore({ goals: [], seeded: true, seededIds: GOAL_PRESETS.map((p) => p.id) }), presets: GOAL_PRESETS });
     expect(g.getGoals()).toEqual([]);
   });
 
   it("sin presets (o con metas ya guardadas) no toca nada", () => {
     const own: Goal = { config: cfg({ id: "likes", target: 7 }), state: { id: "likes", current: 3, target: 7, reached: 0 } };
-    const g = new GoalsEngine({ store: memoryStore({ goals: [own], seeded: false }), presets: GOAL_PRESETS });
+    const g = new GoalsEngine({ store: memoryStore({ goals: [own], seeded: false, seededIds: [] }), presets: GOAL_PRESETS });
     expect(g.getGoals().find((x) => x.config.id === "likes")?.state.current).toBe(3);
     expect(g.getGoals().filter((x) => x.config.id === "likes")).toHaveLength(1);
   });
 
-  it("los presets traen likes, seguidores, compartidos, monedas, super fans y regalos; la rotativa es un id reservado", () => {
-    expect(GOAL_PRESETS.map((x) => x.metric)).toEqual(["likes", "follows", "shares", "coins", "subscribes", "gifts"]);
+  it("un archivo de la primera versión (seeded sin ids) recibe SOLO la meta nueva, y las borradas no reaparecen", () => {
+    const old: PersistedGoals = { goals: [], seeded: true, seededIds: [] };
+    const g = new GoalsEngine({ store: memoryStore(old), presets: GOAL_PRESETS });
+    expect(g.getGoals().map((x) => x.config.id)).toEqual(["espectadores"]);
+  });
+
+  it("los presets traen likes, seguidores, compartidos, monedas, super fans, regalos y espectadores; la rotativa es un id reservado", () => {
+    expect(GOAL_PRESETS.map((x) => x.metric)).toEqual(["likes", "follows", "shares", "coins", "subscribes", "gifts", "viewers"]);
     expect(GOAL_PRESETS.some((x) => x.id === GOAL_ROTATION_ID)).toBe(false);
   });
 });
@@ -233,7 +239,7 @@ describe("GoalsEngine — comandos internos de las Acciones", () => {
   });
 
   it("las Acciones ofrecen exactamente las metas por defecto", () => {
-    expect(GOAL_COMMAND_IDS).toEqual(GOAL_PRESETS.map((p) => p.id));
+    expect(GOAL_COMMAND_IDS).toEqual(GOAL_PRESETS.map((p) => p.id).filter((id) => id !== "espectadores"));
     for (const id of ["app.goal.add", "app.goal.remove", "app.goal.set", "app.goal.reset"]) {
       const cmd = APP_COMMANDS.find((c) => c.id === id);
       expect(cmd?.params[0]).toMatchObject({ name: "meta", type: "enum", options: GOAL_COMMAND_IDS });
@@ -245,5 +251,27 @@ describe("GoalsEngine — cuenta atrás y textos", () => {
   it("por defecto es una meta que sube, sin cuenta atrás ni textos", () => {
     const c = cfg({ id: "m" });
     expect([c.countdown, c.textBefore, c.textAfter]).toEqual([false, "", ""]);
+  });
+});
+
+describe("GoalsEngine — espectadores", () => {
+  it("la meta de espectadores copia el número de la sala (sube y baja) y no suma eventos", () => {
+    const { g, get } = make(cfg({ id: "v", metric: "viewers", target: 100, onReach: "stay" }));
+    g.handleViewers(40);
+    expect(get("v").state.current).toBe(40);
+    g.handleViewers(25);
+    expect(get("v").state.current).toBe(25);
+    g.handleLiveEvent(ev({ event: "follow" }));
+    expect(get("v").state.current).toBe(25);
+  });
+
+  it("al llegar a la meta de espectadores se cuenta el cruce una vez", () => {
+    const { g, get } = make(cfg({ id: "v", metric: "viewers", target: 50, onReach: "stay" }));
+    const fn = vi.fn();
+    g.on("goal-reached", fn);
+    g.handleViewers(60);
+    g.handleViewers(70);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(get("v").state.reached).toBe(1);
   });
 });

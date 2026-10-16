@@ -260,7 +260,7 @@ const META_JS = `
   var pfillEl = document.getElementById("pfill"), ptxtEl = document.getElementById("ptxt"), icoEl = document.getElementById("ico");
   var ringEl = document.querySelector(".ring");
   var lastCur = null;
-  var UNITS = { coins: "Monedas", gifts: "Regalos", likes: "Likes", follows: "Seguidores", shares: "Compartidos", subscribes: "Super Fans", comments: "Comentarios" };
+  var UNITS = { coins: "Monedas", gifts: "Regalos", likes: "Likes", follows: "Seguidores", shares: "Compartidos", subscribes: "Super Fans", comments: "Comentarios", viewers: "Espectadores" };
   var ICONS = {
     likes: '<svg viewBox="0 0 24 24"><path fill="#ff4d6d" d="M12 21C5 16.500 2 12.500 2 8.500 2 5.500 4.300 3.500 7 3.500c2 0 3.600 1 5 3 1.400-2 3-3 5-3 2.700 0 5 2 5 5 0 4-3 8-10 12.500z"/></svg>',
     follows: '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="4" fill="#fff"/><path fill="#fff" d="M2 21c0-4.400 3.600-7 8-7s8 2.600 8 7z"/><path stroke="#fff" stroke-width="2.400" stroke-linecap="round" d="M20 5v6M17 8h6"/></svg>',
@@ -268,6 +268,7 @@ const META_JS = `
     coins: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.500" fill="#f5b82e"/><circle cx="12" cy="12" r="7.500" fill="none" stroke="#c98a00" stroke-width="1.800"/><path fill="#c98a00" d="M12.800 6.500v1.200c1.200.2 2 .9 2.100 2h-1.700c0-.4-.5-.8-1.200-.8-.8 0-1.200.3-1.200.8 0 .5.400.7 1.600 1 1.700.4 2.700 1 2.700 2.500 0 1.200-.9 2-2.300 2.200v1.200h-1.600v-1.200c-1.500-.2-2.400-1-2.500-2.300h1.700c.1.600.6 1 1.500 1 .8 0 1.300-.3 1.300-.8 0-.5-.4-.7-1.700-1-1.600-.4-2.600-1-2.600-2.400 0-1.100.9-1.900 2.200-2.100V6.500z"/></svg>',
     subscribes: '<svg viewBox="0 0 24 24"><path fill="#ffc83d" d="M12 1.500l3.200 6.800 7.300.9-5.400 5 1.400 7.300L12 17.900 5.500 21.500l1.400-7.300-5.400-5 7.300-.9z"/></svg>',
     gifts: '<svg viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="12" rx="1.500" fill="#ff6b8b"/><rect x="2" y="6" width="20" height="4.500" rx="1.200" fill="#ff8fa8"/><rect x="10.800" y="6" width="2.400" height="15" fill="#fff"/><path fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" d="M12 6C9 6 7.500 2.500 9.500 2.500S12 5 12 6c0-1 1.500-3.500 2.500-3.500S15 6 12 6z"/></svg>',
+    viewers: '<svg viewBox="0 0 24 24"><path fill="#fff" d="M12 5C6.500 5 2.400 9 1 12c1.400 3 5.500 7 11 7s9.600-4 11-7c-1.400-3-5.500-7-11-7z"/><circle cx="12" cy="12" r="4.500" fill="#2b2f3a"/><circle cx="12" cy="12" r="2" fill="#fff"/></svg>',
     comments: '<svg viewBox="0 0 24 24"><path fill="#fff" d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H11l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>'
   };
   ${GOAL_REMAINING_JS}

@@ -33,7 +33,7 @@ describe("GoalsController", () => {
 
   beforeEach(() => {
     server = new StreamTokWsServer(0);
-    engine = new GoalsEngine({ store: { load: () => ({ goals: [], seeded: true }), save: async () => {} } });
+    engine = new GoalsEngine({ store: { load: () => ({ goals: [], seeded: true, seededIds: [] }), save: async () => {} } });
     new GoalsController(server, engine);
   });
   afterEach(() => {
