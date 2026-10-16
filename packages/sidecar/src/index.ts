@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { EventLogEntry, LiveEvent } from "@streamtok/shared";
+import { GOAL_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventRecorder, maxBytesFromEnv } from "./event-recorder.js";
 import {
@@ -14,6 +14,8 @@ import {
   OverlaysStore,
   defaultOverlaysFilePath,
 } from "./overlay-counters.js";
+import { GoalsController } from "./goals-controller.js";
+import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
 import { OverlayHttpServer, overlayPortFromEnv } from "./overlay-server.js";
 import { OverlaysController } from "./overlays-controller.js";
 import { registerManualCommand } from "./manual-command.js";
@@ -124,12 +126,34 @@ overlayCounters.on("timer-expired", (accionIds: string[]) => {
 engine.setCounters(overlayCounters);
 new OverlaysController(server, overlayCounters);
 
+// Metas (ADR 0012): varias metas a la vez, cada una con su overlay /overlay/meta/<id>.
+const goals = new GoalsEngine({
+  presets: GOAL_PRESETS,
+  store: new GoalsStore(defaultGoalsFilePath(), (message) =>
+    // eslint-disable-next-line no-console
+    console.warn("[goals:warn]", message),
+  ),
+});
+goals.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[goals:${entry.level}]`, entry.message, entry.details ?? "");
+});
+// Al cumplirse una meta se ejecutan las Acciones elegidas en "Acciones al finalizar".
+goals.on("goal-reached", (goal: Goal) => {
+  if (goal.config.onReachAccionIds.length === 0) return;
+  engine.runAcciones(goal.config.onReachAccionIds, `meta:${goal.config.id}`).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("Error ejecutando las acciones de fin de meta:", err);
+  });
+});
+new GoalsController(server, goals);
+
 const overlayHttp = new OverlayHttpServer({ port: overlayPortFromEnv(process.env), wsPort: PORT });
 overlayHttp
   .listen()
   .then((port) => {
     // eslint-disable-next-line no-console
-    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer y /overlay/wins`);
+    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins y /overlay/meta/<id>`);
   })
   .catch((err) => {
     // No tumba el sidecar: sin el servidor de overlays todo lo demás sigue funcionando.
@@ -153,6 +177,7 @@ registerManualCommand(server, modBridge, overlayCounters);
 server.onChannel("live-event", (payload) => {
   const evt = payload as LiveEvent;
   overlayCounters.handleLiveEvent(evt);
+  goals.handleLiveEvent(evt);
   engine.handleEvent(evt).catch((err) => {
     // eslint-disable-next-line no-console
     console.error("Error procesando live-event:", err);
@@ -182,6 +207,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
   createSource: (username, recorder) => new TikTokLiveSource(username, recorder),
   onEvent: (evt) => {
     overlayCounters.handleLiveEvent(evt);
+    goals.handleLiveEvent(evt);
     engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
@@ -191,6 +217,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
   onConnected: () => {
     engine.resetSession();
     overlayCounters.resetSession();
+    goals.resetSession();
   },
 });
 tiktokConnection.on("log", (entry) => {

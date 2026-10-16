@@ -1,4 +1,6 @@
 import {
+  type Accion,
+  type AccionesMessage,
   OVERLAY_DEFAULT_PORT,
   OVERLAY_DESIGNS,
   overlayPage,
@@ -6,6 +8,7 @@ import {
   type OverlayStyle,
 } from "@streamtok/shared";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { SidecarClient } from "../lib/ws-client";
 
 export const ACCENT = "#E23A57";
 export const LOCAL_HOST = `http://localhost:${OVERLAY_DEFAULT_PORT}`;
@@ -40,16 +43,19 @@ function useOverlayServerStatus(): "checking" | "up" | "down" {
  */
 export function UrlCard({
   kind,
+  id,
   title = "Enlace del overlay",
   onCustomize,
   customizeLabel = "Personalizar diseño",
 }: {
   kind: OverlayKind;
+  /** instancia (solo overlays con varias, como las metas) */
+  id?: string;
   title?: string;
   onCustomize?: () => void;
   customizeLabel?: string;
 }) {
-  const path = `/overlay/${kind}`;
+  const path = id ? `/overlay/${kind}/${encodeURIComponent(id)}` : `/overlay/${kind}`;
   const server = useOverlayServerStatus();
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   return (
@@ -68,7 +74,7 @@ export function UrlCard({
       )}
       {onCustomize && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <Preview kind={kind} designId={undefined} maxWidth={560} onSize={setSize} />
+          <Preview kind={kind} id={id} designId={undefined} maxWidth={560} onSize={setSize} />
           <Btn onClick={onCustomize}>{customizeLabel}</Btn>
         </div>
       )}
@@ -126,11 +132,13 @@ function UrlRow({ label, url, note }: { label: string; url: string; note: string
  */
 export function DesignCard({
   kind,
+  id,
   style,
   onChange,
   showPreview = true,
 }: {
   kind: OverlayKind;
+  id?: string;
   style: OverlayStyle;
   onChange: (s: OverlayStyle) => void;
   showPreview?: boolean;
@@ -158,7 +166,7 @@ export function DesignCard({
                 textAlign: "left",
               }}
             >
-              <Preview kind={kind} designId={d.id} box={{ w: 212, h: 110 }} />
+              <Preview kind={kind} id={id} designId={d.id} box={{ w: 212, h: 110 }} />
               <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>{d.name}</div>
             </button>
           );
@@ -168,7 +176,7 @@ export function DesignCard({
       {showPreview && (
         <>
           <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>Vista previa</div>
-          <Preview kind={kind} designId={style.designId} maxWidth={920} />
+          <Preview kind={kind} id={id} designId={style.designId} maxWidth={920} />
         </>
       )}
 
@@ -212,20 +220,22 @@ export function DesignCard({
  */
 export function Preview({
   kind,
+  id,
   designId,
   maxWidth = 920,
   box,
   onSize,
 }: {
   kind: OverlayKind;
+  id?: string;
   designId: string | undefined;
   maxWidth?: number;
   box?: { w: number; h: number };
   onSize?: (size: { w: number; h: number }) => void;
 }) {
   const html = useMemo(
-    () => overlayPage(kind, SIDECAR_WS_PORT, designId ? { design: designId } : {}),
-    [kind, designId],
+    () => overlayPage(kind, SIDECAR_WS_PORT, { ...(designId ? { design: designId } : {}), ...(id ? { id } : {}) }),
+    [kind, id, designId],
   );
   const frame = useRef<HTMLIFrameElement>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -296,7 +306,7 @@ export function Preview({
       >
         <iframe
           ref={frame}
-          title={`preview-${kind}-${designId ?? "actual"}`}
+          title={`preview-${kind}-${id ?? ""}-${designId ?? "actual"}`}
           srcDoc={html}
           onLoad={startMeasuring}
           style={{
@@ -467,3 +477,59 @@ export const inputStyle: CSSProperties = {
 
 export const grid2: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 };
 export const grid3: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 };
+
+/** Elegir las Acciones que se ejecutan en un momento (al expirar el timer, al cumplir una meta…). */
+export function AccionesPicker({
+  label,
+  client,
+  ids,
+  onChange,
+}: {
+  label: string;
+  client: SidecarClient | null;
+  ids: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [acciones, setAcciones] = useState<Accion[]>([]);
+  useEffect(() => {
+    if (!client) return;
+    const off = client.on((evt) => {
+      if (evt.channel === "acciones") {
+        const msg = evt.payload as AccionesMessage;
+        if (msg.kind === "update") setAcciones(msg.acciones);
+      }
+    });
+    client.send("profiles", { kind: "get-state" });
+    return off;
+  }, [client]);
+
+  const available = acciones.filter((a) => !ids.includes(a.id));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</div>
+      {ids.length === 0 && <div style={{ fontSize: 12, color: "#9A9CA5" }}>Ninguna acción.</div>}
+      {ids.map((id) => {
+        const a = acciones.find((x) => x.id === id);
+        return (
+          <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <span style={{ flex: 1 }}>{a ? a.nombre : "(acción eliminada)"}</span>
+            <Btn onClick={() => onChange(ids.filter((x) => x !== id))}>Quitar</Btn>
+          </div>
+        );
+      })}
+      <select
+        value=""
+        onChange={(e) => e.target.value && onChange([...ids, e.target.value])}
+        disabled={available.length === 0}
+        style={{ ...inputStyle, width: 260 }}
+      >
+        <option value="">{available.length === 0 ? "No hay más acciones" : "Agregar acción…"}</option>
+        {available.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.nombre}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}

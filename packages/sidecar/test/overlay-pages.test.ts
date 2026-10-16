@@ -1,4 +1,4 @@
-import { FORMAT_TIMER_JS, RATE_TEXT_JS, TimerConfigSchema, formatTimerMs, overlayPage, timerRateText } from "@streamtok/shared";
+import { FORMAT_TIMER_JS, GOAL_REMAINING_JS, goalRemainingText, RATE_TEXT_JS, TimerConfigSchema, formatTimerMs, overlayPage, timerRateText } from "@streamtok/shared";
 import { describe, expect, it } from "vitest";
 
 describe("overlayPage (compartida entre el servidor y la vista previa de la app)", () => {
@@ -118,5 +118,26 @@ describe("la página no recorta su propio contenido", () => {
       expect(html).not.toMatch(/html, body \{[^}]*overflow: hidden/);
       expect(html).not.toMatch(/body \{[^}]*overflow: hidden/);
     }
+  });
+});
+
+describe("overlay de meta", () => {
+  it("usa el canal goals y la instancia pedida", () => {
+    const html = overlayPage("meta", 7331, { id: "monedas" });
+    expect(html).toContain('var GOAL_ID = "monedas";');
+    expect(html).toContain('channel: "goals"');
+    expect(html).not.toContain('channel: "overlays"');
+  });
+
+  it("trae el diseño de pastilla con icono y la rotación de metas", () => {
+    const html = overlayPage("meta", 7331, { id: "rotativa" });
+    expect(html).toContain('body[data-design="interactive"] .pill');
+    expect(html).toContain('var ROTATION_ID = "rotativa"');
+    expect(html).toContain("g.config.rotate");
+  });
+
+  it("la copia en JavaScript del texto 'faltan' da lo mismo que la de TypeScript", () => {
+    const fn = new Function(`${GOAL_REMAINING_JS}; return goalRemainingText;`)() as (c: number, t: number) => string;
+    for (const [c, t] of [[0, 10], [9, 10], [10, 10], [15, 10], [-3, 5]]) expect(fn(c, t)).toBe(goalRemainingText(c, t));
   });
 });

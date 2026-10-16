@@ -45,6 +45,19 @@ describe("OverlayHttpServer", () => {
     expect((await fetch(`${base}/overlay/wins/2`)).status).toBe(200);
   });
 
+  it("sirve /overlay/meta/<id> con el id de la instancia y los diseños de metas", async () => {
+    const base = await start();
+    const html = await (await fetch(`${base}/overlay/meta/mis-likes`)).text();
+    expect(html).toContain('var KIND = "meta";');
+    expect(html).toContain('var GOAL_ID = "mis-likes";');
+    for (const d of OVERLAY_DESIGNS.meta) expect(html).toContain(`[data-design="${d.id}"]`);
+    expect(await (await fetch(`${base}/overlay/meta`)).text()).toContain('var GOAL_ID = "";');
+    // un id con comillas no rompe el script
+    const evil = await (await fetch(`${base}/overlay/meta/${encodeURIComponent('"</script>')}`)).text();
+    expect(evil).not.toContain('</script><');
+    expect(evil.match(/<\/script>/g)).toHaveLength(1);
+  });
+
   it("responde 404 a rutas desconocidas, también con las cabeceras CORS", async () => {
     const base = await start();
     for (const path of ["/", "/overlay", "/overlay/otro", "/nada"]) {

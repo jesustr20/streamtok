@@ -6,6 +6,7 @@ export * from "./gift-catalog.js";
 export * from "./live-event.js";
 export * from "./manual-command.js";
 export * from "./mapping-rule.js";
+export * from "./metas.js";
 export * from "./mod-protocol.js";
 export * from "./overlay-pages.js";
 export * from "./overlays.js";
