@@ -20,16 +20,20 @@ const PRESET_IDS = new Set(GOAL_PRESETS.map((p) => p.id));
  * super fans, regalos). Cada una muestra su overlay y sus ajustes a la vista; arriba, las
  * "Metas rotativas" que van pasando de una en una.
  */
-export function MetasView({ client }: { client: SidecarClient | null }) {
+export function MetasView({ client, selected }: { client: SidecarClient | null; selected: string }) {
   const g = useGoals(client);
   const [creating, setCreating] = useState(false);
+  const goals = g.goals ?? [];
+  const custom = goals.filter((x) => !PRESET_IDS.has(x.config.id));
+  const shown = goals.filter((x) => x.config.id === selected);
+  const heading =
+    selected === GOAL_ROTATION_ID ? "Metas rotativas" : selected === "personalizadas" ? "Metas personalizadas" : shown[0] ? metricName(shown[0].config) : "Metas";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 980 }}>
       <div>
-        <h1 style={{ margin: 0, fontSize: 26, fontFamily: "'Space Grotesk', sans-serif" }}>Metas</h1>
+        <h1 style={{ margin: 0, fontSize: 26, fontFamily: "'Space Grotesk', sans-serif" }}>{heading}</h1>
         <p style={{ margin: "6px 0 0", fontSize: 13, color: "#9A9CA5" }}>
-          Barras de progreso que avanzan con lo que pasa en el LIVE. Copia el enlace de la que quieras, o usa las rotativas para
-          mostrar varias en el mismo sitio.
+          Barras de progreso que avanzan con lo que pasa en el LIVE. Elige la meta en el menú de la izquierda.
         </p>
       </div>
 
@@ -37,16 +41,22 @@ export function MetasView({ client }: { client: SidecarClient | null }) {
 
       {!g.goals ? (
         <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>Conectando con el sidecar…</div>
-      ) : (
+      ) : selected === GOAL_ROTATION_ID ? (
+        <RotationCard goals={g.goals} api={g} />
+      ) : selected === "personalizadas" ? (
         <>
-          <RotationCard goals={g.goals} api={g} />
-          {g.goals.map((goal) => (
+          {custom.length === 0 && !creating && (
+            <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>
+              Aún no tienes metas personalizadas. Sirven para algo que las de fábrica no cubren, por ejemplo likes de un regalo concreto.
+            </div>
+          )}
+          {custom.map((goal) => (
             <GoalBlock key={goal.config.id} goal={goal} api={g} client={client} />
           ))}
           {creating ? (
             <GoalForm
               initial={undefined}
-              takenIds={[...g.goals.map((x) => x.config.id), GOAL_ROTATION_ID]}
+              takenIds={[...goals.map((x) => x.config.id), GOAL_ROTATION_ID, "personalizadas"]}
               onCancel={() => setCreating(false)}
               onSave={(c) => {
                 g.save(c);
@@ -59,6 +69,12 @@ export function MetasView({ client }: { client: SidecarClient | null }) {
             </div>
           )}
         </>
+      ) : shown.length > 0 ? (
+        <GoalBlock key={shown[0].config.id} goal={shown[0]} api={g} client={client} />
+      ) : (
+        <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>
+          Esta meta ya no existe (la borraste). Puedes crear otra en “Personalizadas”.
+        </div>
       )}
     </div>
   );
@@ -200,7 +216,11 @@ function GoalBlock({ goal, api, client }: { goal: Goal; api: Api; client: Sideca
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(config.title);
   const [giftText, setGiftText] = useState(config.giftId ? String(config.giftId) : "");
+  const [before, setBefore] = useState(config.textBefore);
+  const [after, setAfter] = useState(config.textAfter);
   useEffect(() => setTitle(config.title), [config.title]);
+  useEffect(() => setBefore(config.textBefore), [config.textBefore]);
+  useEffect(() => setAfter(config.textAfter), [config.textAfter]);
   useEffect(() => setGiftText(config.giftId ? String(config.giftId) : ""), [config.giftId]);
   const patch = (p: Partial<GoalConfig>) => api.save({ ...config, ...p });
   const usesGift = config.metric === "coins" || config.metric === "gifts";
@@ -245,6 +265,14 @@ function GoalBlock({ goal, api, client }: { goal: Goal; api: Api; client: Sideca
               </Field>
             </div>
           )}
+          <div style={{ width: 150 }}>
+            <Field label="Muestra" hint="">
+              <select value={config.countdown ? "down" : "up"} onChange={(e) => patch({ countdown: e.target.value === "down" })} style={inputStyle}>
+                <option value="up">Avance (%)</option>
+                <option value="down">Cuenta atrás (Quedan N)</option>
+              </select>
+            </Field>
+          </div>
           {usesGift && (
             <div style={{ width: 150 }}>
               <Field label="Solo este regalo (id)" hint="">
@@ -263,6 +291,19 @@ function GoalBlock({ goal, api, client }: { goal: Goal; api: Api; client: Sideca
               </Field>
             </div>
           )}
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end" }}>
+          <div style={{ width: 230 }}>
+            <Field label="Texto antes del número" hint="diseño Texto, p. ej. “Hay ”">
+              <input value={before} maxLength={60} onChange={(e) => setBefore(e.target.value)} onBlur={() => before !== config.textBefore && patch({ textBefore: before })} style={inputStyle} />
+            </Field>
+          </div>
+          <div style={{ width: 230 }}>
+            <Field label="Texto después del número" hint="p. ej. “ likes por conseguir”">
+              <input value={after} maxLength={60} onChange={(e) => setAfter(e.target.value)} onBlur={() => after !== config.textAfter && patch({ textAfter: after })} style={inputStyle} />
+            </Field>
+          </div>
         </div>
 
         <AccionesPicker label="Acciones al finalizar" client={client} ids={config.onReachAccionIds} onChange={(ids) => patch({ onReachAccionIds: ids })} />

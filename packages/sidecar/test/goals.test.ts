@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { GOAL_PRESETS, GOAL_ROTATION_ID, GoalConfigSchema, type Goal, type GoalConfig, type LiveEvent } from "@streamtok/shared";
+import { APP_COMMANDS, GOAL_COMMAND_IDS, GOAL_PRESETS, GOAL_ROTATION_ID, GoalConfigSchema, type Goal, type GoalConfig, type LiveEvent } from "@streamtok/shared";
 import { GoalsEngine, type PersistedGoals } from "../src/goals.js";
 
 function memoryStore(initial: PersistedGoals = { goals: [], seeded: false }) {
@@ -200,5 +200,50 @@ describe("GoalsEngine — control manual y sesión", () => {
     const { g, store } = make(cfg({ id: "m", metric: "follows" }));
     g.handleLiveEvent(ev({ event: "follow" }));
     await vi.waitFor(() => expect(store.saved.at(-1)?.goals[0].state.current).toBe(1));
+  });
+});
+
+describe("GoalsEngine — comandos internos de las Acciones", () => {
+  it("app.goal.add / remove / set / reset actúan sobre la meta elegida", () => {
+    const { g, get } = make(cfg({ id: "likes", metric: "likes", target: 100 }), cfg({ id: "otra", target: 100 }));
+    expect(g.applyAppCommand("app.goal.add", { meta: "likes", amount: 30 })).toEqual({ ok: true });
+    expect(get("likes").state.current).toBe(30);
+    g.applyAppCommand("app.goal.remove", { meta: "likes", amount: 5 });
+    expect(get("likes").state.current).toBe(25);
+    g.applyAppCommand("app.goal.set", { meta: "likes", count: 60 });
+    expect(get("likes").state.current).toBe(60);
+    g.applyAppCommand("app.goal.reset", { meta: "likes" });
+    expect(get("likes").state).toMatchObject({ current: 0, reached: 0 });
+    expect(get("otra").state.current).toBe(0);
+  });
+
+  it("restar nunca suma, aunque llegue un número negativo", () => {
+    const { g, get } = make(cfg({ id: "m", target: 100 }));
+    g.applyAppCommand("app.goal.set", { meta: "m", count: 10 });
+    g.applyAppCommand("app.goal.remove", { meta: "m", amount: -3 });
+    expect(get("m").state.current).toBe(7);
+  });
+
+  it("rechaza una meta inexistente, un parámetro que falta y un comando desconocido", () => {
+    const { g } = make(cfg({ id: "m" }));
+    expect(g.applyAppCommand("app.goal.add", { meta: "nada", amount: 1 })).toMatchObject({ ok: false });
+    expect(g.applyAppCommand("app.goal.add", { meta: "m" })).toMatchObject({ ok: false });
+    expect(g.applyAppCommand("app.goal.set", { meta: "m" })).toMatchObject({ ok: false });
+    expect(g.applyAppCommand("app.goal.nada", { meta: "m" })).toMatchObject({ ok: false });
+  });
+
+  it("las Acciones ofrecen exactamente las metas por defecto", () => {
+    expect(GOAL_COMMAND_IDS).toEqual(GOAL_PRESETS.map((p) => p.id));
+    for (const id of ["app.goal.add", "app.goal.remove", "app.goal.set", "app.goal.reset"]) {
+      const cmd = APP_COMMANDS.find((c) => c.id === id);
+      expect(cmd?.params[0]).toMatchObject({ name: "meta", type: "enum", options: GOAL_COMMAND_IDS });
+    }
+  });
+});
+
+describe("GoalsEngine — cuenta atrás y textos", () => {
+  it("por defecto es una meta que sube, sin cuenta atrás ni textos", () => {
+    const c = cfg({ id: "m" });
+    expect([c.countdown, c.textBefore, c.textAfter]).toEqual([false, "", ""]);
   });
 });

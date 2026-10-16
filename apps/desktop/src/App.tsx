@@ -22,6 +22,8 @@ export function App() {
   const [catalogSource, setCatalogSource] = useState<"live" | "cached" | null>(null);
   const [client, setClient] = useState<SidecarClient | null>(null);
   const [view, setView] = useState<ViewId>("inicio");
+  // Qué meta se ve en la pantalla Metas: "rotativa", "personalizadas" o el id de una de fábrica.
+  const [metaSel, setMetaSel] = useState("rotativa");
 
   useEffect(() => {
     // Catálogo offline: se pide apenas arranca la app, independientemente
@@ -73,7 +75,16 @@ export function App() {
         fontFamily: "'Manrope', sans-serif",
       }}
     >
-      <Sidebar view={view} client={client} onNavigate={setView} />
+      <Sidebar
+        view={view}
+        client={client}
+        onNavigate={setView}
+        metaSel={metaSel}
+        onSelectMeta={(id) => {
+          setMetaSel(id);
+          setView("metas");
+        }}
+      />
 
       <main
         style={{
@@ -106,7 +117,7 @@ export function App() {
         {view === "overlays" && <OverlaysView client={client} onOpenWins={() => setView("wins")} />}
         {view === "temporizador" && <TemporizadorView client={client} />}
         {view === "wins" && <WinsView client={client} onCustomize={() => setView("overlays")} />}
-        {view === "metas" && <MetasView client={client} />}
+        {view === "metas" && <MetasView client={client} selected={metaSel} />}
       </main>
     </div>
   );

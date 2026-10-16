@@ -140,4 +140,18 @@ describe("overlay de meta", () => {
     const fn = new Function(`${GOAL_REMAINING_JS}; return goalRemainingText;`)() as (c: number, t: number) => string;
     for (const [c, t] of [[0, 10], [9, 10], [10, 10], [15, 10], [-3, 5]]) expect(fn(c, t)).toBe(goalRemainingText(c, t));
   });
+
+  it("con textos propios: \"Hay 380 likes por conseguir\", y la versión JS coincide", () => {
+    expect(goalRemainingText(620, 1000, "Hay ", " likes por conseguir")).toBe("Hay 380 likes por conseguir");
+    expect(goalRemainingText(620, 1000, "", " más")).toBe("380 más");
+    expect(goalRemainingText(1000, 1000, "Hay ", " likes")).toBe("¡Meta cumplida!");
+    const fn = new Function(`${GOAL_REMAINING_JS}; return goalRemainingText;`)() as (c: number, t: number, b?: string, a?: string) => string;
+    for (const [b, a] of [["", ""], ["Hay ", " likes"], ["", " más"], ["Faltan ", ""]]) {
+      for (const [c, t] of [[0, 10], [9, 10], [10, 10], [15, 10]]) expect(fn(c, t, b, a)).toBe(goalRemainingText(c, t, b, a));
+    }
+  });
+
+  it("la pastilla en cuenta atrás dice \"Quedan N\"", () => {
+    expect(overlayPage("meta", 7331)).toContain('"Quedan "');
+  });
 });

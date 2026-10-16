@@ -247,9 +247,10 @@ const META_BODY = `
 
 /** Copia en JavaScript de `goalRemainingText` (metas.ts) para la página del overlay. */
 export const GOAL_REMAINING_JS = `
-  function goalRemainingText(current, target) {
+  function goalRemainingText(current, target, before, after) {
     var left = target - current;
-    return left > 0 ? "Faltan " + String(left) : "¡Meta cumplida!";
+    if (left <= 0) return "¡Meta cumplida!";
+    return before || after ? (before || "") + String(left) + (after || "") : "Faltan " + String(left);
   }
 `;
 
@@ -277,10 +278,14 @@ const META_JS = `
     tgtEl.textContent = state.target;
     ttlEl.textContent = config.title || "";
     ttlEl.classList.toggle("hidden", !config.title);
-    leftEl.textContent = goalRemainingText(state.current, state.target);
+    leftEl.textContent = goalRemainingText(state.current, state.target, config.textBefore, config.textAfter);
     fillEl.style.width = p + "%";
     pfillEl.style.width = p + "%";
-    ptxtEl.textContent = (config.title ? config.title + " - " : "") + Math.floor(p) + "% " + (UNITS[config.metric] || "");
+    var unit = UNITS[config.metric] || "";
+    var left = state.target - state.current;
+    ptxtEl.textContent = (config.title ? config.title + " - " : "") + (config.countdown
+      ? (left > 0 ? "Quedan " + left + " " + unit : "¡Meta cumplida!")
+      : Math.floor(p) + "% " + unit);
     icoEl.innerHTML = ICONS[config.metric] || "";
     pctEl.textContent = Math.floor(p) + "%";
     ringEl.style.setProperty("--p", p + "%");

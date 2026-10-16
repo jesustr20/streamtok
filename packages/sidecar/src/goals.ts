@@ -245,6 +245,33 @@ export class GoalsEngine extends EventEmitter {
     if (touched) this.changed();
   }
 
+  /** Comandos `app.goal.*` de las Acciones (ADR 0011/0012). Solo alcanzan las metas por su id. */
+  applyAppCommand(id: string, params: Record<string, unknown>): { ok: true } | { ok: false; error: string } {
+    const metaId = typeof params.meta === "string" ? params.meta : "";
+    if (!this.find(metaId)) return { ok: false, error: `${id}: no existe la meta "${metaId}"` };
+    const num = (name: string): number | undefined => (isNum(params[name]) ? (params[name] as number) : undefined);
+    switch (id) {
+      case "app.goal.add":
+      case "app.goal.remove": {
+        const amount = num("amount");
+        if (amount === undefined) return { ok: false, error: `${id} necesita el parámetro numérico "amount"` };
+        this.control(metaId, "add", id === "app.goal.add" ? amount : -Math.abs(amount));
+        return { ok: true };
+      }
+      case "app.goal.set": {
+        const count = num("count");
+        if (count === undefined) return { ok: false, error: `${id} necesita el parámetro numérico "count"` };
+        this.control(metaId, "set", count);
+        return { ok: true };
+      }
+      case "app.goal.reset":
+        this.control(metaId, "reset");
+        return { ok: true };
+      default:
+        return { ok: false, error: `comando interno desconocido: ${id}` };
+    }
+  }
+
   /** Nueva sesión de LIVE: se olvidan los combos en curso; el avance se conserva. */
   resetSession() {
     this.coinStreaks.clear();

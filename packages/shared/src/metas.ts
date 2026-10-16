@@ -38,6 +38,11 @@ export const GoalConfigSchema = z.object({
   onReach: GoalOnReachSchema.default("stay"),
   /** cuánto sube el objetivo en cada cruce cuando `onReach` es `grow` */
   step: z.number().int().positive().default(1000),
+  /** cuenta atrás: el overlay muestra cuánto FALTA ("Quedan N") en vez del porcentaje */
+  countdown: z.boolean().default(false),
+  /** texto antes y después del número que falta (diseño Texto y cuenta atrás); vacíos = "Faltan N" */
+  textBefore: z.string().max(60).default(""),
+  textAfter: z.string().max(60).default(""),
   /** entra en el overlay "Metas rotativas" (`/overlay/meta/rotativa`) */
   rotate: z.boolean().default(false),
   /** ids de Acciones que se ejecutan cada vez que se cumple la meta */
@@ -97,10 +102,14 @@ export function goalPercent(current: number, target: number): number {
   return Math.max(0, Math.min(100, (current / target) * 100));
 }
 
-/** Texto "quedan X" / "¡Meta cumplida!" que usa el diseño de texto. Copia JS en overlay-pages.ts (un test las compara). */
-export function goalRemainingText(current: number, target: number): string {
+/**
+ * Texto de lo que falta ("Faltan 380", o con los textos del usuario: "Hay 380 likes por conseguir") y
+ * "¡Meta cumplida!" al llegar. Copia JS en overlay-pages.ts (un test las compara).
+ */
+export function goalRemainingText(current: number, target: number, before = "", after = ""): string {
   const left = target - current;
-  return left > 0 ? "Faltan " + String(left) : "¡Meta cumplida!";
+  if (left <= 0) return "¡Meta cumplida!";
+  return before || after ? before + String(left) + after : "Faltan " + String(left);
 }
 
 export const GOAL_DESIGNS = OVERLAY_DESIGNS.meta;

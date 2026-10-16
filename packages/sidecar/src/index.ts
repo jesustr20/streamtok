@@ -123,7 +123,6 @@ overlayCounters.on("timer-expired", (accionIds: string[]) => {
     console.error("Error ejecutando las acciones de fin del timer:", err);
   });
 });
-engine.setCounters(overlayCounters);
 new OverlaysController(server, overlayCounters);
 
 // Metas (ADR 0012): varias metas a la vez, cada una con su overlay /overlay/meta/<id>.
@@ -148,6 +147,13 @@ goals.on("goal-reached", (goal: Goal) => {
 });
 new GoalsController(server, goals);
 
+// Los comandos internos `app.*` de las Acciones: `app.goal.*` van a las metas, el resto a Timer/Wins.
+const appCommands = {
+  applyAppCommand: (id: string, params: Record<string, unknown>) =>
+    id.startsWith("app.goal.") ? goals.applyAppCommand(id, params) : overlayCounters.applyAppCommand(id, params),
+};
+engine.setCounters(appCommands);
+
 const overlayHttp = new OverlayHttpServer({ port: overlayPortFromEnv(process.env), wsPort: PORT });
 overlayHttp
   .listen()
@@ -166,7 +172,7 @@ overlayHttp
 // "Probar acción" de la UI) reusando ModBridge.sendCommand. No toca el
 // protocolo del mod.
 // ---------------------------------------------------------------------------
-registerManualCommand(server, modBridge, overlayCounters);
+registerManualCommand(server, modBridge, appCommands);
 
 // ---------------------------------------------------------------------------
 // Fuente de LiveEvents. En producción esto viene de tiktok-live-connector

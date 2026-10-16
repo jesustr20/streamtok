@@ -12,18 +12,40 @@ type NavItem = {
 
 /**
  * Orden y etiquetas fieles a los .dc.html (Main/Mods/ModDetalle/ModPerfiles).
- * Solo "Inicio" y "Juegos" navegan; el resto se ve deshabilitado con etiqueta
- * "Próximamente".
+ * Lo que aún no existe se ve deshabilitado con etiqueta "Próximamente".
+ * "Overlays" es una sección que se abre y se cierra; "Metas" tiene sub-items.
  */
-const NAV_ITEMS: NavItem[] = [
+const NAV_TOP: NavItem[] = [
   { id: "inicio", label: "Inicio", enabled: true },
   { id: "live", label: "Live", enabled: false },
-  { id: "overlays", label: "Overlays", enabled: true },
+];
+
+/** Categorías de overlays (ver streamtok-overlays-cobertura.md). */
+const OVERLAY_ITEMS: NavItem[] = [
   { id: "temporizador", label: "Temporizador", enabled: true },
   { id: "wins", label: "Wins", enabled: true },
   { id: "metas", label: "Metas", enabled: true },
+  { id: "tops", label: "Tops y MVP", enabled: false },
+  { id: "batallas", label: "Batallas", enabled: false },
+  { id: "juegos-interactivos", label: "Juegos de stream", enabled: false },
+  { id: "alertas-efectos", label: "Alertas y efectos", enabled: false },
+  { id: "chat-feed", label: "Chat y feed", enabled: false },
+];
+
+/** Sub-items de Metas; el id es el de la meta (o "rotativa" / "personalizadas"). */
+export const META_NAV: { id: string; label: string }[] = [
+  { id: "rotativa", label: "Rotativas" },
+  { id: "likes", label: "Likes" },
+  { id: "seguidores", label: "Seguidores" },
+  { id: "compartidos", label: "Compartidos" },
+  { id: "monedas", label: "Monedas" },
+  { id: "superfans", label: "Super Fans" },
+  { id: "regalos", label: "Regalos" },
+  { id: "personalizadas", label: "Personalizadas" },
+];
+
+const NAV_BOTTOM: NavItem[] = [
   { id: "simulador", label: "Simulador", enabled: false },
-  { id: "alertas", label: "Alertas", enabled: false },
   { id: "puntos", label: "Puntos", enabled: false },
   { id: "juegos", label: "Juegos", enabled: true },
   { id: "suscripciones", label: "Suscripciones", enabled: false },
@@ -43,10 +65,14 @@ export function Sidebar({
   view,
   client,
   onNavigate,
+  metaSel,
+  onSelectMeta,
 }: {
   view: ViewId;
   client: SidecarClient | null;
   onNavigate: (v: ViewId) => void;
+  metaSel: string;
+  onSelectMeta: (id: string) => void;
 }) {
   const { conn, account: remembered } = useTiktokConnection(client);
   // Mientras hay conexión manda lo que reporta el sidecar; si no, la última cuenta recordada.
@@ -57,6 +83,8 @@ export function Sidebar({
   const displayName = username ? `@${username}` : "Sin cuenta";
   // Si la foto falla (URL vencida), se recuerda cuál falló para volver a la inicial.
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
+  const [overlaysOpen, setOverlaysOpen] = useState(true);
+  const [metasOpen, setMetasOpen] = useState(true);
   const showPhoto = !!avatarUrl && failedAvatar !== avatarUrl;
 
   return (
@@ -170,64 +198,134 @@ export function Sidebar({
       </button>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {NAV_ITEMS.map((item) => {
-          const active =
-            item.enabled &&
-            (view === item.id ||
-              ((view === "juego-detalle" || view === "gestionar-perfiles") && item.id === "juegos"));
-          return (
-            <button
-              key={item.id}
-              type="button"
-              disabled={!item.enabled}
-              onClick={() => onNavigate(item.id as ViewId)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                width: "100%",
-                boxSizing: "border-box",
-                textAlign: "left",
-                padding: "10px 12px",
-                borderRadius: 10,
-                background: active ? "#1E2027" : "transparent",
-                border: "none",
-                color: active ? "#FFFFFF" : "#9A9CA5",
-                fontSize: 14,
-                fontWeight: active ? 700 : 500,
-                cursor: item.enabled ? "pointer" : "default",
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: active ? ACCENT : "#3A3C44",
-                  flexShrink: 0,
+        {NAV_TOP.map((item) => (
+          <NavButton key={item.id} label={item.label} enabled={item.enabled} active={item.enabled && view === item.id} onClick={() => onNavigate(item.id as ViewId)} />
+        ))}
+
+        <NavButton
+          label="Overlays"
+          enabled
+          active={view === "overlays"}
+          chevron={overlaysOpen ? "▾" : "▸"}
+          onClick={() => {
+            setOverlaysOpen((v) => !v);
+            onNavigate("overlays");
+          }}
+        />
+        {overlaysOpen &&
+          OVERLAY_ITEMS.map((item) => (
+            <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <NavButton
+                label={item.label}
+                enabled={item.enabled}
+                indent={1}
+                active={item.enabled && view === item.id}
+                chevron={item.id === "metas" ? (metasOpen ? "▾" : "▸") : undefined}
+                onClick={() => {
+                  if (item.id === "metas") {
+                    setMetasOpen((v) => (view === "metas" ? !v : true));
+                    onNavigate("metas");
+                  } else onNavigate(item.id as ViewId);
                 }}
               />
-              <span style={{ flex: 1, minWidth: 0 }}>{item.label}</span>
-              {!item.enabled && (
-                <span
-                  style={{
-                    fontSize: 9.5,
-                    fontWeight: 700,
-                    color: "#9A9CA5",
-                    background: "#23252C",
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                    letterSpacing: "0.02em",
-                    flexShrink: 0,
-                  }}
-                >
-                  Próximamente
-                </span>
-              )}
-            </button>
-          );
-        })}
+              {item.id === "metas" &&
+                metasOpen &&
+                META_NAV.map((m) => (
+                  <NavButton
+                    key={m.id}
+                    label={m.label}
+                    enabled
+                    indent={2}
+                    active={view === "metas" && metaSel === m.id}
+                    onClick={() => onSelectMeta(m.id)}
+                  />
+                ))}
+            </div>
+          ))}
+
+        {NAV_BOTTOM.map((item) => (
+          <NavButton
+            key={item.id}
+            label={item.label}
+            enabled={item.enabled}
+            active={
+              item.enabled &&
+              (view === item.id || ((view === "juego-detalle" || view === "gestionar-perfiles") && item.id === "juegos"))
+            }
+            onClick={() => onNavigate(item.id as ViewId)}
+          />
+        ))}
       </div>
     </aside>
+  );
+}
+
+function NavButton({
+  label,
+  enabled,
+  active,
+  onClick,
+  indent = 0,
+  chevron,
+}: {
+  label: string;
+  enabled: boolean;
+  active: boolean;
+  onClick: () => void;
+  indent?: 0 | 1 | 2;
+  chevron?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!enabled}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        boxSizing: "border-box",
+        textAlign: "left",
+        padding: indent === 2 ? "6px 12px 6px 44px" : indent === 1 ? "8px 12px 8px 28px" : "10px 12px",
+        borderRadius: 10,
+        background: active ? "#1E2027" : "transparent",
+        border: "none",
+        color: active ? "#FFFFFF" : "#9A9CA5",
+        fontSize: indent === 2 ? 12.5 : indent === 1 ? 13.5 : 14,
+        fontWeight: active ? 700 : 500,
+        cursor: enabled ? "pointer" : "default",
+      }}
+    >
+      {indent < 2 && (
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: active ? ACCENT : "#3A3C44",
+            flexShrink: 0,
+          }}
+        />
+      )}
+      <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
+      {chevron && <span style={{ fontSize: 10, flexShrink: 0 }}>{chevron}</span>}
+      {!enabled && (
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 700,
+            color: "#9A9CA5",
+            background: "#23252C",
+            padding: "2px 6px",
+            borderRadius: 4,
+            letterSpacing: "0.02em",
+            flexShrink: 0,
+          }}
+        >
+          Próximamente
+        </span>
+      )}
+    </button>
   );
 }
