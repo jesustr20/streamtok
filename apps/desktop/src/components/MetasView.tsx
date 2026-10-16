@@ -82,10 +82,35 @@ export function MetasView({ client, selected }: { client: SidecarClient | null; 
 
 /** Qué metas entran en el overlay rotativo, con su enlace y vista previa. */
 function RotationCard({ goals, api }: { goals: Goal[]; api: Api }) {
+  const active = goals.filter((g) => g.config.rotate);
   return (
     <>
-      <Card title="Metas rotativas">
-        <div style={{ fontSize: 12, color: "#9A9CA5" }}>Marca las que quieres que vayan apareciendo, una cada 6 segundos.</div>
+      <Card title="¿Qué es una meta rotativa?">
+        <div style={{ fontSize: 13, color: "#C9CBD2", lineHeight: 1.55 }}>
+          Es <b>un solo overlay</b> (un solo enlace) que va mostrando tus metas <b>una por una</b>, cada 6 segundos, en bucle.
+          Así ocupas el espacio de una sola barra en pantalla en vez de poner varias. Cada meta se ve con su propio diseño y
+          avanza igual que si la tuvieras suelta; aquí solo eliges cuáles entran en el ciclo.
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12.5 }}>
+          {active.length === 0 ? (
+            <span style={{ color: "#9A9CA5" }}>No hay ninguna marcada: el overlay saldrá vacío.</span>
+          ) : (
+            <>
+              {active.map((goal, i) => (
+                <span key={goal.config.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ padding: "4px 10px", borderRadius: 999, background: "#23252C", color: "#F4F4F5", fontWeight: 600 }}>
+                    {goalLabel(goal.config)}
+                  </span>
+                  {i < active.length - 1 && <span style={{ color: "#5B5D66" }}>6 s →</span>}
+                </span>
+              ))}
+              {active.length > 1 && <span style={{ color: "#5B5D66" }}>6 s ↻ vuelve a la primera</span>}
+            </>
+          )}
+        </div>
+      </Card>
+      <Card title="Metas del ciclo">
+        <div style={{ fontSize: 12, color: "#9A9CA5" }}>Marca las que quieres que vayan apareciendo.</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {goals.map((goal) => (
             <label key={goal.config.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
@@ -94,14 +119,20 @@ function RotationCard({ goals, api }: { goals: Goal[]; api: Api }) {
                 checked={goal.config.rotate}
                 onChange={(e) => api.save({ ...goal.config, rotate: e.target.checked })}
               />
-              {metricName(goal.config)}
+              {goalLabel(goal.config)}
             </label>
           ))}
         </div>
       </Card>
-      <UrlCard kind="meta" id={GOAL_ROTATION_ID} title="Overlay de metas rotativas" />
+      <UrlCard kind="meta" id={GOAL_ROTATION_ID} title="Overlay de metas rotativas" showPreview />
     </>
   );
+}
+
+/** Nombre para listas: el título de la meta (o su tipo si no tiene), marcando las propias. */
+function goalLabel(c: GoalConfig): string {
+  const base = c.title.trim() || metricName(c);
+  return PRESET_IDS.has(c.id) ? base : `${base} (propia)`;
 }
 
 function metricName(c: GoalConfig): string {

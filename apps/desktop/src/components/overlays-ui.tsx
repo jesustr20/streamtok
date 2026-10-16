@@ -47,6 +47,7 @@ export function UrlCard({
   title = "Enlace del overlay",
   onCustomize,
   customizeLabel = "Personalizar diseño",
+  showPreview,
 }: {
   kind: OverlayKind;
   /** instancia (solo overlays con varias, como las metas) */
@@ -54,6 +55,8 @@ export function UrlCard({
   title?: string;
   onCustomize?: () => void;
   customizeLabel?: string;
+  /** vista previa aunque no haya botón de personalizar (p. ej. metas rotativas) */
+  showPreview?: boolean;
 }) {
   const path = id ? `/overlay/${kind}/${encodeURIComponent(id)}` : `/overlay/${kind}`;
   const server = useOverlayServerStatus();
@@ -72,13 +75,20 @@ export function UrlCard({
           sidecar: si dice “no se pudo abrir el servidor de overlays”, otro programa usa ese puerto.
         </div>
       )}
-      {onCustomize && (
+      {(onCustomize || showPreview) && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <Preview kind={kind} id={id} designId={undefined} maxWidth={560} onSize={setSize} />
-          <Btn onClick={onCustomize}>{customizeLabel}</Btn>
+          <Preview
+            kind={kind}
+            id={id}
+            designId={undefined}
+            maxWidth={560}
+            onSize={setSize}
+            reserve={kind === "meta" ? { w: 560, h: 150 } : undefined}
+          />
+          {onCustomize && <Btn onClick={onCustomize}>{customizeLabel}</Btn>}
         </div>
       )}
-      {onCustomize && size && (
+      {(onCustomize || showPreview) && size && (
         <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.5 }}>
           En TikTok LIVE Studio, si activas <b>Resolución personalizada</b>, usa al menos{" "}
           <b style={{ color: "#F4F4F5" }}>
@@ -225,12 +235,15 @@ export function Preview({
   maxWidth = 920,
   box,
   onSize,
+  reserve,
 }: {
   kind: OverlayKind;
   id?: string;
   designId: string | undefined;
   maxWidth?: number;
   box?: { w: number; h: number };
+  /** tamaño mínimo reservado: el recuadro no cambia de tamaño al cargar ni entre diseños */
+  reserve?: { w: number; h: number };
   onSize?: (size: { w: number; h: number }) => void;
 }) {
   const html = useMemo(
@@ -275,14 +288,15 @@ export function Preview({
       ? Math.min(1, (box.w - 16) / size.w, (box.h - 16) / size.h)
       : Math.min(1, (maxWidth - 24) / size.w)
     : 1;
-  const outerW = box ? box.w : Math.round(natural.w * fit) + 24;
-  const outerH = box ? box.h : Math.round(natural.h * fit) + 24;
+  // antes de medir se usa solo el tamaño reservado (el lienzo grande de medición está oculto)
+  const outerW = box ? box.w : Math.max(reserve?.w ?? 0, size ? Math.round(natural.w * fit) + 24 : 0);
+  const outerH = box ? box.h : Math.max(reserve?.h ?? 0, size ? Math.round(natural.h * fit) + 24 : 0);
   return (
     <div
       style={{
-        width: size ? outerW : 120,
+        width: size || reserve ? outerW : 120,
         maxWidth: "100%",
-        height: size ? outerH : 60,
+        height: size || reserve ? outerH : 60,
         overflow: "hidden",
         borderRadius: 8,
         background: "repeating-conic-gradient(#1b1c21 0% 25%, #23252c 0% 50%) 0 0 / 16px 16px",
