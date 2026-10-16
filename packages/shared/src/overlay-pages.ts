@@ -365,6 +365,7 @@ const META_COMMON_JS = `
         if (m.channel !== "goals" || !m.payload || m.payload.kind !== "state") return;
         allGoals = m.payload.goals;
         refresh();
+        document.documentElement.setAttribute("data-ready", "1");
       } catch (e) {}
     };
     ws.onclose = schedule;
@@ -414,6 +415,7 @@ const COMMON_JS = `
           offset = state.serverNow - Date.now();
           applyStyle();
           render();
+          document.documentElement.setAttribute("data-ready", "1");
         }
       } catch (e) {}
     };

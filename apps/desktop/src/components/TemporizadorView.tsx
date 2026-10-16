@@ -83,6 +83,7 @@ function TimerPage({
       <UrlCard
         kind="timer"
         title="Overlay"
+        stable
         onCustomize={() => setCustomizing((v) => !v)}
         customizeLabel={customizing ? "Cerrar personalización" : "Personalizar diseño"}
       />

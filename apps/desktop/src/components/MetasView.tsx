@@ -124,7 +124,7 @@ function RotationCard({ goals, api }: { goals: Goal[]; api: Api }) {
           ))}
         </div>
       </Card>
-      <UrlCard kind="meta" id={GOAL_ROTATION_ID} title="Overlay de metas rotativas" showPreview />
+      <UrlCard kind="meta" id={GOAL_ROTATION_ID} title="Overlay de metas rotativas" showPreview stable />
     </>
   );
 }
@@ -370,6 +370,7 @@ function GoalBlock({ goal, api, client }: { goal: Goal; api: Api; client: Sideca
         kind="meta"
         id={config.id}
         title="Overlay"
+        stable={!isPreset}
         onCustomize={() => setOpen((v) => !v)}
         customizeLabel={open ? "Ocultar diseño" : "Personalizar diseño"}
       />

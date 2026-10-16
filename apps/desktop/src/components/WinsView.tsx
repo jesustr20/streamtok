@@ -36,7 +36,7 @@ function WinsPage({ state, ov, onCustomize }: { state: OverlaysState; ov: Ov; on
 
   return (
     <>
-      <UrlCard kind="wins" title="Overlay" onCustomize={onCustomize} />
+      <UrlCard kind="wins" title="Overlay" stable onCustomize={onCustomize} />
 
       <Card title="Control">
         <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>

@@ -48,6 +48,7 @@ export function UrlCard({
   onCustomize,
   customizeLabel = "Personalizar diseño",
   showPreview,
+  stable = false,
 }: {
   kind: OverlayKind;
   /** instancia (solo overlays con varias, como las metas) */
@@ -57,6 +58,8 @@ export function UrlCard({
   customizeLabel?: string;
   /** vista previa aunque no haya botón de personalizar (p. ej. metas rotativas) */
   showPreview?: boolean;
+  /** vista previa que espera a tener sus datos y reserva su recuadro (sin saltos de tamaño) */
+  stable?: boolean;
 }) {
   const path = id ? `/overlay/${kind}/${encodeURIComponent(id)}` : `/overlay/${kind}`;
   const server = useOverlayServerStatus();
@@ -83,7 +86,8 @@ export function UrlCard({
             designId={undefined}
             maxWidth={560}
             onSize={setSize}
-            reserve={kind === "meta" ? { w: 560, h: 150 } : undefined}
+            reserve={kind === "meta" || stable ? PREVIEW_RESERVE[kind] : undefined}
+            waitReady={stable}
           />
           {onCustomize && <Btn onClick={onCustomize}>{customizeLabel}</Btn>}
         </div>
@@ -100,6 +104,13 @@ export function UrlCard({
     </Card>
   );
 }
+
+/** Recuadro de vista previa reservado por tipo: no cambia de tamaño al cargar ni al volver a la vista. */
+const PREVIEW_RESERVE: Record<OverlayKind, { w: number; h: number }> = {
+  timer: { w: 490, h: 190 },
+  wins: { w: 560, h: 150 },
+  meta: { w: 560, h: 150 },
+};
 
 /** Redondea hacia arriba al siguiente múltiplo de 10 (un poco de margen). */
 function roundUp(n: number): number {
@@ -152,6 +163,8 @@ export function DesignCard({
   style: OverlayStyle;
   onChange: (s: OverlayStyle) => void;
   showPreview?: boolean;
+  /** vista previa que espera a tener sus datos y reserva su recuadro (sin saltos de tamaño) */
+  stable?: boolean;
 }) {
   const designs = OVERLAY_DESIGNS[kind];
   const allowScale = kind !== "timer";
@@ -236,6 +249,7 @@ export function Preview({
   box,
   onSize,
   reserve,
+  waitReady = false,
 }: {
   kind: OverlayKind;
   id?: string;
@@ -244,6 +258,8 @@ export function Preview({
   box?: { w: number; h: number };
   /** tamaño mínimo reservado: el recuadro no cambia de tamaño al cargar ni entre diseños */
   reserve?: { w: number; h: number };
+  /** no se muestra ni se mide hasta que la página recibe sus datos */
+  waitReady?: boolean;
   onSize?: (size: { w: number; h: number }) => void;
 }) {
   const html = useMemo(
@@ -267,7 +283,11 @@ export function Preview({
   function startMeasuring() {
     stopMeasuring();
     const measure = () => {
-      const root = frame.current?.contentDocument?.getElementById("root");
+      const doc = frame.current?.contentDocument;
+      // hasta que la página recibe sus datos tiene otro aspecto (vacía, sin texto): no se mide ni se muestra
+      if (waitReady && !doc?.documentElement.hasAttribute("data-ready")) return;
+      if (!doc) return;
+      const root = doc.getElementById("root");
       if (!root) return;
       const r = root.getBoundingClientRect();
       const next = { w: Math.ceil(r.right), h: Math.ceil(r.bottom) };

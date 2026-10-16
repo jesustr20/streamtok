@@ -39,7 +39,7 @@ export function OverlaysView({
       ) : (
         <>
           {ov.error && <div style={{ color: "#E5484D", fontSize: 12.5 }}>{ov.error}</div>}
-          <UrlCard kind="wins" />
+          <UrlCard kind="wins" stable />
           <DesignCard
             kind="wins"
             style={ov.config.winsStyle}
