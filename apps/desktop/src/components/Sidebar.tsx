@@ -91,10 +91,10 @@ export function Sidebar({
   return (
     <aside
       style={{
-        width: 252,
+        width: 292,
         flexShrink: 0,
         boxSizing: "border-box",
-        padding: "28px 16px",
+        padding: "28px 14px",
         borderRight: "1px solid #22242B",
         display: "flex",
         flexDirection: "column",
@@ -309,7 +309,7 @@ function NavButton({
           }}
         />
       )}
-      <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
+      <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap" }}>{label}</span>
       {chevron && <span style={{ fontSize: 10, flexShrink: 0 }}>{chevron}</span>}
       {!enabled && (
         <span
@@ -321,6 +321,7 @@ function NavButton({
             padding: "2px 6px",
             borderRadius: 4,
             letterSpacing: "0.02em",
+            whiteSpace: "nowrap",
             flexShrink: 0,
           }}
         >
