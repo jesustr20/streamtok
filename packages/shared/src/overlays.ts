@@ -218,6 +218,8 @@ export const OVERLAY_DESIGNS: Record<OverlayKind, OverlayDesign[]> = {
     { id: "interactive", name: "Pastilla con foto" },
     { id: "tarjeta", name: "Tarjeta" },
     { id: "texto", name: "Texto" },
+    { id: "anillo", name: "Anillo animado" },
+    { id: "celebracion", name: "Celebración" },
   ],
 };
 

@@ -173,4 +173,13 @@ describe("overlay de nivel", () => {
   it("marca la página como lista al recibir la configuración", () => {
     expect(overlayPage("nivel", 7331)).toContain('setAttribute("data-ready", "1")');
   });
+
+  it("los diseños animados traen anillo, partículas y contador de nivel", () => {
+    const html = overlayPage("nivel", 7331, { id: "todas" });
+    for (const id of ["anillo", "celebracion"]) expect(OVERLAY_DESIGNS.nivel.map((d) => d.id)).toContain(id);
+    expect(html).toContain("function burst(");
+    expect(html).toContain("function countUp(");
+    expect(html).toContain("@keyframes alRing");
+    expect(html).toContain('id="fx"');
+  });
 });

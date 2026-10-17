@@ -461,11 +461,51 @@ const NIVEL_CSS = `
   body[data-design="texto"] .alert { display: block; padding: 4px 8px; text-shadow: 0 2px 8px rgba(0, 0, 0, .85); }
   body[data-design="texto"] .avatar { display: none; }
   body[data-design="texto"] .msg p { font-size: 30px; max-width: 700px; }
+
+  /* Efectos: anillo, rayos, número grande y partículas (diseños Anillo y Celebración) */
+  .ring, .rays, .big { display: none; }
+  .fx { display: block; position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+  .fx i { position: absolute; left: 0; top: 0; display: block; width: var(--s); height: var(--s); margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2); border-radius: 50%; background: var(--c); animation: alSpark var(--t) cubic-bezier(.1, .7, .3, 1) both; }
+  .fx i.h { width: auto; height: auto; margin: 0; border-radius: 0; background: none; font: 400 var(--s)/1 "Segoe UI Symbol", "Segoe UI", sans-serif; color: var(--c); animation-name: alHeart; animation-timing-function: ease-out; }
+  @keyframes alSpark { 0% { transform: translate(0, 0) scale(1); opacity: 0; } 12% { opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(.25); opacity: 0; } }
+  @keyframes alHeart { 0% { transform: translate(-50%, 0) scale(.3); opacity: 0; } 18% { opacity: 1; } 100% { transform: translate(calc(-50% + var(--dx)), var(--dy)) scale(1); opacity: 0; } }
+  @keyframes alRing { to { stroke-dashoffset: 0; } }
+  @keyframes alSpin { to { transform: rotate(360deg); } }
+  @keyframes alBig { 0% { transform: scale(.3); opacity: 0; } 60% { transform: scale(1.18); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes alRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes alShine { from { background-position: 130% 0; } to { background-position: -30% 0; } }
+  @keyframes alGlow { 0%, 100% { box-shadow: 0 6px 24px rgba(0, 0, 0, .45); } 50% { box-shadow: 0 0 34px var(--k), 0 6px 24px rgba(0, 0, 0, .45); } }
+  .ring circle { fill: none; stroke: var(--k); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 289; stroke-dashoffset: 289; }
+
+  /* Anillo animado: el anillo se dibuja alrededor de la foto, giran rayos de luz y salta "NIVEL N" */
+  body[data-design="anillo"] .alert { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 100px 80px 34px; min-width: 400px; text-align: center; isolation: isolate; }
+  body[data-design="anillo"] .avatar { width: 120px; height: 120px; font-size: 50px; box-shadow: 0 0 34px var(--k); }
+  body[data-design="anillo"] .ring { display: block; position: absolute; left: -16px; top: -16px; width: 152px; height: 152px; overflow: visible; transform: rotate(-90deg); }
+  body[data-design="anillo"] .rays { display: block; position: absolute; left: 50%; top: 50%; width: 290px; height: 290px; margin: -145px 0 0 -145px; border-radius: 50%; z-index: -1; opacity: .4; background: repeating-conic-gradient(from 0deg, var(--k) 0 7deg, transparent 7deg 22deg); -webkit-mask: radial-gradient(circle, transparent 28%, #000 30%, transparent 68%); mask: radial-gradient(circle, transparent 28%, #000 30%, transparent 68%); animation: alSpin 9s linear infinite; }
+  body[data-design="anillo"] .lvl { display: none; }
+  body[data-design="anillo"] .big { display: block; margin-top: 8px; font: 900 54px/1.05 "Segoe UI", sans-serif; letter-spacing: 3px; text-transform: uppercase; color: #fff; text-shadow: 0 0 18px var(--k), 0 3px 10px rgba(0, 0, 0, .6); }
+  body[data-design="anillo"] .msg small { display: none; }
+  body[data-design="anillo"] .msg p { max-width: 460px; font-size: 25px; text-shadow: 0 2px 8px rgba(0, 0, 0, .8); }
+  #root.in .ring circle { animation: alRing 1.1s .15s ease-out forwards; }
+  #root.in .big { animation: alBig .75s .35s cubic-bezier(.2, .9, .3, 1.2) both; }
+  body[data-design="anillo"] #root.in .msg { animation: alRise .6s .6s ease-out both; }
+  body[data-design="anillo"] #root.in .alert { animation: none; }
+  body[data-design="anillo"] #root.in .avatar { animation: alPop .7s cubic-bezier(.2, .9, .3, 1.3) both; }
+  body[data-design="anillo"] #root.out .alert { animation: alOut .45s ease-in both; }
+
+  /* Celebración: la pastilla brilla, late y estalla en confeti (o corazones al unirse) */
+  body[data-design="celebracion"] #root { padding: 50px 50px; }
+  body[data-design="celebracion"] .msg p { max-width: 580px; }
+  body[data-design="celebracion"] .alert { display: flex; align-items: center; gap: 18px; padding: 14px 32px 14px 16px; border-radius: 999px; background-color: var(--bg, #1a1230); background-image: linear-gradient(110deg, transparent 38%, rgba(255, 255, 255, .22) 50%, transparent 62%); background-size: 260% 100%; background-position: 130% 0; border: 3px solid var(--k); box-shadow: 0 6px 24px rgba(0, 0, 0, .45); }
+  body[data-design="celebracion"] #root.in .alert { animation: alIn .55s cubic-bezier(.2, .9, .3, 1.15) both, alShine 1.5s .5s ease-out both, alGlow 1.2s .4s ease-in-out 2; }
+  body[data-design="celebracion"] .avatar { box-shadow: 0 0 0 4px var(--k); }
+  body[data-design="celebracion"] .msg small { font-size: 14px; letter-spacing: 3px; }
 `;
 
 const NIVEL_BODY = `
   <div id="root" class="hidden"><div class="alert">
-    <div class="avatar"><img id="av" class="hidden" referrerpolicy="no-referrer" alt=""><span id="ini"></span><i class="lvl" id="lvl"></i></div>
+    <div class="avatar"><i class="rays"></i><svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"/></svg><img id="av" class="hidden" referrerpolicy="no-referrer" alt=""><span id="ini"></span><i class="lvl" id="lvl"></i><div class="fx" id="fx"></div></div>
+    <div class="big" id="big"></div>
     <div class="msg"><small id="head"></small><p id="text"></p></div>
   </div></div>
 `;
@@ -481,12 +521,13 @@ const NIVEL_JS = `
   var DEMO = DEMO_MODE || q.get("demo") === "1";
   var config = null, retry = 0, ws = null, queue = [], showing = false, demoIdx = 0, demoTimer = null;
   var rootEl = document.getElementById("root"), avEl = document.getElementById("av"), iniEl = document.getElementById("ini");
+  var fxEl = document.getElementById("fx"), bigEl = document.getElementById("big"), countTimer = null;
   var lvlEl = document.getElementById("lvl"), headEl = document.getElementById("head"), textEl = document.getElementById("text");
   var HEADS = { fanJoin: "¡NUEVO MIEMBRO!", fanLevelUp: "¡SUBE DE NIVEL!", donorLevelUp: "¡NIVEL DE DONADOR!" };
   var DEMO_ALERTS = [
     { kind: "fanJoin", name: "Valentina", level: 1 },
-    { kind: "fanLevelUp", name: "Carlos_92", level: 12 },
-    { kind: "donorLevelUp", name: "Mariana", level: 27 }
+    { kind: "fanLevelUp", name: "Carlos_92", previousLevel: 11, level: 12 },
+    { kind: "donorLevelUp", name: "Mariana", previousLevel: 26, level: 27 }
   ];
 
   function applyStyle() {
@@ -517,6 +558,50 @@ const NIVEL_JS = `
     }
   }
 
+  // Partículas: chispas de colores (corazones al unirse) que salen de la foto.
+  var SPARK_COLORS = ["#ffd166", "#ff4d8d", "#7c5cff", "#36d1dc", "#ffffff"];
+  var HEART_COLORS = ["#ff4d8d", "#ff8fb1", "#ffffff"];
+  function burst(kind) {
+    fxEl.textContent = "";
+    var design = document.body.getAttribute("data-design");
+    if (design !== "anillo" && design !== "celebracion") return;
+    var hearts = kind === "fanJoin", n = hearts ? 18 : 36;
+    for (var i = 0; i < n; i++) {
+      var el = document.createElement("i"), ang = Math.random() * Math.PI * 2, dist = 55 + Math.random() * 80;
+      var cols = hearts ? HEART_COLORS : SPARK_COLORS;
+      if (hearts) {
+        el.className = "h";
+        el.textContent = "\u2665";
+        el.style.setProperty("--dx", ((Math.random() - 0.5) * 120).toFixed(0) + "px");
+        el.style.setProperty("--dy", (-(40 + Math.random() * 50)).toFixed(0) + "px");
+        el.style.setProperty("--s", (14 + Math.random() * 16).toFixed(0) + "px");
+      } else {
+        el.style.setProperty("--dx", (Math.cos(ang) * dist).toFixed(0) + "px");
+        el.style.setProperty("--dy", (Math.sin(ang) * dist).toFixed(0) + "px");
+        el.style.setProperty("--s", (6 + Math.random() * 8).toFixed(0) + "px");
+      }
+      el.style.setProperty("--c", cols[i % cols.length]);
+      el.style.setProperty("--t", (0.9 + Math.random() * 0.7).toFixed(2) + "s");
+      el.style.animationDelay = (0.25 + Math.random() * 0.35).toFixed(2) + "s";
+      fxEl.appendChild(el);
+    }
+  }
+
+  // El número sube de golpe en golpe (de 11 a 12, etc.) mientras entra el aviso.
+  function countUp(from, to, apply) {
+    if (countTimer) clearInterval(countTimer);
+    if (from === undefined || to === undefined || to <= from) { apply(to); return; }
+    var steps = Math.min(to - from, 18), i = 0;
+    apply(from);
+    setTimeout(function () {
+      countTimer = setInterval(function () {
+        i++;
+        apply(Math.round(from + ((to - from) * i) / steps));
+        if (i >= steps) clearInterval(countTimer);
+      }, Math.max(45, Math.round(750 / steps)));
+    }, 500);
+  }
+
   function accepts(a) {
     if (!config || config.kinds.indexOf(a.kind) === -1) return false;
     return a.kind === "fanJoin" || a.level === undefined || a.level >= config.minLevel;
@@ -528,7 +613,16 @@ const NIVEL_JS = `
     rootEl.setAttribute("data-kind", a.kind);
     headEl.textContent = HEADS[a.kind] || "";
     fill(textEl, config.texts[a.kind] || "", name, a.level);
-    lvlEl.textContent = a.kind === "fanJoin" || a.level === undefined ? "♥" : String(a.level);
+    var isJoin = a.kind === "fanJoin" || a.level === undefined;
+    if (isJoin) {
+      lvlEl.textContent = "♥";
+      bigEl.textContent = "¡BIENVENIDO!";
+    } else {
+      countUp(a.previousLevel, a.level, function (n) {
+        lvlEl.textContent = String(n);
+        bigEl.textContent = "NIVEL " + n;
+      });
+    }
     iniEl.textContent = name.trim().charAt(0).toUpperCase();
     if (a.avatarUrl) {
       avEl.onerror = function () { avEl.classList.add("hidden"); iniEl.classList.remove("hidden"); };
@@ -543,6 +637,7 @@ const NIVEL_JS = `
     rootEl.classList.remove("hidden", "out", "in");
     void rootEl.offsetWidth;
     rootEl.classList.add("in");
+    burst(a.kind);
     if (DEMO) { showing = false; return; } // la vista previa deja el aviso a la vista
     setTimeout(function () {
       rootEl.classList.remove("in");

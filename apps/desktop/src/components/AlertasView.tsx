@@ -6,6 +6,13 @@ import { Btn, Card, DesignCard, Field, NumberField, UrlCard, cardStyle, inputSty
 
 type Api = ReturnType<typeof useAlertas>;
 
+/** Recuadro de la vista previa según el diseño (los animados necesitan sitio para las chispas). */
+const RESERVE: Record<string, { w: number; h: number }> = {
+  tarjeta: { w: 560, h: 300 },
+  anillo: { w: 560, h: 440 },
+  celebracion: { w: 560, h: 230 },
+};
+
 /** Qué hace cada alerta de fábrica, para explicarlo en pantalla. */
 const INTRO: Record<string, string> = {
   comunidad: "Avisa cuando alguien se une a tu comunidad (con el regalo Quiéreme / Heart Me) y cuando un miembro sube de nivel de fan.",
@@ -96,7 +103,7 @@ function AlertBlock({ config, api }: { config: AlertConfig; api: Api }) {
         id={config.id}
         title="Overlay"
         stable
-        reserve={designId === "tarjeta" ? { w: 560, h: 300 } : { w: 560, h: 150 }}
+        reserve={RESERVE[designId] ?? { w: 560, h: 150 }}
         onCustomize={() => setOpen((v) => !v)}
         customizeLabel={open ? "Ocultar diseño" : "Personalizar diseño"}
       />
