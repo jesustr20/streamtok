@@ -1,4 +1,4 @@
-import { FORMAT_TIMER_JS, GOAL_REMAINING_JS, goalRemainingText, RATE_TEXT_JS, TimerConfigSchema, formatTimerMs, overlayPage, timerRateText } from "@streamtok/shared";
+import { FORMAT_TIMER_JS, GOAL_REMAINING_JS, goalRemainingText, RATE_TEXT_JS, TimerConfigSchema, formatTimerMs, overlayPage, OVERLAY_DESIGNS, timerRateText } from "@streamtok/shared";
 import { describe, expect, it } from "vitest";
 
 describe("overlayPage (compartida entre el servidor y la vista previa de la app)", () => {
@@ -153,5 +153,24 @@ describe("overlay de meta", () => {
 
   it("la pastilla en cuenta atrás dice \"Quedan N\"", () => {
     expect(overlayPage("meta", 7331)).toContain('"Quedan "');
+  });
+});
+
+describe("overlay de nivel", () => {
+  it("se conecta al canal alertas con su id y trae los tres diseños", () => {
+    const html = overlayPage("nivel", 7331, { id: "comunidad" });
+    expect(html).toContain('var KIND = "nivel";');
+    expect(html).toContain('var ALERT_ID = "comunidad";');
+    expect(html).toContain('channel: "alertas"');
+    for (const d of OVERLAY_DESIGNS.nivel) expect(html).toContain(`[data-design="${d.id}"]`);
+  });
+
+  it("la vista previa activa el modo demo y las páginas del stream no", () => {
+    expect(overlayPage("nivel", 7331, { id: "todas", demo: true })).toContain("var DEMO_MODE = true;");
+    expect(overlayPage("nivel", 7331, { id: "todas" })).toContain("var DEMO_MODE = false;");
+  });
+
+  it("marca la página como lista al recibir la configuración", () => {
+    expect(overlayPage("nivel", 7331)).toContain('setAttribute("data-ready", "1")');
   });
 });

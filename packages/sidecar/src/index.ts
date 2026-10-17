@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { GOAL_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
+import { ALERT_PRESETS, GOAL_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventRecorder, maxBytesFromEnv } from "./event-recorder.js";
 import {
@@ -16,6 +16,8 @@ import {
 } from "./overlay-counters.js";
 import { RoomController, RoomStateEngine } from "./room-state.js";
 import { GoalsController } from "./goals-controller.js";
+import { AlertasEngine, AlertasStore, defaultAlertasFilePath } from "./alertas.js";
+import { AlertasController } from "./alertas-controller.js";
 import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
 import { OverlayHttpServer, overlayPortFromEnv } from "./overlay-server.js";
 import { OverlaysController } from "./overlays-controller.js";
@@ -148,6 +150,20 @@ goals.on("goal-reached", (goal: Goal) => {
 });
 new GoalsController(server, goals);
 
+// Alertas de comunidad y nivel (ADR 0014): avisos "se unió" y "subió de nivel" para /overlay/nivel/<id>.
+const alertas = new AlertasEngine({
+  presets: ALERT_PRESETS,
+  store: new AlertasStore(defaultAlertasFilePath(), (message) =>
+    // eslint-disable-next-line no-console
+    console.warn("[alertas:warn]", message),
+  ),
+});
+alertas.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[alertas:${entry.level}]`, entry.message);
+});
+new AlertasController(server, alertas);
+
 // Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
 const room = new RoomStateEngine();
 new RoomController(server, room);
@@ -165,7 +181,7 @@ overlayHttp
   .listen()
   .then((port) => {
     // eslint-disable-next-line no-console
-    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins y /overlay/meta/<id>`);
+    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins, /overlay/meta/<id> y /overlay/nivel/<id>`);
   })
   .catch((err) => {
     // No tumba el sidecar: sin el servidor de overlays todo lo demás sigue funcionando.
@@ -190,6 +206,7 @@ server.onChannel("live-event", (payload) => {
   const evt = payload as LiveEvent;
   overlayCounters.handleLiveEvent(evt);
   goals.handleLiveEvent(evt);
+  alertas.handleLiveEvent(evt);
   engine.handleEvent(evt).catch((err) => {
     // eslint-disable-next-line no-console
     console.error("Error procesando live-event:", err);
@@ -220,6 +237,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
   onEvent: (evt) => {
     overlayCounters.handleLiveEvent(evt);
     goals.handleLiveEvent(evt);
+    alertas.handleLiveEvent(evt);
     engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
@@ -235,6 +253,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     engine.resetSession();
     overlayCounters.resetSession();
     goals.resetSession();
+    alertas.resetSession();
     room.reset();
   },
 });

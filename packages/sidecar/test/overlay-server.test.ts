@@ -86,4 +86,11 @@ describe("OverlayHttpServer", () => {
     await start();
     expect(server!.address()).toBe("127.0.0.1");
   });
+
+  it("sirve /overlay/nivel/<id> con su id", async () => {
+    const base = await start(9999);
+    const html = await (await fetch(`${base}/overlay/nivel/comunidad`)).text();
+    expect(html).toContain('var KIND = "nivel";');
+    expect(html).toContain('var ALERT_ID = "comunidad";');
+  });
 });

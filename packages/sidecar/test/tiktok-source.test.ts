@@ -460,6 +460,16 @@ describe("TikTokLiveSource detecta subidas de nivel (ADR 0007)", () => {
     expect(events.at(-1)).toMatchObject({ event: "fanLevelUp", previousLevel: 1, newLevel: 2, fanLevel: 2 });
   });
 
+  it("la subida de nivel lleva la foto de perfil del usuario (para el overlay de nivel)", () => {
+    const src = new TikTokLiveSource("host");
+    const events: any[] = [];
+    src.on("event", (e) => events.push(e));
+    const con = (level: string) => ({ ...chat(level), user: { ...chat(level).user, avatarThumb: { urlList: ["https://cdn/ana.jpg"] } } });
+    src.ingest("chat", con("6"));
+    src.ingest("chat", con("7"));
+    expect(events.find((e) => e.event === "donorLevelUp")).toMatchObject({ avatarUrl: "https://cdn/ana.jpg" });
+  });
+
   it("un regalo en mitad de combo (descartado por el mapeo) igual actualiza el nivel", () => {
     const src = new TikTokLiveSource("host");
     const events: any[] = [];
