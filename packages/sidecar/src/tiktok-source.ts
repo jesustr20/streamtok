@@ -8,6 +8,7 @@ import {
 } from "tiktok-live-connector";
 import { LiveEventSchema, type GiftCatalogEntry, type LiveEvent } from "@streamtok/shared";
 import type { EventRecorder } from "./event-recorder.js";
+import { extractAvatarUrl } from "./room-state.js";
 
 /**
  * tiktok-live-connector@2.5.0 declara `TikTokLiveConnection` como un
@@ -120,6 +121,7 @@ function extractUserFlags(raw: RawRecord): {
   userLevel?: number;
   fanLevel?: number;
   topGifterRank?: number;
+  avatarUrl?: string;
 } {
   const user = asRecord(raw.user);
   const userAttr = asRecord(user.userAttr);
@@ -128,6 +130,8 @@ function extractUserFlags(raw: RawRecord): {
   // usuario sí lo siga.
   const identity = asRecord(raw.userIdentity);
   const flags: ReturnType<typeof extractUserFlags> = { ...extractLevels(raw) };
+  const avatarUrl = extractAvatarUrl(user);
+  if (avatarUrl) flags.avatarUrl = avatarUrl;
   if (user.isFollower === true || identity.isFollowerOfAnchor === true) flags.isFollower = true;
   if (user.isSubscribe === true || identity.isSubscriberOfAnchor === true) flags.isSubscriber = true;
   if (userAttr.isAdmin === true || userAttr.isSuperAdmin === true) flags.isModerator = true;
@@ -431,6 +435,10 @@ export class TikTokLiveSource extends EventEmitter {
     events.on(WebcastEvent.SHARE, (data) => this.ingest("share", data));
     events.on(WebcastEvent.SUB_NOTIFY, (data) => this.ingest("subNotify", data));
     events.on(WebcastEvent.EMOTE, (data) => this.ingest("emote", data));
+    // Estado de la sala (ADR 0013): no son LiveEvent; se re-emiten tal cual para el estado de la sala.
+    events.on(WebcastEvent.ROOM_USER, (data) => this.emit("roomUser", data));
+    events.on(WebcastEvent.LINK_MIC_ARMIES, (data) => this.emit("battleArmies", data));
+    events.on(WebcastEvent.LINK_MIC_BATTLE, (data) => this.emit("battleHosts", data));
 
     // Todos los mensajes decodificados (también los que la app aún no mapea:
     // niveles, batallas, ranking…), solo si hay grabadora activa.

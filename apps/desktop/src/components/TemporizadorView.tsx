@@ -1,8 +1,8 @@
-import { formatTimerMs, timerRateText, type Accion, type AccionesMessage, type OverlaysConfig, type OverlaysState, type TimerConfig, type TimerPerType } from "@streamtok/shared";
+import { formatTimerMs, timerRateText, type OverlaysConfig, type OverlaysState, type TimerConfig, type TimerPerType } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { useOverlays, type Ov } from "../lib/use-overlays";
 import type { SidecarClient } from "../lib/ws-client";
-import { Btn, Card, DesignCard, Field, NumberField, UrlCard, grid2, grid3, inputStyle } from "./overlays-ui";
+import { AccionesPicker, Btn, Card, DesignCard, Field, NumberField, UrlCard, grid2, grid3, inputStyle } from "./overlays-ui";
 
 /** Módulo "Temporizador": enlace del overlay, control y configuración (como TikFinity). */
 export function TemporizadorView({ client }: { client: SidecarClient | null }) {
@@ -83,6 +83,7 @@ function TimerPage({
       <UrlCard
         kind="timer"
         title="Overlay"
+        stable
         onCustomize={() => setCustomizing((v) => !v)}
         customizeLabel={customizing ? "Cerrar personalización" : "Personalizar diseño"}
       />
@@ -230,62 +231,8 @@ function TimerPage({
           Los espectadores suman mientras el timer corre o, con “Iniciar solo”, también desde 0. En pausa no suma.
         </div>
 
-        <ExpireActions client={client} ids={tc.onExpireAccionIds} onChange={(ids) => patchTimer({ onExpireAccionIds: ids })} />
+        <AccionesPicker label="Al expirar, ejecutar" client={client} ids={tc.onExpireAccionIds} onChange={(ids) => patchTimer({ onExpireAccionIds: ids })} />
       </Card>
     </>
-  );
-}
-
-/** Acciones que se ejecutan cuando el timer llega a 0. */
-function ExpireActions({
-  client,
-  ids,
-  onChange,
-}: {
-  client: SidecarClient | null;
-  ids: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const [acciones, setAcciones] = useState<Accion[]>([]);
-  useEffect(() => {
-    if (!client) return;
-    const off = client.on((evt) => {
-      if (evt.channel === "acciones") {
-        const msg = evt.payload as AccionesMessage;
-        if (msg.kind === "update") setAcciones(msg.acciones);
-      }
-    });
-    client.send("profiles", { kind: "get-state" });
-    return off;
-  }, [client]);
-
-  const available = acciones.filter((a) => !ids.includes(a.id));
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 700 }}>Al expirar, ejecutar</div>
-      {ids.length === 0 && <div style={{ fontSize: 12, color: "#9A9CA5" }}>Ninguna acción.</div>}
-      {ids.map((id) => {
-        const a = acciones.find((x) => x.id === id);
-        return (
-          <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-            <span style={{ flex: 1 }}>{a ? a.nombre : "(acción eliminada)"}</span>
-            <Btn onClick={() => onChange(ids.filter((x) => x !== id))}>Quitar</Btn>
-          </div>
-        );
-      })}
-      <select
-        value=""
-        onChange={(e) => e.target.value && onChange([...ids, e.target.value])}
-        disabled={available.length === 0}
-        style={{ ...inputStyle, width: 260 }}
-      >
-        <option value="">{available.length === 0 ? "No hay más acciones" : "Agregar acción…"}</option>
-        {available.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.nombre}
-          </option>
-        ))}
-      </select>
-    </div>
   );
 }

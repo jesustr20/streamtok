@@ -2,10 +2,13 @@ import type { OverlaysConfig, OverlaysMessage, OverlaysState } from "@streamtok/
 import { useCallback, useEffect, useState } from "react";
 import type { SidecarClient } from "./ws-client";
 
+// Último estado recibido: al volver a una vista se muestra al instante y el diseño no se mueve.
+let last: { state: OverlaysState; config: OverlaysConfig } | null = null;
+
 /** Estado y configuración de los overlays (canal WS `overlays`, ADR 0011). */
 export function useOverlays(client: SidecarClient | null) {
-  const [state, setState] = useState<OverlaysState | null>(null);
-  const [config, setConfig] = useState<OverlaysConfig | null>(null);
+  const [state, setState] = useState<OverlaysState | null>(last?.state ?? null);
+  const [config, setConfig] = useState<OverlaysConfig | null>(last?.config ?? null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -14,6 +17,7 @@ export function useOverlays(client: SidecarClient | null) {
       if (evt.channel !== "overlays") return;
       const msg = evt.payload as OverlaysMessage;
       if (msg.kind === "state") {
+        last = { state: msg.state, config: msg.config };
         setState(msg.state);
         setConfig(msg.config);
         setError(null);

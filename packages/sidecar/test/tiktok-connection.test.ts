@@ -104,6 +104,18 @@ describe("TiktokConnectionController", () => {
     expect(onConnected).toHaveBeenCalledTimes(1);
   });
 
+  it("reenvía los mensajes de la sala (espectadores y batalla) de la conexión vigente", async () => {
+    const onRoom = vi.fn();
+    (controller as any).deps.onRoom = onRoom;
+    await controller.connect("a");
+    sources[0].emit("roomUser", { viewerCount: 5 });
+    sources[0].emit("battleArmies", { armies: {} });
+    expect(onRoom.mock.calls).toEqual([
+      ["roomUser", { viewerCount: 5 }],
+      ["battleArmies", { armies: {} }],
+    ]);
+  });
+
   it("incluye nickname y foto del dueño si la fuente los entrega", async () => {
     const orig = controller as any;
     orig.deps.createSource = (username: string) => {

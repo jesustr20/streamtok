@@ -33,6 +33,9 @@ export const LiveEventSchema = z.object({
   event: LiveEventType,
   username: z.string(), // @handle
   nickname: z.string().optional(), // display name real — es lo que va en nameTag
+  // Foto de perfil del usuario (URL de la CDN de TikTok). Solo la usan los overlays
+  // (ADR 0013); no entra en el mapeo de Acciones. Ausente = desconocida.
+  avatarUrl: z.string().min(1).optional(),
   giftName: z.string().optional(),
   giftId: z.number().optional(),
   coins: z.number().optional(), // valor total en monedas del regalo (repeatCount ya aplicado)

@@ -189,7 +189,7 @@ export function timerRateText(t: {
 /** Puerto por defecto del servidor HTTP de overlays del sidecar (127.0.0.1). */
 export const OVERLAY_DEFAULT_PORT = 7340;
 
-export type OverlayKind = "timer" | "wins";
+export type OverlayKind = "timer" | "wins" | "meta";
 
 export interface OverlayDesign {
   id: string;
@@ -207,6 +207,12 @@ export const OVERLAY_DESIGNS: Record<OverlayKind, OverlayDesign[]> = {
   wins: [
     { id: "interactive", name: "Trofeo" },
     { id: "streamtok", name: "StreamTok" },
+  ],
+  meta: [
+    { id: "interactive", name: "Pastilla con icono" },
+    { id: "barra", name: "Barra" },
+    { id: "radial", name: "Círculo" },
+    { id: "texto", name: "Texto" },
   ],
 };
 
@@ -232,6 +238,9 @@ function appCommand(
   return { id, name, category: "other", icon, description, supportsNameTag: false, params };
 }
 
+/** Ids de las metas que traen las Acciones (las de fábrica; ver `GOAL_PRESETS` en metas.ts, un test las compara). */
+export const GOAL_COMMAND_IDS = ["likes", "seguidores", "compartidos", "monedas", "superfans", "regalos"];
+
 /** Catálogo de comandos internos, con la misma forma que las acciones del mod
  * para que el selector de comandos de la UI los trate igual. */
 export const APP_COMMANDS: ModAction[] = [
@@ -248,6 +257,21 @@ export const APP_COMMANDS: ModAction[] = [
   appCommand("app.timer.pause", "Timer: pausar", "timer", "Pausa el timer."),
   appCommand("app.timer.reset", "Timer: reiniciar", "timer", "Vuelve al tiempo inicial, detenido."),
   appCommand("app.timer.stop", "Timer: detener", "timer", "Detiene el timer en 0."),
+  appCommand("app.goal.add", "Meta: sumar", "trophy", "Suma al avance de una meta (Metas).", [
+    { name: "meta", type: "enum", default: "likes", options: GOAL_COMMAND_IDS },
+    { name: "amount", type: "int", default: 1, min: 0, max: 100000, presets: [1, 10, 100] },
+  ]),
+  appCommand("app.goal.remove", "Meta: restar", "trophy", "Resta al avance de una meta (Metas).", [
+    { name: "meta", type: "enum", default: "likes", options: GOAL_COMMAND_IDS },
+    { name: "amount", type: "int", default: 1, min: 0, max: 100000, presets: [1, 10, 100] },
+  ]),
+  appCommand("app.goal.set", "Meta: fijar avance", "trophy", "Fija el avance de una meta (Metas).", [
+    { name: "meta", type: "enum", default: "likes", options: GOAL_COMMAND_IDS },
+    { name: "count", type: "int", default: 0, min: 0, max: 10000000 },
+  ]),
+  appCommand("app.goal.reset", "Meta: reiniciar", "trophy", "Pone el avance de una meta en 0 (Metas).", [
+    { name: "meta", type: "enum", default: "likes", options: GOAL_COMMAND_IDS },
+  ]),
   appCommand("app.wins.add", "Wins: sumar", "trophy", "Suma wins al conteo.", [
     { name: "amount", type: "int", default: 1, min: -1000, max: 1000, presets: [1, 2, 5] },
   ]),

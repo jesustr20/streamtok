@@ -18,6 +18,20 @@ describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", 
     expect(typeof evt?.timestamp).toBe("number");
   });
 
+  it("incluye la foto de perfil (avatarUrl) cuando el mensaje la trae, y no inventa nada si falta", () => {
+    const con = mapTiktokEvent("chat", {
+      user: { displayId: "fan", nickname: "Fan", avatarThumb: { urlList: ["https://cdn/fan.jpg"] } },
+      content: "hola",
+    });
+    expect(con?.avatarUrl).toBe("https://cdn/fan.jpg");
+    const sin = mapTiktokEvent("chat", { user: { displayId: "fan", nickname: "Fan" }, content: "hola" });
+    expect(sin).not.toHaveProperty("avatarUrl");
+    for (const kind of ["like", "follow", "share", "member", "subNotify"] as const) {
+      const e = mapTiktokEvent(kind, { user: { displayId: "fan", avatarMedium: { urlList: ["https://cdn/m.jpg"] } } });
+      expect(e?.avatarUrl).toBe("https://cdn/m.jpg");
+    }
+  });
+
   it("normaliza un follow a un LiveEvent de tipo follow", () => {
     const evt = mapTiktokEvent("follow", {
       user: { displayId: "seguidor", nickname: "Seguidor" },

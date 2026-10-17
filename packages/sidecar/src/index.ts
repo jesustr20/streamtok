@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { EventLogEntry, LiveEvent } from "@streamtok/shared";
+import { GOAL_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventRecorder, maxBytesFromEnv } from "./event-recorder.js";
 import {
@@ -14,6 +14,9 @@ import {
   OverlaysStore,
   defaultOverlaysFilePath,
 } from "./overlay-counters.js";
+import { RoomController, RoomStateEngine } from "./room-state.js";
+import { GoalsController } from "./goals-controller.js";
+import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
 import { OverlayHttpServer, overlayPortFromEnv } from "./overlay-server.js";
 import { OverlaysController } from "./overlays-controller.js";
 import { registerManualCommand } from "./manual-command.js";
@@ -121,15 +124,48 @@ overlayCounters.on("timer-expired", (accionIds: string[]) => {
     console.error("Error ejecutando las acciones de fin del timer:", err);
   });
 });
-engine.setCounters(overlayCounters);
 new OverlaysController(server, overlayCounters);
+
+// Metas (ADR 0012): varias metas a la vez, cada una con su overlay /overlay/meta/<id>.
+const goals = new GoalsEngine({
+  presets: GOAL_PRESETS,
+  store: new GoalsStore(defaultGoalsFilePath(), (message) =>
+    // eslint-disable-next-line no-console
+    console.warn("[goals:warn]", message),
+  ),
+});
+goals.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[goals:${entry.level}]`, entry.message, entry.details ?? "");
+});
+// Al cumplirse una meta se ejecutan las Acciones elegidas en "Acciones al finalizar".
+goals.on("goal-reached", (goal: Goal) => {
+  if (goal.config.onReachAccionIds.length === 0) return;
+  engine.runAcciones(goal.config.onReachAccionIds, `meta:${goal.config.id}`).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("Error ejecutando las acciones de fin de meta:", err);
+  });
+});
+new GoalsController(server, goals);
+
+// Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
+const room = new RoomStateEngine();
+new RoomController(server, room);
+room.on("viewers", (count: number) => goals.handleViewers(count));
+
+// Los comandos internos `app.*` de las Acciones: `app.goal.*` van a las metas, el resto a Timer/Wins.
+const appCommands = {
+  applyAppCommand: (id: string, params: Record<string, unknown>) =>
+    id.startsWith("app.goal.") ? goals.applyAppCommand(id, params) : overlayCounters.applyAppCommand(id, params),
+};
+engine.setCounters(appCommands);
 
 const overlayHttp = new OverlayHttpServer({ port: overlayPortFromEnv(process.env), wsPort: PORT });
 overlayHttp
   .listen()
   .then((port) => {
     // eslint-disable-next-line no-console
-    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer y /overlay/wins`);
+    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins y /overlay/meta/<id>`);
   })
   .catch((err) => {
     // No tumba el sidecar: sin el servidor de overlays todo lo demás sigue funcionando.
@@ -142,7 +178,7 @@ overlayHttp
 // "Probar acción" de la UI) reusando ModBridge.sendCommand. No toca el
 // protocolo del mod.
 // ---------------------------------------------------------------------------
-registerManualCommand(server, modBridge, overlayCounters);
+registerManualCommand(server, modBridge, appCommands);
 
 // ---------------------------------------------------------------------------
 // Fuente de LiveEvents. En producción esto viene de tiktok-live-connector
@@ -153,6 +189,7 @@ registerManualCommand(server, modBridge, overlayCounters);
 server.onChannel("live-event", (payload) => {
   const evt = payload as LiveEvent;
   overlayCounters.handleLiveEvent(evt);
+  goals.handleLiveEvent(evt);
   engine.handleEvent(evt).catch((err) => {
     // eslint-disable-next-line no-console
     console.error("Error procesando live-event:", err);
@@ -182,15 +219,23 @@ const tiktokConnection = new TiktokConnectionController(server, {
   createSource: (username, recorder) => new TikTokLiveSource(username, recorder),
   onEvent: (evt) => {
     overlayCounters.handleLiveEvent(evt);
+    goals.handleLiveEvent(evt);
     engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
     });
   },
   onGift: (entry) => giftCatalogController.learn(entry),
+  onRoom: (kind, raw) => {
+    if (kind === "roomUser") room.ingestRoomUser(raw);
+    else if (kind === "battleArmies") room.ingestBattleArmies(raw);
+    else room.ingestBattleHosts(raw);
+  },
   onConnected: () => {
     engine.resetSession();
     overlayCounters.resetSession();
+    goals.resetSession();
+    room.reset();
   },
 });
 tiktokConnection.on("log", (entry) => {

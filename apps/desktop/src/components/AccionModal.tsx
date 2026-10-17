@@ -662,9 +662,9 @@ function AppCommandPicker({ value, onSelect }: { value: string; onSelect: (id: s
 }
 
 /**
- * La cantidad de una acción de Timer/Wins, compacta, como el "#:" de Interactive:
- * solo un número. Si suma o resta lo decide la opción elegida (p. ej. "Wins:
- * quitar" con 5 resta 5), no el signo del número.
+ * Los datos de una acción de Timer, Wins o Meta, compactos, como el "#:" de Interactive:
+ * una lista (qué meta) y/o un número. Si suma o resta lo decide la opción elegida (p. ej.
+ * "Wins: quitar" con 5 resta 5), no el signo del número.
  */
 function AppAmount({
   action,
@@ -675,45 +675,66 @@ function AppAmount({
   values: ParamValues;
   onChange: (v: ParamValues) => void;
 }) {
-  const param = action.params[0];
+  const pick = action.params.find((p) => p.type === "enum");
+  const param = action.params.find((p) => p.type === "int");
   const [text, setText] = useState(() => String(values[param?.name ?? ""] ?? param?.default ?? ""));
-  if (!param) return null; // iniciar, pausar, reiniciar…: no llevan cantidad
+  if (!param && !pick) return null; // iniciar, pausar, reiniciar…: no llevan datos
   // Solo "fijar conteo" puede llevar un número negativo; el resto son cantidades positivas.
   const allowNegative = action.id === "app.wins.set";
   const n = Number(text);
   const valid = /^-?\d+$/.test(text);
-  const outOfRange = valid && ((param.min !== undefined && n < param.min) || (param.max !== undefined && n > param.max));
+  const outOfRange = !!param && valid && ((param.min !== undefined && n < param.min) || (param.max !== undefined && n > param.max));
   const unit = action.id.startsWith("app.timer.") ? "seg" : "";
 
   function change(raw: string) {
+    if (!param) return;
     const cleaned = allowNegative ? raw.replace(/(?!^-)[^\d]/g, "") : raw.replace(/\D/g, "");
     setText(cleaned);
     const num = Number(cleaned);
-    onChange(/^-?\d+$/.test(cleaned) && Number.isFinite(num) ? { [param.name]: num } : {});
+    const rest = { ...values };
+    delete rest[param.name];
+    onChange(/^-?\d+$/.test(cleaned) && Number.isFinite(num) ? { ...rest, [param.name]: num } : rest);
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>#:</span>
-      <input
-        type="text"
-        inputMode="numeric"
-        value={text}
-        onChange={(e) => change(e.target.value)}
-        title={outOfRange ? `Entre ${param.min} y ${param.max}` : undefined}
-        style={{
-          width: 90,
-          height: 30,
-          padding: "0 8px",
-          background: "#0E0F12",
-          border: `1px solid ${outOfRange || !valid ? ACCENT : "#2A2C33"}`,
-          borderRadius: 6,
-          color: "#F4F4F5",
-          fontSize: 12.5,
-          boxSizing: "border-box",
-        }}
-      />
-      {unit && <span style={{ fontSize: 11, color: "#9A9CA5" }}>{unit}</span>}
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      {pick && (
+        <select
+          value={String(values[pick.name] ?? pick.default)}
+          onChange={(e) => onChange({ ...values, [pick.name]: e.target.value })}
+          style={{ height: 30, padding: "0 8px", background: "#0E0F12", border: "1px solid #2A2C33", borderRadius: 6, color: "#F4F4F5", fontSize: 12.5 }}
+        >
+          {(pick.options ?? []).map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      )}
+      {param && (
+        <>
+          <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>#:</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={text}
+            onChange={(e) => change(e.target.value)}
+            title={outOfRange ? `Entre ${param.min} y ${param.max}` : undefined}
+            style={{
+              width: 90,
+              height: 30,
+              padding: "0 8px",
+              background: "#0E0F12",
+              border: `1px solid ${outOfRange || !valid ? ACCENT : "#2A2C33"}`,
+              borderRadius: 6,
+              color: "#F4F4F5",
+              fontSize: 12.5,
+              boxSizing: "border-box",
+            }}
+          />
+          {unit && <span style={{ fontSize: 11, color: "#9A9CA5" }}>{unit}</span>}
+        </>
+      )}
     </div>
   );
 }

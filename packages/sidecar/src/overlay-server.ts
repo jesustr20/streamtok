@@ -24,12 +24,19 @@ export function overlayPortFromEnv(env: NodeJS.ProcessEnv): number {
   return Number.isInteger(n) && n >= 0 && n <= 65535 && env.STREAMTOK_OVERLAY_PORT ? n : OVERLAY_DEFAULT_PORT;
 }
 
-const KINDS: OverlayKind[] = ["timer", "wins"];
+const KINDS: OverlayKind[] = ["timer", "wins", "meta"];
 
-/** `/overlay/<tipo>` o `/overlay/<tipo>/<id>` (el id se ignora por ahora). */
-function kindFromPath(pathname: string): OverlayKind | null {
-  const m = /^\/overlay\/([a-z]+)(?:\/[^/]*)?\/?$/.exec(pathname);
-  return m && (KINDS as string[]).includes(m[1]) ? (m[1] as OverlayKind) : null;
+/** `/overlay/<tipo>` o `/overlay/<tipo>/<id>` (el id solo lo usan los tipos con varias instancias, p. ej. `meta`). */
+function parsePath(pathname: string): { kind: OverlayKind; id: string } | null {
+  const m = /^\/overlay\/([a-z]+)(?:\/([^/]*))?\/?$/.exec(pathname);
+  if (!m || !(KINDS as string[]).includes(m[1])) return null;
+  let id = m[2] ?? "";
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    id = "";
+  }
+  return { kind: m[1] as OverlayKind, id };
 }
 
 export class OverlayHttpServer {
@@ -65,13 +72,13 @@ export class OverlayHttpServer {
     }
 
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-    const kind = kindFromPath(pathname);
-    if (!kind) {
+    const target = parsePath(pathname);
+    if (!target) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("No encontrado");
       return;
     }
-    const html = overlayPage(kind, this.wsPort);
+    const html = overlayPage(target.kind, this.wsPort, target.kind === "meta" ? { id: target.id } : {});
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(method === "HEAD" ? undefined : html);
   }

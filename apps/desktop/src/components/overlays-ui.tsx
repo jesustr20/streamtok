@@ -1,4 +1,6 @@
 import {
+  type Accion,
+  type AccionesMessage,
   OVERLAY_DEFAULT_PORT,
   OVERLAY_DESIGNS,
   overlayPage,
@@ -6,6 +8,7 @@ import {
   type OverlayStyle,
 } from "@streamtok/shared";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { SidecarClient } from "../lib/ws-client";
 
 export const ACCENT = "#E23A57";
 export const LOCAL_HOST = `http://localhost:${OVERLAY_DEFAULT_PORT}`;
@@ -40,16 +43,25 @@ function useOverlayServerStatus(): "checking" | "up" | "down" {
  */
 export function UrlCard({
   kind,
+  id,
   title = "Enlace del overlay",
   onCustomize,
   customizeLabel = "Personalizar diseño",
+  showPreview,
+  stable = false,
 }: {
   kind: OverlayKind;
+  /** instancia (solo overlays con varias, como las metas) */
+  id?: string;
   title?: string;
   onCustomize?: () => void;
   customizeLabel?: string;
+  /** vista previa aunque no haya botón de personalizar (p. ej. metas rotativas) */
+  showPreview?: boolean;
+  /** vista previa que espera a tener sus datos y reserva su recuadro (sin saltos de tamaño) */
+  stable?: boolean;
 }) {
-  const path = `/overlay/${kind}`;
+  const path = id ? `/overlay/${kind}/${encodeURIComponent(id)}` : `/overlay/${kind}`;
   const server = useOverlayServerStatus();
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   return (
@@ -66,13 +78,21 @@ export function UrlCard({
           sidecar: si dice “no se pudo abrir el servidor de overlays”, otro programa usa ese puerto.
         </div>
       )}
-      {onCustomize && (
+      {(onCustomize || showPreview) && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <Preview kind={kind} designId={undefined} maxWidth={560} onSize={setSize} />
-          <Btn onClick={onCustomize}>{customizeLabel}</Btn>
+          <Preview
+            kind={kind}
+            id={id}
+            designId={undefined}
+            maxWidth={560}
+            onSize={setSize}
+            reserve={kind === "meta" || stable ? PREVIEW_RESERVE[kind] : undefined}
+            waitReady={stable}
+          />
+          {onCustomize && <Btn onClick={onCustomize}>{customizeLabel}</Btn>}
         </div>
       )}
-      {onCustomize && size && (
+      {(onCustomize || showPreview) && size && (
         <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.5 }}>
           En TikTok LIVE Studio, si activas <b>Resolución personalizada</b>, usa al menos{" "}
           <b style={{ color: "#F4F4F5" }}>
@@ -84,6 +104,13 @@ export function UrlCard({
     </Card>
   );
 }
+
+/** Recuadro de vista previa reservado por tipo: no cambia de tamaño al cargar ni al volver a la vista. */
+const PREVIEW_RESERVE: Record<OverlayKind, { w: number; h: number }> = {
+  timer: { w: 490, h: 190 },
+  wins: { w: 560, h: 150 },
+  meta: { w: 560, h: 150 },
+};
 
 /** Redondea hacia arriba al siguiente múltiplo de 10 (un poco de margen). */
 function roundUp(n: number): number {
@@ -126,14 +153,18 @@ function UrlRow({ label, url, note }: { label: string; url: string; note: string
  */
 export function DesignCard({
   kind,
+  id,
   style,
   onChange,
   showPreview = true,
 }: {
   kind: OverlayKind;
+  id?: string;
   style: OverlayStyle;
   onChange: (s: OverlayStyle) => void;
   showPreview?: boolean;
+  /** vista previa que espera a tener sus datos y reserva su recuadro (sin saltos de tamaño) */
+  stable?: boolean;
 }) {
   const designs = OVERLAY_DESIGNS[kind];
   const allowScale = kind !== "timer";
@@ -158,7 +189,7 @@ export function DesignCard({
                 textAlign: "left",
               }}
             >
-              <Preview kind={kind} designId={d.id} box={{ w: 212, h: 110 }} />
+              <Preview kind={kind} id={id} designId={d.id} box={{ w: 212, h: 110 }} />
               <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>{d.name}</div>
             </button>
           );
@@ -168,7 +199,7 @@ export function DesignCard({
       {showPreview && (
         <>
           <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>Vista previa</div>
-          <Preview kind={kind} designId={style.designId} maxWidth={920} />
+          <Preview kind={kind} id={id} designId={style.designId} maxWidth={920} />
         </>
       )}
 
@@ -212,20 +243,28 @@ export function DesignCard({
  */
 export function Preview({
   kind,
+  id,
   designId,
   maxWidth = 920,
   box,
   onSize,
+  reserve,
+  waitReady = false,
 }: {
   kind: OverlayKind;
+  id?: string;
   designId: string | undefined;
   maxWidth?: number;
   box?: { w: number; h: number };
+  /** tamaño mínimo reservado: el recuadro no cambia de tamaño al cargar ni entre diseños */
+  reserve?: { w: number; h: number };
+  /** no se muestra ni se mide hasta que la página recibe sus datos */
+  waitReady?: boolean;
   onSize?: (size: { w: number; h: number }) => void;
 }) {
   const html = useMemo(
-    () => overlayPage(kind, SIDECAR_WS_PORT, designId ? { design: designId } : {}),
-    [kind, designId],
+    () => overlayPage(kind, SIDECAR_WS_PORT, { ...(designId ? { design: designId } : {}), ...(id ? { id } : {}) }),
+    [kind, id, designId],
   );
   const frame = useRef<HTMLIFrameElement>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -244,7 +283,11 @@ export function Preview({
   function startMeasuring() {
     stopMeasuring();
     const measure = () => {
-      const root = frame.current?.contentDocument?.getElementById("root");
+      const doc = frame.current?.contentDocument;
+      // hasta que la página recibe sus datos tiene otro aspecto (vacía, sin texto): no se mide ni se muestra
+      if (waitReady && !doc?.documentElement.hasAttribute("data-ready")) return;
+      if (!doc) return;
+      const root = doc.getElementById("root");
       if (!root) return;
       const r = root.getBoundingClientRect();
       const next = { w: Math.ceil(r.right), h: Math.ceil(r.bottom) };
@@ -265,14 +308,15 @@ export function Preview({
       ? Math.min(1, (box.w - 16) / size.w, (box.h - 16) / size.h)
       : Math.min(1, (maxWidth - 24) / size.w)
     : 1;
-  const outerW = box ? box.w : Math.round(natural.w * fit) + 24;
-  const outerH = box ? box.h : Math.round(natural.h * fit) + 24;
+  // antes de medir se usa solo el tamaño reservado (el lienzo grande de medición está oculto)
+  const outerW = box ? box.w : Math.max(reserve?.w ?? 0, size ? Math.round(natural.w * fit) + 24 : 0);
+  const outerH = box ? box.h : Math.max(reserve?.h ?? 0, size ? Math.round(natural.h * fit) + 24 : 0);
   return (
     <div
       style={{
-        width: size ? outerW : 120,
+        width: size || reserve ? outerW : 120,
         maxWidth: "100%",
-        height: size ? outerH : 60,
+        height: size || reserve ? outerH : 60,
         overflow: "hidden",
         borderRadius: 8,
         background: "repeating-conic-gradient(#1b1c21 0% 25%, #23252c 0% 50%) 0 0 / 16px 16px",
@@ -296,7 +340,7 @@ export function Preview({
       >
         <iframe
           ref={frame}
-          title={`preview-${kind}-${designId ?? "actual"}`}
+          title={`preview-${kind}-${id ?? ""}-${designId ?? "actual"}`}
           srcDoc={html}
           onLoad={startMeasuring}
           style={{
@@ -467,3 +511,59 @@ export const inputStyle: CSSProperties = {
 
 export const grid2: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 };
 export const grid3: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 };
+
+/** Elegir las Acciones que se ejecutan en un momento (al expirar el timer, al cumplir una meta…). */
+export function AccionesPicker({
+  label,
+  client,
+  ids,
+  onChange,
+}: {
+  label: string;
+  client: SidecarClient | null;
+  ids: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [acciones, setAcciones] = useState<Accion[]>([]);
+  useEffect(() => {
+    if (!client) return;
+    const off = client.on((evt) => {
+      if (evt.channel === "acciones") {
+        const msg = evt.payload as AccionesMessage;
+        if (msg.kind === "update") setAcciones(msg.acciones);
+      }
+    });
+    client.send("profiles", { kind: "get-state" });
+    return off;
+  }, [client]);
+
+  const available = acciones.filter((a) => !ids.includes(a.id));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</div>
+      {ids.length === 0 && <div style={{ fontSize: 12, color: "#9A9CA5" }}>Ninguna acción.</div>}
+      {ids.map((id) => {
+        const a = acciones.find((x) => x.id === id);
+        return (
+          <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <span style={{ flex: 1 }}>{a ? a.nombre : "(acción eliminada)"}</span>
+            <Btn onClick={() => onChange(ids.filter((x) => x !== id))}>Quitar</Btn>
+          </div>
+        );
+      })}
+      <select
+        value=""
+        onChange={(e) => e.target.value && onChange([...ids, e.target.value])}
+        disabled={available.length === 0}
+        style={{ ...inputStyle, width: 260 }}
+      >
+        <option value="">{available.length === 0 ? "No hay más acciones" : "Agregar acción…"}</option>
+        {available.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.nombre}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}

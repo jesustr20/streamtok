@@ -28,6 +28,8 @@ export interface TiktokConnectionDeps {
   createSource(username: string, recorder: Pick<RawRecorder, "record">): LiveSource;
   onEvent(evt: LiveEvent): void;
   onGift(entry: GiftCatalogEntry): void;
+  /** Mensajes de la sala sin normalizar (espectadores y batalla, ADR 0013). */
+  onRoom?(kind: "roomUser" | "battleArmies" | "battleHosts", raw: unknown): void;
   /** Se llama cuando una conexión queda establecida (ej. reiniciar la sesión del motor). */
   onConnected(): void;
 }
@@ -115,6 +117,9 @@ export class TiktokConnectionController extends EventEmitter {
 
     source.on("log", (entry) => this.emit("log", entry));
     source.on("event", (evt: LiveEvent) => current() && this.deps.onEvent(evt));
+    for (const kind of ["roomUser", "battleArmies", "battleHosts"] as const) {
+      source.on(kind, (raw: unknown) => current() && this.deps.onRoom?.(kind, raw));
+    }
     source.on("giftCatalogEntry", (entry: GiftCatalogEntry) => current() && this.deps.onGift(entry));
     source.on("disconnected", () => {
       if (!current()) return;

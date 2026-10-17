@@ -181,6 +181,203 @@ const WINS_JS = `
 `;
 
 // ---------------------------------------------------------------------------
+// Meta (ADR 0012): una instancia por id, canal WS "goals"
+// ---------------------------------------------------------------------------
+
+const META_CSS = `
+  @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.05); } 100% { transform: scale(1); } }
+  @keyframes swap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .pulse .box { animation: pop .5s ease-out; }
+  .swap .box { animation: swap .35s ease-out; }
+  .box { background: var(--bg, linear-gradient(160deg, rgba(18,18,28,.9), rgba(40,16,48,.9))); border: 2px solid var(--accent, #ff3d71);
+    border-radius: 18px; padding: 12px 22px 14px; min-width: 360px; box-sizing: border-box; }
+  .ttl { font: 700 22px/1.1 "Segoe UI", sans-serif; letter-spacing: 3px; text-transform: uppercase; color: var(--accent, #ff3d71); }
+  .nums { font: 800 44px/1.1 "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+  .nums i { font-style: normal; opacity: .55; margin: 0 6px; }
+  .left, .ring, .ico, .pill { display: none; }
+  .track { height: 16px; border-radius: 10px; background: rgba(0,0,0,.55); overflow: hidden; margin-top: 8px; }
+  #fill, #pfill { height: 100%; width: 0; background: var(--accent, #ff3d71); }
+  body.ready #fill, body.ready #pfill { transition: width .4s ease; }
+  .done .ttl::after { content: " \\2714"; }
+
+  /* Pastilla con icono: icono a la izquierda y barra ancha con el texto dentro */
+  body[data-design="interactive"] .box { display: flex; align-items: center; gap: 14px; background: none; border: 0; padding: 0; min-width: 0; border-radius: 0; }
+  body[data-design="interactive"] .ttl, body[data-design="interactive"] .nums, body[data-design="interactive"] .track { display: none; }
+  body[data-design="interactive"] .ico { display: block; width: 64px; height: 64px; flex-shrink: 0; filter: drop-shadow(0 2px 3px rgba(0,0,0,.45)); }
+  body[data-design="interactive"] .ico svg { width: 100%; height: 100%; display: block; }
+  body[data-design="interactive"] .pill { display: block; position: relative; width: 680px; height: 56px; border-radius: 28px; overflow: hidden;
+    background: var(--bg, var(--accent, #2a9d8f)); box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+  body[data-design="interactive"] #pfill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,255,255,.32); }
+  body[data-design="interactive"] #ptxt { position: relative; display: block; text-align: center; font: 700 26px/56px "Segoe UI", system-ui, sans-serif;
+    color: var(--text, #fff); text-shadow: 0 1px 3px rgba(0,0,0,.45); white-space: nowrap; }
+
+  /* Barra: tarjeta con la barra de progreso debajo */
+  body[data-design="barra"] .track { display: block; }
+
+  /* Círculo: anillo de progreso con el avance al centro */
+  body[data-design="radial"] .box { display: flex; align-items: center; gap: 18px; min-width: 0; padding: 14px 24px 14px 14px; }
+  body[data-design="radial"] .track { display: none; }
+  body[data-design="radial"] .ring { display: flex; align-items: center; justify-content: center; width: 130px; height: 130px;
+    border-radius: 50%; background: conic-gradient(var(--accent, #ff3d71) var(--p, 0%), rgba(255,255,255,.14) 0); flex-shrink: 0; }
+  body[data-design="radial"] .ring b { display: flex; align-items: center; justify-content: center; width: 104px; height: 104px;
+    border-radius: 50%; background: #11121a; font: 800 30px/1 "Segoe UI", sans-serif; }
+  body[data-design="radial"] .nums { font-size: 32px; }
+
+  /* Texto: solo lo que falta, sin barra */
+  body[data-design="texto"] .box { background: var(--bg, rgba(0,0,0,.55)); border: 0; text-align: center; }
+  body[data-design="texto"] .track, body[data-design="texto"] .nums { display: none; }
+  body[data-design="texto"] .left { display: block; font: 800 56px/1.1 "Segoe UI", system-ui, sans-serif; }
+`;
+
+const META_BODY = `
+  <div id="root">
+    <div class="box">
+      <span class="ico" id="ico"></span>
+      <span class="ring"><b id="pct">0%</b></span>
+      <div class="info">
+        <div class="ttl" id="ttl"></div>
+        <div class="nums"><span id="cur">0</span><i>/</i><span id="tgt">0</span></div>
+        <div class="left" id="left"></div>
+        <div class="track"><div id="fill"></div></div>
+        <div class="pill"><div id="pfill"></div><span id="ptxt"></span></div>
+      </div>
+    </div>
+  </div>
+`;
+
+/** Copia en JavaScript de `goalRemainingText` (metas.ts) para la página del overlay. */
+export const GOAL_REMAINING_JS = `
+  function goalRemainingText(current, target, before, after) {
+    var left = target - current;
+    if (left <= 0) return "¡Meta cumplida!";
+    return before || after ? (before || "") + String(left) + (after || "") : "Faltan " + String(left);
+  }
+`;
+
+const META_JS = `
+  var curEl = document.getElementById("cur"), tgtEl = document.getElementById("tgt"), ttlEl = document.getElementById("ttl");
+  var fillEl = document.getElementById("fill"), pctEl = document.getElementById("pct"), leftEl = document.getElementById("left");
+  var pfillEl = document.getElementById("pfill"), ptxtEl = document.getElementById("ptxt"), icoEl = document.getElementById("ico");
+  var ringEl = document.querySelector(".ring");
+  var lastCur = null;
+  var UNITS = { coins: "Monedas", gifts: "Regalos", likes: "Likes", follows: "Seguidores", shares: "Compartidos", subscribes: "Super Fans", comments: "Comentarios", viewers: "Espectadores" };
+  var ICONS = {
+    likes: '<svg viewBox="0 0 24 24"><path fill="#ff4d6d" d="M12 21C5 16.500 2 12.500 2 8.500 2 5.500 4.300 3.500 7 3.500c2 0 3.600 1 5 3 1.400-2 3-3 5-3 2.700 0 5 2 5 5 0 4-3 8-10 12.500z"/></svg>',
+    follows: '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="4" fill="#fff"/><path fill="#fff" d="M2 21c0-4.400 3.600-7 8-7s8 2.600 8 7z"/><path stroke="#fff" stroke-width="2.400" stroke-linecap="round" d="M20 5v6M17 8h6"/></svg>',
+    shares: '<svg viewBox="0 0 24 24"><path fill="#fff" d="M14 3l9 8-9 8v-5C8 14 4.500 15.500 1.500 20 2.500 13 6 9 14 8.200z"/></svg>',
+    coins: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.500" fill="#f5b82e"/><circle cx="12" cy="12" r="7.500" fill="none" stroke="#c98a00" stroke-width="1.800"/><path fill="#c98a00" d="M12.800 6.500v1.200c1.200.2 2 .9 2.100 2h-1.700c0-.4-.5-.8-1.200-.8-.8 0-1.200.3-1.200.8 0 .5.400.7 1.600 1 1.700.4 2.700 1 2.700 2.500 0 1.200-.9 2-2.300 2.200v1.200h-1.600v-1.200c-1.500-.2-2.400-1-2.500-2.300h1.700c.1.600.6 1 1.500 1 .8 0 1.300-.3 1.300-.8 0-.5-.4-.7-1.700-1-1.600-.4-2.600-1-2.600-2.400 0-1.100.9-1.900 2.200-2.100V6.500z"/></svg>',
+    subscribes: '<svg viewBox="0 0 24 24"><path fill="#ffc83d" d="M12 1.500l3.200 6.800 7.300.9-5.400 5 1.400 7.300L12 17.900 5.500 21.500l1.400-7.300-5.400-5 7.300-.9z"/></svg>',
+    gifts: '<svg viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="12" rx="1.500" fill="#ff6b8b"/><rect x="2" y="6" width="20" height="4.500" rx="1.200" fill="#ff8fa8"/><rect x="10.800" y="6" width="2.400" height="15" fill="#fff"/><path fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" d="M12 6C9 6 7.500 2.500 9.500 2.500S12 5 12 6c0-1 1.500-3.500 2.500-3.500S15 6 12 6z"/></svg>',
+    viewers: '<svg viewBox="0 0 24 24"><path fill="#fff" d="M12 5C6.500 5 2.400 9 1 12c1.400 3 5.500 7 11 7s9.600-4 11-7c-1.400-3-5.500-7-11-7z"/><circle cx="12" cy="12" r="4.500" fill="#2b2f3a"/><circle cx="12" cy="12" r="2" fill="#fff"/></svg>',
+    comments: '<svg viewBox="0 0 24 24"><path fill="#fff" d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H11l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>'
+  };
+  ${GOAL_REMAINING_JS}
+  function render() {
+    if (!state) return;
+    var p = state.target > 0 ? Math.max(0, Math.min(100, (state.current / state.target) * 100)) : 0;
+    curEl.textContent = state.current;
+    tgtEl.textContent = state.target;
+    ttlEl.textContent = config.title || "";
+    ttlEl.classList.toggle("hidden", !config.title);
+    leftEl.textContent = goalRemainingText(state.current, state.target, config.textBefore, config.textAfter);
+    fillEl.style.width = p + "%";
+    pfillEl.style.width = p + "%";
+    var unit = UNITS[config.metric] || "";
+    var left = state.target - state.current;
+    ptxtEl.textContent = (config.title ? config.title + " - " : "") + (config.countdown
+      ? (left > 0 ? "Quedan " + left + " " + unit : "¡Meta cumplida!")
+      : Math.floor(p) + "% " + unit);
+    icoEl.innerHTML = ICONS[config.metric] || "";
+    pctEl.textContent = Math.floor(p) + "%";
+    ringEl.style.setProperty("--p", p + "%");
+    document.body.classList.toggle("done", state.current >= state.target);
+    if (lastCur !== null && state.current > lastCur) {
+      document.body.classList.remove("pulse");
+      void document.body.offsetWidth;
+      document.body.classList.add("pulse");
+    }
+    lastCur = state.current;
+    setTimeout(function () { document.body.classList.add("ready"); }, 50);
+  }
+`;
+
+/**
+ * Conexión de una Meta: pide TODAS al canal "goals" y se queda con la suya (o la primera
+ * si no hay id). Con el id reservado "rotativa" va mostrando, una a una, las que tienen `rotate`.
+ */
+const META_COMMON_JS = `
+  var q = new URLSearchParams(location.search);
+  var designOverride = q.get("design") || DESIGN_OVERRIDE || null;
+  var state = null, config = null, retry = 0, ws = null;
+  var allGoals = [], rotIdx = 0, shownId = null;
+  var ROTATION_ID = "rotativa", ROTATION_MS = 6000;
+
+  function applyStyle() {
+    var style = config.style;
+    document.body.setAttribute("data-design", designOverride || style.designId);
+    var root = document.documentElement.style;
+    var vars = { "--text": style.textColor, "--accent": style.accentColor, "--bg": style.backgroundColor };
+    for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }
+    root.setProperty("--scale", style.scale || 1);
+  }
+
+  function currentGoal() {
+    if (GOAL_ID === ROTATION_ID) {
+      var list = allGoals.filter(function (g) { return g.config.rotate; });
+      return list.length ? list[rotIdx % list.length] : null;
+    }
+    for (var i = 0; i < allGoals.length; i++) {
+      if (!GOAL_ID || allGoals[i].config.id === GOAL_ID) return allGoals[i];
+    }
+    return null;
+  }
+
+  function refresh() {
+    var found = currentGoal();
+    document.getElementById("root").classList.toggle("hidden", !found);
+    if (!found) { state = null; return; }
+    if (shownId !== found.config.id) {
+      if (shownId !== null) {
+        document.body.classList.remove("swap");
+        void document.body.offsetWidth;
+        document.body.classList.add("swap");
+      }
+      shownId = found.config.id;
+      lastCur = null;
+    }
+    state = found.state;
+    config = found.config;
+    applyStyle();
+    render();
+  }
+
+  function schedule() { retry = Math.min(retry + 1, 6); setTimeout(connect, 500 * retry); }
+
+  function connect() {
+    try { ws = new WebSocket("ws://localhost:" + WS_PORT); } catch (e) { schedule(); return; }
+    ws.onopen = function () {
+      retry = 0;
+      ws.send(JSON.stringify({ channel: "goals", payload: { kind: "get-state" } }));
+    };
+    ws.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data);
+        if (m.channel !== "goals" || !m.payload || m.payload.kind !== "state") return;
+        allGoals = m.payload.goals;
+        refresh();
+        document.documentElement.setAttribute("data-ready", "1");
+      } catch (e) {}
+    };
+    ws.onclose = schedule;
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+
+  setInterval(function () { if (GOAL_ID === ROTATION_ID) { rotIdx++; refresh(); } }, ROTATION_MS);
+  document.body.setAttribute("data-design", designOverride || "interactive");
+  connect();
+`;
+
+// ---------------------------------------------------------------------------
 // Armado
 // ---------------------------------------------------------------------------
 
@@ -218,6 +415,7 @@ const COMMON_JS = `
           offset = state.serverNow - Date.now();
           applyStyle();
           render();
+          document.documentElement.setAttribute("data-ready", "1");
         }
       } catch (e) {}
     };
@@ -237,12 +435,15 @@ function jsString(value: string): string {
 export interface OverlayPageOptions {
   /** Diseño forzado (vista previa dentro de la app, donde no hay `?design=`). */
   design?: string;
+  /** Id de la instancia (solo `meta`): qué meta dibuja. Vacío = la primera. */
+  id?: string;
 }
 
 export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPageOptions = {}): string {
-  const css = kind === "timer" ? TIMER_CSS : WINS_CSS;
-  const body = kind === "timer" ? TIMER_BODY : WINS_BODY;
-  const kindJs = kind === "timer" ? TIMER_JS : WINS_JS;
+  const meta = kind === "meta";
+  const css = meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
+  const body = meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
+  const kindJs = meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
   return `<!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8">
@@ -257,10 +458,11 @@ ${body}
   var KIND = ${JSON.stringify(kind)};
   var WS_PORT = ${Math.trunc(wsPort)};
   var DESIGN_OVERRIDE = ${jsString(opts.design ?? "")};
+  var GOAL_ID = ${jsString(opts.id ?? "")};
   // Funciones de dibujo de este overlay (definen render()).
   ${kindJs}
   // Conexión, estado y estilo comunes.
-  ${COMMON_JS}
+  ${meta ? META_COMMON_JS : COMMON_JS}
 })();
 </script>
 </body></html>`;
