@@ -407,11 +407,13 @@ export class TikTokLiveSource extends EventEmitter {
     const { username, nickname } = extractUserIdentity(msg);
     if (!username) return;
     const levels = extractLevels(msg);
+    const avatarUrl = extractAvatarUrl(asRecord(msg.user));
     for (const change of this.levels.observe(username, levels)) {
       const evt = finalize({
         event: change.kind,
         username,
         nickname,
+        ...(avatarUrl ? { avatarUrl } : {}),
         timestamp: Date.now(),
         previousLevel: change.previousLevel,
         newLevel: change.newLevel,

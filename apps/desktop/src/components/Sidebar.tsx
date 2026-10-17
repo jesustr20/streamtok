@@ -28,7 +28,7 @@ const OVERLAY_ITEMS: NavItem[] = [
   { id: "tops", label: "Tops y MVP", enabled: false },
   { id: "batallas", label: "Batallas", enabled: false },
   { id: "juegos-interactivos", label: "Juegos de stream", enabled: false },
-  { id: "alertas-efectos", label: "Alertas y efectos", enabled: false },
+  { id: "alertas", label: "Alertas y efectos", enabled: true },
   { id: "chat-feed", label: "Chat y feed", enabled: false },
 ];
 
@@ -43,6 +43,13 @@ export const META_NAV: { id: string; label: string }[] = [
   { id: "regalos", label: "Regalos" },
   { id: "espectadores", label: "Espectadores" },
   { id: "personalizadas", label: "Personalizadas" },
+];
+
+/** Sub-items de Alertas y efectos → Subida de nivel; el id es el de la alerta. */
+export const ALERT_NAV: { id: string; label: string }[] = [
+  { id: "comunidad", label: "Comunidad (Quiéreme)" },
+  { id: "donador", label: "Nivel de donador" },
+  { id: "todas", label: "Todas (rotativo)" },
 ];
 
 const NAV_BOTTOM: NavItem[] = [
@@ -68,12 +75,16 @@ export function Sidebar({
   onNavigate,
   metaSel,
   onSelectMeta,
+  alertSel,
+  onSelectAlert,
 }: {
   view: ViewId;
   client: SidecarClient | null;
   onNavigate: (v: ViewId) => void;
   metaSel: string;
   onSelectMeta: (id: string) => void;
+  alertSel: string;
+  onSelectAlert: (id: string) => void;
 }) {
   const { conn, account: remembered } = useTiktokConnection(client);
   // Mientras hay conexión manda lo que reporta el sidecar; si no, la última cuenta recordada.
@@ -86,6 +97,7 @@ export function Sidebar({
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
   const [overlaysOpen, setOverlaysOpen] = useState(true);
   const [metasOpen, setMetasOpen] = useState(true);
+  const [alertasOpen, setAlertasOpen] = useState(true);
   const showPhoto = !!avatarUrl && failedAvatar !== avatarUrl;
 
   return (
@@ -221,11 +233,16 @@ export function Sidebar({
                 enabled={item.enabled}
                 indent={1}
                 active={item.enabled && view === item.id}
-                chevron={item.id === "metas" ? (metasOpen ? "▾" : "▸") : undefined}
+                chevron={
+                  item.id === "metas" ? (metasOpen ? "▾" : "▸") : item.id === "alertas" ? (alertasOpen ? "▾" : "▸") : undefined
+                }
                 onClick={() => {
                   if (item.id === "metas") {
                     setMetasOpen((v) => (view === "metas" ? !v : true));
                     onNavigate("metas");
+                  } else if (item.id === "alertas") {
+                    setAlertasOpen((v) => (view === "alertas" ? !v : true));
+                    onNavigate("alertas");
                   } else onNavigate(item.id as ViewId);
                 }}
               />
@@ -239,6 +256,18 @@ export function Sidebar({
                     indent={2}
                     active={view === "metas" && metaSel === m.id}
                     onClick={() => onSelectMeta(m.id)}
+                  />
+                ))}
+              {item.id === "alertas" &&
+                alertasOpen &&
+                ALERT_NAV.map((a) => (
+                  <NavButton
+                    key={a.id}
+                    label={a.label}
+                    enabled
+                    indent={2}
+                    active={view === "alertas" && alertSel === a.id}
+                    onClick={() => onSelectAlert(a.id)}
                   />
                 ))}
             </div>

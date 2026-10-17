@@ -49,8 +49,11 @@ export function UrlCard({
   customizeLabel = "Personalizar diseño",
   showPreview,
   stable = false,
+  reserve,
 }: {
   kind: OverlayKind;
+  /** recuadro reservado de la vista previa (por defecto el del tipo) */
+  reserve?: { w: number; h: number };
   /** instancia (solo overlays con varias, como las metas) */
   id?: string;
   title?: string;
@@ -86,7 +89,7 @@ export function UrlCard({
             designId={undefined}
             maxWidth={560}
             onSize={setSize}
-            reserve={kind === "meta" || stable ? PREVIEW_RESERVE[kind] : undefined}
+            reserve={reserve ?? (kind === "meta" || stable ? PREVIEW_RESERVE[kind] : undefined)}
             waitReady={stable}
           />
           {onCustomize && <Btn onClick={onCustomize}>{customizeLabel}</Btn>}
@@ -110,6 +113,7 @@ const PREVIEW_RESERVE: Record<OverlayKind, { w: number; h: number }> = {
   timer: { w: 490, h: 190 },
   wins: { w: 560, h: 150 },
   meta: { w: 560, h: 150 },
+  nivel: { w: 560, h: 150 },
 };
 
 /** Redondea hacia arriba al siguiente múltiplo de 10 (un poco de margen). */
@@ -263,7 +267,11 @@ export function Preview({
   onSize?: (size: { w: number; h: number }) => void;
 }) {
   const html = useMemo(
-    () => overlayPage(kind, SIDECAR_WS_PORT, { ...(designId ? { design: designId } : {}), ...(id ? { id } : {}) }),
+    () => overlayPage(kind, SIDECAR_WS_PORT, {
+        ...(designId ? { design: designId } : {}),
+        ...(id ? { id } : {}),
+        ...(kind === "nivel" ? { demo: true } : {}),
+      }),
     [kind, id, designId],
   );
   const frame = useRef<HTMLIFrameElement>(null);

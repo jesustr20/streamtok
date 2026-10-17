@@ -8,11 +8,12 @@ import { ModsLibrary } from "./components/ModsLibrary";
 import { OverlaysView } from "./components/OverlaysView";
 import { Sidebar } from "./components/Sidebar";
 import { TemporizadorView } from "./components/TemporizadorView";
+import { AlertasView } from "./components/AlertasView";
 import { MetasView } from "./components/MetasView";
 import { WinsView } from "./components/WinsView";
 import { SidecarClient } from "./lib/ws-client";
 
-export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas";
+export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas" | "alertas";
 
 export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
@@ -24,6 +25,7 @@ export function App() {
   const [view, setView] = useState<ViewId>("inicio");
   // Qué meta se ve en la pantalla Metas: "rotativa", "personalizadas" o el id de una de fábrica.
   const [metaSel, setMetaSel] = useState("rotativa");
+  const [alertSel, setAlertSel] = useState("comunidad");
 
   useEffect(() => {
     // Catálogo offline: se pide apenas arranca la app, independientemente
@@ -84,6 +86,11 @@ export function App() {
           setMetaSel(id);
           setView("metas");
         }}
+        alertSel={alertSel}
+        onSelectAlert={(id) => {
+          setAlertSel(id);
+          setView("alertas");
+        }}
       />
 
       <main
@@ -118,6 +125,7 @@ export function App() {
         {view === "temporizador" && <TemporizadorView client={client} />}
         {view === "wins" && <WinsView client={client} onCustomize={() => setView("overlays")} />}
         {view === "metas" && <MetasView client={client} selected={metaSel} />}
+        {view === "alertas" && <AlertasView client={client} selected={alertSel} />}
       </main>
     </div>
   );

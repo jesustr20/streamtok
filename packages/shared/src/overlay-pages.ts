@@ -427,6 +427,184 @@ const COMMON_JS = `
   connect();
 `;
 
+
+// ---------------------------------------------------------------------------
+// Nivel / comunidad (ADR 0014): avisos "se unió a la comunidad" y "subió de nivel"
+// ---------------------------------------------------------------------------
+
+const NIVEL_CSS = `
+  #root[data-kind="fanJoin"] { --kc: #ff4d8d; }
+  #root[data-kind="fanLevelUp"] { --kc: #a66bff; }
+  #root[data-kind="donorLevelUp"] { --kc: #ffc233; }
+  .alert { --k: var(--accent, var(--kc, #a66bff)); }
+  @keyframes alIn { from { opacity: 0; transform: translateX(-46px) scale(.95); } to { opacity: 1; transform: none; } }
+  @keyframes alOut { to { opacity: 0; transform: translateY(-16px) scale(.97); } }
+  @keyframes alPop { 0% { transform: scale(.3); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  #root.in .alert { animation: alIn .55s cubic-bezier(.2, .9, .3, 1.15) both; }
+  #root.out .alert { animation: alOut .45s ease-in both; }
+  #root.in .lvl { animation: alPop .6s .25s cubic-bezier(.2, .9, .3, 1.3) both; }
+  .avatar { position: relative; flex: none; width: 72px; height: 72px; border-radius: 50%; background: #2b2f3a; display: flex; align-items: center; justify-content: center; font: 800 32px/1 "Segoe UI", sans-serif; color: #fff; }
+  .avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+  .lvl { position: absolute; right: -8px; bottom: -6px; min-width: 30px; height: 30px; padding: 0 6px; box-sizing: border-box; border-radius: 15px; background: var(--k); color: #fff; font: 800 16px/26px "Segoe UI", sans-serif; font-style: normal; text-align: center; border: 2px solid rgba(0, 0, 0, .35); }
+  .msg small { display: block; font: 800 13px/1.2 "Segoe UI", sans-serif; letter-spacing: 2px; color: var(--k); }
+  .msg p { margin: 3px 0 0; max-width: 520px; font: 600 24px/1.2 "Segoe UI", sans-serif; }
+  .msg p b { font-weight: 800; }
+
+  body[data-design="interactive"] .alert { display: flex; align-items: center; gap: 18px; padding: 14px 32px 14px 16px; border-radius: 999px; background: var(--bg, linear-gradient(135deg, rgba(34, 22, 58, .96), rgba(14, 12, 26, .96))); border: 3px solid var(--k); box-shadow: 0 6px 24px rgba(0, 0, 0, .45); }
+
+  body[data-design="tarjeta"] .alert { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 360px; padding: 22px 28px 24px; border-radius: 24px; text-align: center; background: var(--bg, linear-gradient(160deg, rgba(34, 22, 58, .96), rgba(14, 12, 26, .96))); border: 3px solid var(--k); box-shadow: 0 8px 28px rgba(0, 0, 0, .5); }
+  body[data-design="tarjeta"] .avatar { width: 104px; height: 104px; font-size: 44px; box-shadow: 0 0 0 5px var(--k); }
+  body[data-design="tarjeta"] .lvl { right: -6px; bottom: -4px; height: 36px; min-width: 36px; border-radius: 18px; font-size: 19px; line-height: 32px; }
+  body[data-design="tarjeta"] .msg small { font-size: 17px; letter-spacing: 3px; }
+  body[data-design="tarjeta"] .msg p { font-size: 22px; max-width: 300px; }
+
+  body[data-design="texto"] .alert { display: block; padding: 4px 8px; text-shadow: 0 2px 8px rgba(0, 0, 0, .85); }
+  body[data-design="texto"] .avatar { display: none; }
+  body[data-design="texto"] .msg p { font-size: 30px; max-width: 700px; }
+`;
+
+const NIVEL_BODY = `
+  <div id="root" class="hidden"><div class="alert">
+    <div class="avatar"><img id="av" class="hidden" referrerpolicy="no-referrer" alt=""><span id="ini"></span><i class="lvl" id="lvl"></i></div>
+    <div class="msg"><small id="head"></small><p id="text"></p></div>
+  </div></div>
+`;
+
+/**
+ * Avisos de comunidad y nivel. Pide la configuración al canal "alertas" y se queda con la de su id;
+ * cada aviso que llega se muestra en cola, uno tras otro, durante `durationSec`. En la vista previa
+ * de la app (`demo`) va enseñando avisos de ejemplo sin esperar al LIVE.
+ */
+const NIVEL_JS = `
+  var q = new URLSearchParams(location.search);
+  var designOverride = q.get("design") || DESIGN_OVERRIDE || null;
+  var DEMO = DEMO_MODE || q.get("demo") === "1";
+  var config = null, retry = 0, ws = null, queue = [], showing = false, demoIdx = 0, demoTimer = null;
+  var rootEl = document.getElementById("root"), avEl = document.getElementById("av"), iniEl = document.getElementById("ini");
+  var lvlEl = document.getElementById("lvl"), headEl = document.getElementById("head"), textEl = document.getElementById("text");
+  var HEADS = { fanJoin: "¡NUEVO MIEMBRO!", fanLevelUp: "¡SUBE DE NIVEL!", donorLevelUp: "¡NIVEL DE DONADOR!" };
+  var DEMO_ALERTS = [
+    { kind: "fanJoin", name: "Valentina", level: 1 },
+    { kind: "fanLevelUp", name: "Carlos_92", level: 12 },
+    { kind: "donorLevelUp", name: "Mariana", level: 27 }
+  ];
+
+  function applyStyle() {
+    var style = config.style;
+    document.body.setAttribute("data-design", designOverride || style.designId);
+    var root = document.documentElement.style;
+    var vars = { "--text": style.textColor, "--accent": style.accentColor, "--bg": style.backgroundColor };
+    for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }
+    root.setProperty("--scale", style.scale || 1);
+  }
+
+  // Escribe la frase poniendo el nombre y el nivel en negrita.
+  function fill(el, template, name, level) {
+    el.textContent = "";
+    var rest = String(template), toks = ["{nombre}", "{nivel}"];
+    while (rest.length) {
+      var best = -1, tok = null;
+      for (var i = 0; i < toks.length; i++) {
+        var p = rest.indexOf(toks[i]);
+        if (p !== -1 && (best === -1 || p < best)) { best = p; tok = toks[i]; }
+      }
+      if (best === -1) { el.appendChild(document.createTextNode(rest)); break; }
+      if (best > 0) el.appendChild(document.createTextNode(rest.slice(0, best)));
+      var b = document.createElement("b");
+      b.textContent = tok === "{nombre}" ? name : (level === undefined ? "" : String(level));
+      el.appendChild(b);
+      rest = rest.slice(best + tok.length);
+    }
+  }
+
+  function accepts(a) {
+    if (!config || config.kinds.indexOf(a.kind) === -1) return false;
+    return a.kind === "fanJoin" || a.level === undefined || a.level >= config.minLevel;
+  }
+
+  function show(a) {
+    showing = true;
+    var name = a.name || "Alguien";
+    rootEl.setAttribute("data-kind", a.kind);
+    headEl.textContent = HEADS[a.kind] || "";
+    fill(textEl, config.texts[a.kind] || "", name, a.level);
+    lvlEl.textContent = a.kind === "fanJoin" || a.level === undefined ? "♥" : String(a.level);
+    iniEl.textContent = name.trim().charAt(0).toUpperCase();
+    if (a.avatarUrl) {
+      avEl.onerror = function () { avEl.classList.add("hidden"); iniEl.classList.remove("hidden"); };
+      avEl.src = a.avatarUrl;
+      avEl.classList.remove("hidden");
+      iniEl.classList.add("hidden");
+    } else {
+      avEl.removeAttribute("src");
+      avEl.classList.add("hidden");
+      iniEl.classList.remove("hidden");
+    }
+    rootEl.classList.remove("hidden", "out", "in");
+    void rootEl.offsetWidth;
+    rootEl.classList.add("in");
+    if (DEMO) { showing = false; return; } // la vista previa deja el aviso a la vista
+    setTimeout(function () {
+      rootEl.classList.remove("in");
+      rootEl.classList.add("out");
+      setTimeout(function () { rootEl.classList.add("hidden"); showing = false; next(); }, 450);
+    }, Math.max(2, config.durationSec || 6) * 1000);
+  }
+
+  function next() {
+    if (showing || !config) return;
+    var a = queue.shift();
+    if (a) show(a);
+  }
+
+  function startDemo() {
+    if (demoTimer) clearInterval(demoTimer);
+    var tick = function () {
+      var list = DEMO_ALERTS.filter(accepts);
+      if (!list.length) { rootEl.classList.add("hidden"); return; }
+      show(list[demoIdx++ % list.length]);
+    };
+    tick();
+    demoTimer = setInterval(tick, 3500);
+  }
+
+  function schedule() { retry = Math.min(retry + 1, 6); setTimeout(connect, 500 * retry); }
+
+  function connect() {
+    try { ws = new WebSocket("ws://localhost:" + WS_PORT); } catch (e) { schedule(); return; }
+    ws.onopen = function () {
+      retry = 0;
+      ws.send(JSON.stringify({ channel: "alertas", payload: { kind: "get-state" } }));
+    };
+    ws.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data);
+        if (m.channel !== "alertas" || !m.payload) return;
+        if (m.payload.kind === "state") {
+          var found = null;
+          for (var i = 0; i < m.payload.configs.length; i++) {
+            if (!ALERT_ID || m.payload.configs[i].id === ALERT_ID) { found = m.payload.configs[i]; break; }
+          }
+          config = found;
+          if (config) {
+            applyStyle();
+            if (DEMO) startDemo();
+          }
+          document.documentElement.setAttribute("data-ready", "1");
+        } else if (m.payload.kind === "alert" && !DEMO && accepts(m.payload.alert)) {
+          if (queue.length < 20) queue.push(m.payload.alert);
+          next();
+        }
+      } catch (e) {}
+    };
+    ws.onclose = schedule;
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+
+  document.body.setAttribute("data-design", designOverride || "interactive");
+  connect();
+`;
+
 /** Texto como literal JS seguro dentro de un <script> (escapa `<` para que no cierre la etiqueta). */
 function jsString(value: string): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
@@ -435,15 +613,18 @@ function jsString(value: string): string {
 export interface OverlayPageOptions {
   /** Diseño forzado (vista previa dentro de la app, donde no hay `?design=`). */
   design?: string;
-  /** Id de la instancia (solo `meta`): qué meta dibuja. Vacío = la primera. */
+  /** Id de la instancia (`meta` y `nivel`): qué meta o alerta dibuja. Vacío = la primera. */
   id?: string;
+  /** Vista previa de la app: el overlay `nivel` enseña avisos de ejemplo sin esperar al LIVE. */
+  demo?: boolean;
 }
 
 export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPageOptions = {}): string {
   const meta = kind === "meta";
-  const css = meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
-  const body = meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
-  const kindJs = meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
+  const nivel = kind === "nivel";
+  const css = nivel ? NIVEL_CSS : meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
+  const body = nivel ? NIVEL_BODY : meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
+  const kindJs = nivel ? "" : meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
   return `<!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8">
@@ -459,10 +640,12 @@ ${body}
   var WS_PORT = ${Math.trunc(wsPort)};
   var DESIGN_OVERRIDE = ${jsString(opts.design ?? "")};
   var GOAL_ID = ${jsString(opts.id ?? "")};
+  var ALERT_ID = ${jsString(opts.id ?? "")};
+  var DEMO_MODE = ${opts.demo ? "true" : "false"};
   // Funciones de dibujo de este overlay (definen render()).
   ${kindJs}
   // Conexión, estado y estilo comunes.
-  ${meta ? META_COMMON_JS : COMMON_JS}
+  ${nivel ? NIVEL_JS : meta ? META_COMMON_JS : COMMON_JS}
 })();
 </script>
 </body></html>`;
