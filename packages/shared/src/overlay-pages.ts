@@ -824,10 +824,13 @@ const DUELO_JS = `
       } else {
         name = sc.name || (i ? "B" : "A");
         avatar = mvp && mvp.avatarUrl;
-        if (config.mode === "regalos" && sc.icon) { avatar = sc.icon; gift = true; }
         if (config.mode === "equipos") sub = (st.members || 0) + ((st.members || 0) === 1 ? " persona" : " personas");
-        else if (mvp && mvp.name) sub = "MVP: " + mvp.name;
-        else if (sc.gifts && sc.gifts.length && sc.gifts.join(" + ") !== name) sub = sc.gifts.join(" + ");
+        else {
+          // regalos: arriba, quien más aporta a este lado; debajo y más pequeño, el regalo. Sin aportes aún, el regalo va arriba.
+          var label = sc.name || (sc.gifts && sc.gifts.join(" + ")) || name;
+          if (sc.icon) { avatar = sc.icon; gift = true; }
+          if (mvp && mvp.name) { name = mvp.name; sub = label; } else name = label;
+        }
       }
       out.push({ name: name, sub: sub, avatar: avatar, gift: gift, score: st.score || 0 });
     }

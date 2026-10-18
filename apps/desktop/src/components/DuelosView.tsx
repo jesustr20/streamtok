@@ -74,10 +74,17 @@ function DuelBlock({ config, state, api, gifts }: { config: DuelConfig; state: D
   // Duelos guardados antes de que existiera la imagen: se rellena sola cuando el catálogo ya la conoce.
   useEffect(() => {
     if (config.mode !== "regalos") return;
-    const icons = config.sides.map((s) => giftIcon(s.gifts, gifts));
-    if (icons.every((ic, i) => ic === undefined || ic === config.sides[i].icon)) return;
+    const fix = (s: DuelSideConfig): DuelSideConfig => {
+      const icon = giftIcon(s.gifts, gifts) ?? s.icon;
+      // el nombre es el del regalo; solo se pone cuando todos sus regalos ya están en el catálogo (o son nombres)
+      const ready = s.gifts.length > 0 && s.gifts.every((t) => !/^\d+$/.test(t) || findToken(t, gifts));
+      return { ...s, icon, name: ready ? giftsLabel(s.gifts, gifts) : s.name };
+    };
     const [a, b] = config.sides;
-    api.save({ ...config, sides: [{ ...a, icon: icons[0] ?? a.icon }, { ...b, icon: icons[1] ?? b.icon }] });
+    const na = fix(a);
+    const nb = fix(b);
+    if (na.icon === a.icon && na.name === a.name && nb.icon === b.icon && nb.name === b.name) return;
+    api.save({ ...config, sides: [na, nb] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gifts, config.mode, config.sides[0].gifts.join("|"), config.sides[1].gifts.join("|"), config.sides[0].icon, config.sides[1].icon]);
 
@@ -217,11 +224,17 @@ function Settings({
             <div key={i} style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700 }}>Lado {i === 0 ? "izquierdo" : "derecho"}</div>
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-                {config.mode !== "top" && (
+                {config.mode === "equipos" && (
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <Field label="Nombre" hint={config.mode === "regalos" ? "sigue al regalo; escribe otro si quieres" : ""}>
+                    <Field label="Nombre" hint="">
                       <CommitInput value={side.name} max={30} onCommit={(v) => patchSide(i, { name: v })} />
                     </Field>
+                  </div>
+                )}
+                {config.mode === "regalos" && (
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#9A9CA5", lineHeight: 1.5, alignSelf: "center" }}>
+                    En el overlay: arriba, quien más aporta a este lado; debajo, el regalo
+                    {side.name ? <> «<b style={{ color: "#C9CBD2" }}>{side.name}</b>»</> : ""}. Hasta que alguien aporte, va el regalo arriba.
                   </div>
                 )}
                 <Field label="Color" hint="">
@@ -239,10 +252,8 @@ function Settings({
                     tokens={side.gifts}
                     gifts={gifts}
                     onChange={(g) => {
-                      const was = giftsLabel(side.gifts, gifts);
-                      // el nombre y la imagen del lado siguen a sus regalos, salvo que hayas escrito otro nombre
-                      const follows = !side.name.trim() || side.name === was;
-                      patchSide(i, { gifts: g, icon: giftIcon(g, gifts), ...(follows ? { name: giftsLabel(g, gifts) } : {}) });
+                      // el nombre y la imagen del lado son siempre los de su regalo
+                      patchSide(i, { gifts: g, icon: giftIcon(g, gifts), ...(g.length ? { name: giftsLabel(g, gifts) } : {}) });
                     }}
                   />
                 </Field>
