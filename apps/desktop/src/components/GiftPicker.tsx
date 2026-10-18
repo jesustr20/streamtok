@@ -45,10 +45,13 @@ export function GiftPicker({
   value,
   gifts,
   onSelect,
+  placeholder = "Elegir regalo…",
 }: {
   value: GiftRef | null;
   gifts: GiftCatalogEntry[];
   onSelect: (gift: GiftCatalogEntry) => void;
+  /** texto cuando no hay ningún regalo elegido */
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -86,7 +89,7 @@ export function GiftPicker({
           </>
         ) : (
           <span style={{ flex: 1, textAlign: "left", fontSize: 12.5, color: "#5B5D66" }}>
-            Elegir regalo…
+            {placeholder}
           </span>
         )}
         <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>

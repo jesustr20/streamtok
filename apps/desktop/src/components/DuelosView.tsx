@@ -1,7 +1,17 @@
-import { DUEL_METRIC_NAMES, DUEL_MODES, type DuelConfig, type DuelMetric, type DuelSideConfig, type DuelState } from "@streamtok/shared";
+import {
+  DUEL_METRIC_NAMES,
+  DUEL_MODES,
+  type DuelConfig,
+  type DuelMetric,
+  type DuelSideConfig,
+  type DuelState,
+  type GiftCatalogEntry,
+} from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useDuelos } from "../lib/use-duelos";
+import { useGiftCatalog } from "../lib/use-gift-catalog";
 import type { SidecarClient } from "../lib/ws-client";
+import { GiftPicker } from "./GiftPicker";
 import { Btn, Card, DesignCard, Field, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
 
 type Api = ReturnType<typeof useDuelos>;
@@ -17,7 +27,7 @@ const RESERVE: Record<string, { w: number; h: number }> = {
 /** Qué hace cada duelo de fábrica, para explicarlo en pantalla. */
 const INTRO: Record<string, string> = {
   "regalo-vs-regalo":
-    "Dos regalos compiten: cada vez que llega uno, suma a su lado. Escribe el nombre del regalo (o su número) de cada lado; puedes poner varios separados por comas. Si un lado tiene un solo regalo es “Gift vs Gift”; con varios, “Regalos vs Regalos”.",
+    "Dos regalos compiten: cada vez que llega uno, suma a su lado. Elige de la lista los regalos de cada lado (puedes añadir varios). Si un lado tiene un solo regalo es “Gift vs Gift”; con varios, “Regalos vs Regalos”.",
   equipos:
     "La gente elige equipo escribiendo un comando en el chat (por ejemplo !azul o !rojo) y desde ese momento todo lo que haga suma a su equipo. Quien ya eligió se queda en su equipo hasta que reinicies el marcador.",
   top: "Muestra a los dos mayores donadores de esta sesión, con su foto, frente a frente. Se reinicia solo cuando te conectas a otro LIVE.",
@@ -28,6 +38,7 @@ const MODE_NAMES = Object.fromEntries(DUEL_MODES.map((m) => [m.id, m.name]));
 /** Módulo "Batallas y duelos": una pantalla por duelo, ya creado y con su vista previa. */
 export function DuelosView({ client, selected }: { client: SidecarClient | null; selected: string }) {
   const api = useDuelos(client);
+  const gifts = useGiftCatalog(client);
   const config = api.configs?.find((c) => c.id === selected);
   const heading = config ? `Batallas · ${config.title || config.id}` : "Batallas y duelos";
   return (
@@ -42,7 +53,7 @@ export function DuelosView({ client, selected }: { client: SidecarClient | null;
       {!api.configs ? (
         <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>Conectando con el sidecar…</div>
       ) : config ? (
-        <DuelBlock key={config.id} config={config} state={api.states.find((s) => s.id === config.id)} api={api} />
+        <DuelBlock key={config.id} config={config} state={api.states.find((s) => s.id === config.id)} api={api} gifts={gifts} />
       ) : (
         <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>Este duelo no existe.</div>
       )}
@@ -50,7 +61,7 @@ export function DuelosView({ client, selected }: { client: SidecarClient | null;
   );
 }
 
-function DuelBlock({ config, state, api }: { config: DuelConfig; state: DuelState | undefined; api: Api }) {
+function DuelBlock({ config, state, api, gifts }: { config: DuelConfig; state: DuelState | undefined; api: Api; gifts: GiftCatalogEntry[] }) {
   const [open, setOpen] = useState(false);
   const patch = (p: Partial<DuelConfig>) => api.save({ ...config, ...p });
   const patchSide = (i: Side, p: Partial<DuelSideConfig>) => {
@@ -69,7 +80,7 @@ function DuelBlock({ config, state, api }: { config: DuelConfig; state: DuelStat
       </Card>
 
       <Scoreboard config={config} state={state} api={api} />
-      <Settings config={config} patch={patch} patchSide={patchSide} />
+      <Settings config={config} patch={patch} patchSide={patchSide} gifts={gifts} />
 
       <UrlCard
         kind="duelo"
@@ -152,10 +163,12 @@ function Settings({
   config,
   patch,
   patchSide,
+  gifts,
 }: {
   config: DuelConfig;
   patch: (p: Partial<DuelConfig>) => void;
   patchSide: (i: Side, p: Partial<DuelSideConfig>) => void;
+  gifts: GiftCatalogEntry[];
 }) {
   const metrics = DUEL_MODES.find((m) => m.id === config.mode)?.metrics ?? ["coins"];
   return (
@@ -211,8 +224,8 @@ function Settings({
                 </Field>
               </div>
               {config.mode === "regalos" && (
-                <Field label="Regalos de este lado" hint="nombre o número, separados por comas (p. ej. Rose, 5655)">
-                  <CommitInput value={side.gifts.join(", ")} onCommit={(v) => patchSide(i, { gifts: splitList(v) })} />
+                <Field label="Regalos de este lado" hint="">
+                  <GiftListField tokens={side.gifts} gifts={gifts} onChange={(g) => patchSide(i, { gifts: g })} />
                 </Field>
               )}
               {config.mode === "equipos" && (
@@ -225,6 +238,67 @@ function Settings({
         })}
       </div>
     </Card>
+  );
+}
+
+/**
+ * Regalos de un lado: fichas con imagen y un selector del catálogo para añadir más. Se guarda el
+ * nombre del regalo; si hay dos con el mismo nombre (p. ej. dos "Balloons"), su número, que es único.
+ * Sigue habiendo un campo para escribir uno a mano, por si el catálogo aún no lo tiene.
+ */
+function GiftListField({ tokens, gifts, onChange }: { tokens: string[]; gifts: GiftCatalogEntry[]; onChange: (tokens: string[]) => void }) {
+  const [manual, setManual] = useState("");
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const find = (t: string) => (/^\d+$/.test(t) ? gifts.find((g) => g.id === t) : gifts.find((g) => same(g.name, t)));
+  const add = (t: string) => {
+    const v = t.trim();
+    if (v && !tokens.some((x) => same(x, v))) onChange([...tokens, v]);
+  };
+  const addFromCatalog = (g: GiftCatalogEntry) => {
+    const repeated = gifts.filter((x) => same(x.name, g.name)).length > 1;
+    add(repeated && g.id ? g.id : g.name);
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 34 }}>
+        {tokens.length === 0 && <span style={{ fontSize: 12, color: "#9A9CA5", alignSelf: "center" }}>Ningún regalo: este lado no suma nada.</span>}
+        {tokens.map((t) => {
+          const g = find(t);
+          return (
+            <span
+              key={t}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 4px 3px 6px", borderRadius: 8, background: "#0E0F12", border: "1px solid #2A2C33", fontSize: 12.5 }}
+            >
+              {g && <img src={g.imageUrl} alt="" referrerPolicy="no-referrer" style={{ width: 24, height: 24, borderRadius: 4, objectFit: "cover" }} />}
+              <b style={{ fontWeight: 700 }}>{g?.name ?? t}</b>
+              {g && <span style={{ color: "#9A9CA5", fontSize: 11 }}>{g.cost} 🪙</span>}
+              <button
+                type="button"
+                aria-label={`Quitar ${g?.name ?? t}`}
+                onClick={() => onChange(tokens.filter((x) => x !== t))}
+                style={{ border: "none", background: "transparent", color: "#9A9CA5", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 4px" }}
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex" }}>
+        <GiftPicker value={null} gifts={gifts} onSelect={addFromCatalog} placeholder="Añadir regalo de la lista…" />
+      </div>
+      <input
+        value={manual}
+        onChange={(e) => setManual(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          add(manual);
+          setManual("");
+        }}
+        placeholder="¿No sale en la lista? Escribe su nombre y pulsa Enter"
+        style={{ ...inputStyle, width: "100%", fontSize: 11.5 }}
+      />
+    </div>
   );
 }
 
