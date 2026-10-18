@@ -128,6 +128,7 @@ export type DuelosFile = z.infer<typeof DuelosFileSchema>;
  *  - `save`       UI → sidecar: crea o cambia la configuración de un duelo
  *  - `reset`      UI → sidecar: marcador a cero (y equipos vacíos)
  *  - `adjust`     UI → sidecar: suma o resta puntos a un lado (corregir a mano)
+ *  - `test`       UI → sidecar: regalos de prueba (`units`) de una persona de prueba, solo en este duelo
  *  - `error`      sidecar → UI
  */
 export const DuelosMessageSchema = z.discriminatedUnion("kind", [
@@ -141,6 +142,16 @@ export const DuelosMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("save"), config: DuelConfigSchema }),
   z.object({ kind: z.literal("reset"), id: DuelIdSchema }),
   z.object({ kind: z.literal("adjust"), id: DuelIdSchema, side: z.union([z.literal(0), z.literal(1)]), delta: z.number().int() }),
+  // regalo de prueba (solo cuenta en este duelo, no pasa por Acciones ni por las demás metas)
+  z.object({
+    kind: z.literal("test"),
+    id: DuelIdSchema,
+    side: z.union([z.literal(0), z.literal(1)]),
+    units: z.number().int().min(1).max(50),
+    name: z.string().min(1).max(30),
+    /** valor en monedas de cada regalo de prueba (equipos y top; en `regalos` se usa el del regalo del lado) */
+    coins: z.number().int().min(1).max(1_000_000).optional(),
+  }),
   z.object({ kind: z.literal("error"), message: z.string() }),
 ]);
 export type DuelosMessage = z.infer<typeof DuelosMessageSchema>;

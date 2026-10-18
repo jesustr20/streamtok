@@ -99,6 +99,43 @@ describe("DuelosEngine · regalos", () => {
     expect(engine.getState("q")!.sides[0].score).toBe(1);
   });
 
+  it("test: suma regalos de prueba solo a ese lado, por monedas o por cantidad", () => {
+    const withCost = (id: string, metric: "coins" | "gifts"): DuelConfig => ({
+      ...regalos,
+      id,
+      metric,
+      sides: [{ ...regalos.sides[0], cost: 500 }, regalos.sides[1]] as DuelConfig["sides"],
+    });
+    const engine = engineWith(withCost("m", "coins"), withCost("q", "gifts"));
+    engine.test("m", 0, 3, "Luna");
+    engine.test("m", 1, 2, "Diego"); // sin costo conocido: 1 por regalo
+    engine.test("q", 0, 3, "Luna");
+    engine.test("nada", 0, 3, "Luna");
+    expect(engine.getState("m")!.sides.map((s) => s.score)).toEqual([1500, 2]);
+    expect(engine.getState("m")!.sides[0].supporters[0].name).toBe("Luna");
+    expect(engine.getState("q")!.sides[0].score).toBe(3);
+  });
+
+  it("test en equipos: la persona entra a un equipo, se queda en él y suma", () => {
+    const engine = engineWith(equipos);
+    engine.test("e", 0, 3, "Luna", 30);
+    engine.test("e", 1, 2, "Luna", 30); // ya está en el equipo 0: suma ahí
+    engine.test("e", 1, 1, "Diego", 30);
+    const s = engine.getState("e")!;
+    expect(s.sides.map((x) => x.score)).toEqual([150, 30]);
+    expect(s.sides.map((x) => x.members)).toEqual([1, 1]);
+  });
+
+  it("test en top: suma a la persona en el ranking de donadores", () => {
+    const engine = engineWith(top);
+    engine.test("t", 0, 2, "Luna", 100);
+    engine.test("t", 1, 1, "Diego", 30);
+    engine.test("t", 0, 1, "Diego", 100);
+    const s = engine.getState("t")!;
+    expect(s.sides.map((x) => x.name)).toEqual(["Luna", "Diego"]);
+    expect(s.sides.map((x) => x.score)).toEqual([200, 130]);
+  });
+
   it("un combo suma solo lo nuevo de cada mensaje", () => {
     const engine = engineWith(regalos);
     const g = { giftName: "Rose", giftId: 5655 };
