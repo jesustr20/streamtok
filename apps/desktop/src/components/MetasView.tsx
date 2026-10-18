@@ -7,13 +7,63 @@ import {
   type Goal,
   type GoalConfig,
 } from "@streamtok/shared";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGoals } from "../lib/use-goals";
 import type { SidecarClient } from "../lib/ws-client";
 import { AccionesPicker, Btn, Card, DesignCard, Field, NumberField, UrlCard, cardStyle, grid3, inputStyle } from "./overlays-ui";
 
 type Api = ReturnType<typeof useGoals>;
 const PRESET_IDS = new Set(GOAL_PRESETS.map((p) => p.id));
+
+const TEST_LIMIT = 0.95;
+
+/**
+ * "Iniciar test": sube la meta poco a poco con pasos al azar (como si llegaran likes, regalos…) hasta que
+ * la detengas. Se para sola al 95 %: así nunca llega a cumplirse la meta ni se disparan sus "Acciones al
+ * finalizar". Al detenerlo, la meta se queda donde estaba.
+ */
+function GoalTestRunner({ id, current, target, api }: { id: string; current: number; target: number; api: Api }) {
+  const [running, setRunning] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const live = useRef({ id, target, api });
+  live.current = { id, target, api };
+  const limit = Math.floor(target * TEST_LIMIT);
+  const stop = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    setRunning(false);
+  };
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+  // si cambias de meta, no debe seguir sumando; si la reinicias o la bajas a mano a mitad del test, también se detiene
+  useEffect(() => stop, [id]);
+  const prev = useRef(current);
+  useEffect(() => {
+    if (running && current < prev.current) stop();
+    prev.current = current;
+  }, [current]);
+
+  const tick = (acc: number) => {
+    const { id: gid, target: t, api: a } = live.current;
+    const max = Math.floor(t * TEST_LIMIT);
+    const lo = Math.max(1, Math.round(t * 0.015));
+    const hi = Math.max(lo, Math.round(t * 0.06));
+    const step = Math.min(lo + Math.floor(Math.random() * (hi - lo + 1)), max - acc);
+    if (step < 1) return stop();
+    a.control(gid, "add", step);
+    if (acc + step >= max) return stop();
+    timer.current = setTimeout(() => tick(acc + step), 350 + Math.random() * 850);
+  };
+  const start = () => {
+    setRunning(true);
+    tick(current);
+  };
+
+  return (
+    <Btn onClick={running ? stop : start} disabled={!running && current >= limit}>
+      {running ? "■ Detener" : "▶ Iniciar test"}
+    </Btn>
+  );
+}
 
 /**
  * Módulo "Metas": las metas ya vienen creadas (likes, seguidores, compartidos, monedas,
@@ -350,6 +400,7 @@ function GoalBlock({ goal, api, client }: { goal: Goal; api: Api; client: Sideca
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginLeft: "auto" }}>
             <Btn onClick={() => api.control(config.id, "add", -1)}>− 1</Btn>
             <Btn onClick={() => api.control(config.id, "add", 1)}>+ 1</Btn>
+            <GoalTestRunner id={config.id} current={state.current} target={state.target} api={api} />
             <Btn primary onClick={() => api.control(config.id, "add", Math.max(1, Math.round(state.target * 0.1)))}>
               Testear (+10 %)
             </Btn>
