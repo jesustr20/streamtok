@@ -787,7 +787,7 @@ const DUELO_JS = `
   var q = new URLSearchParams(location.search);
   var designOverride = q.get("design") || DESIGN_OVERRIDE || null;
   var DEMO = DEMO_MODE || q.get("demo") === "1";
-  var config = null, state = null, retry = 0, ws = null, demoTimer = null, demoScore = [18, 11], shown = false, last = [null, null];
+  var config = null, state = null, retry = 0, ws = null, demoTimer = null, demoUnits = null, shown = false, last = [null, null];
   var DEMO_NAMES = ["Valentina", "Carlos_92"];
   var rootEl = document.getElementById("root"), duelEl = document.getElementById("duel"), titleEl = document.getElementById("title"), fillEl = document.getElementById("fill");
   var S = [];
@@ -813,8 +813,17 @@ const DUELO_JS = `
     return !(real && ((real[0].score || 0) > 0 || (real[1].score || 0) > 0));
   }
 
+  // Valor de cada unidad del ejemplo: con "monedas", lo que vale el regalo de ese lado; si no, 1.
+  function unitOf(i) {
+    var c = config && config.sides[i];
+    return config && config.mode === "regalos" && config.metric === "coins" && c && c.cost > 0 ? c.cost : 1;
+  }
+
+  function isBig() { return unitOf(0) > 1 || unitOf(1) > 1; }
+  function units() { if (!demoUnits) demoUnits = isBig() ? [6, 4] : [18, 11]; return demoUnits; }
+
   function demoSide(i) {
-    return { score: demoScore[i], supporters: [{ name: DEMO_NAMES[i] }], members: Math.round(demoScore[i] / 3) + 1, name: DEMO_NAMES[i] };
+    return { score: units()[i] * unitOf(i), supporters: [{ name: DEMO_NAMES[i] }], members: Math.round(units()[i] / 3) + 1, name: DEMO_NAMES[i] };
   }
 
   // Lo que se dibuja en cada lado, según el modo del duelo.
@@ -895,8 +904,10 @@ const DUELO_JS = `
   function startDemo() {
     if (demoTimer) return;
     demoTimer = setInterval(function () {
-      demoScore[Math.random() < 0.55 ? 0 : 1] += 1 + Math.floor(Math.random() * 6);
-      if (demoScore[0] + demoScore[1] > 400) demoScore = [18, 11];
+      // cada paso del ejemplo es "llegaron N regalos": con monedas, suma N veces el valor del regalo
+      var big = isBig(), u = units();
+      u[Math.random() < 0.55 ? 0 : 1] += 1 + Math.floor(Math.random() * (big ? 3 : 6));
+      if (u[0] + u[1] > (big ? 40 : 400)) demoUnits = null;
       render();
     }, 1100);
   }

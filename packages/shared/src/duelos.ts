@@ -41,6 +41,8 @@ export const DuelSideConfigSchema = z.object({
   gifts: z.array(z.string().min(1).max(60)).max(20).default([]),
   /** modo `regalos`: imagen del regalo que representa a este lado (la pone la app al elegirlo del catálogo) */
   icon: z.string().max(2000).optional(),
+  /** modo `regalos`: valor en monedas del regalo que representa a este lado (lo pone la app); solo lo usa el ejemplo de la vista previa */
+  cost: z.number().int().nonnegative().optional(),
   /** modo `equipos`: comandos de chat para unirse a este lado (p. ej. "!azul") */
   commands: z.array(z.string().min(1).max(30)).max(10).default([]),
 });
