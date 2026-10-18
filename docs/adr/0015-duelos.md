@@ -14,7 +14,7 @@ La batalla real de TikTok (PK entre dos anfitriones) es otra cosa: llega por el 
 
 1. **Nuevo tipo de overlay `duelo`**, con instancias (`/overlay/duelo/<id>`) como las Metas y las alertas. De fábrica: `regalo-vs-regalo`, `equipos` y `top`. Tres diseños: Barra de fuerza (GVSG Bar), Frente a frente (GVSG Battle, Top 1 vs Top 2) y Marcador (BLUE vs RED con contadores).
 2. **Tres modos**, con una sola configuración (`DuelConfig`: dos lados con nombre, color, regalos y comandos):
-   - `regalos`: cada lado suma los regalos de su lista (nombre sin importar mayúsculas, o id numérico). Un regalo por lado es "Gift vs Gift"; varios, "Regalos vs Regalos" y "GVSG Multi". Se cuenta por cantidad de regalos o por monedas.
+   - `regalos`: cada lado suma los regalos de su lista (nombre sin importar mayúsculas, o id numérico). Un regalo por lado es "Gift vs Gift"; varios, "Regalos vs Regalos" y "GVSG Multi". Se cuenta por monedas (cada regalo suma su valor; es lo de fábrica) o por cantidad de regalos (cada uno suma 1).
    - `equipos`: la gente elige equipo con un comando del chat (primera palabra del comentario). Desde ahí, sus regalos, likes o comentarios (según lo que se cuente) suman a su equipo. El primer equipo elegido se queda. Quien no eligió no suma.
    - `top`: los dos mayores donadores de la sesión, por monedas, con su foto.
 3. **Nuevo canal WS `duelos`** (`get-state`, `state`, `save`, `reset`, `adjust`, `error`) y archivo `duelos.json` (escritura atómica) con la configuración y el marcador. El marcador sobrevive a reiniciar la app; el ranking del modo `top` se reinicia al conectarse a otro LIVE (es "de la sesión"), los demás se reinician a mano.

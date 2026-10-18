@@ -806,6 +806,13 @@ const DUELO_JS = `
 
   function fmt(n) { try { return Number(n).toLocaleString("es"); } catch (e) { return String(n); } }
 
+  // La vista previa de la app usa datos de ejemplo solo mientras el duelo está a cero; con puntos reales, muestra los reales.
+  function demoNow() {
+    if (!DEMO) return false;
+    var real = state && state.sides;
+    return !(real && ((real[0].score || 0) > 0 || (real[1].score || 0) > 0));
+  }
+
   function demoSide(i) {
     return { score: demoScore[i], supporters: [{ name: DEMO_NAMES[i] }], members: Math.round(demoScore[i] / 3) + 1, name: DEMO_NAMES[i] };
   }
@@ -815,7 +822,7 @@ const DUELO_JS = `
     var out = [];
     for (var i = 0; i < 2; i++) {
       var sc = config.sides[i];
-      var st = DEMO ? demoSide(i) : ((state && state.sides[i]) || { score: 0, supporters: [] });
+      var st = demoNow() ? demoSide(i) : ((state && state.sides[i]) || { score: 0, supporters: [] });
       var mvp = st.supporters && st.supporters[0], name, sub = "", avatar, gift = false;
       if (config.mode === "top") {
         name = st.name || "\\u2014";

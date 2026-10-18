@@ -197,7 +197,16 @@ function Settings({
           </Field>
         </div>
         <div style={{ width: 230 }}>
-          <Field label="Qué se cuenta" hint="">
+          <Field
+            label="Qué se cuenta"
+            hint={
+              config.mode !== "regalos"
+                ? ""
+                : config.metric === "coins"
+                  ? "cada regalo suma su valor en monedas"
+                  : "cada regalo suma 1, cueste lo que cueste"
+            }
+          >
             {metrics.length > 1 ? (
               <select
                 value={config.metric}
