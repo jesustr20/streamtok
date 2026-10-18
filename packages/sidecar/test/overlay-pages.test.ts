@@ -185,6 +185,12 @@ describe("overlay de nivel", () => {
 });
 
 describe("overlay de duelo", () => {
+  it("dibuja la imagen del regalo de cada lado (icon) dentro del círculo", () => {
+    const html = overlayPage("duelo", 7331, { id: "regalo-vs-regalo" });
+    expect(html).toContain("sc.icon");
+    expect(html).toContain(".avatar.gift");
+  });
+
   it("se conecta al canal duelos con su id y trae los tres diseños", () => {
     const html = overlayPage("duelo", 7331, { id: "equipos" });
     expect(html).toContain('var KIND = "duelo";');

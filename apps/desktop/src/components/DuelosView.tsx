@@ -71,6 +71,16 @@ function DuelBlock({ config, state, api, gifts }: { config: DuelConfig; state: D
   };
   const designId = config.style.designId;
 
+  // Duelos guardados antes de que existiera la imagen: se rellena sola cuando el catálogo ya la conoce.
+  useEffect(() => {
+    if (config.mode !== "regalos") return;
+    const icons = config.sides.map((s) => giftIcon(s.gifts, gifts));
+    if (icons.every((ic, i) => ic === undefined || ic === config.sides[i].icon)) return;
+    const [a, b] = config.sides;
+    api.save({ ...config, sides: [{ ...a, icon: icons[0] ?? a.icon }, { ...b, icon: icons[1] ?? b.icon }] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gifts, config.mode, config.sides[0].gifts.join("|"), config.sides[1].gifts.join("|"), config.sides[0].icon, config.sides[1].icon]);
+
   return (
     <>
       <Card title="Cómo funciona">
@@ -209,7 +219,7 @@ function Settings({
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
                 {config.mode !== "top" && (
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <Field label="Nombre" hint="">
+                    <Field label="Nombre" hint={config.mode === "regalos" ? "sigue al regalo; escribe otro si quieres" : ""}>
                       <CommitInput value={side.name} max={30} onCommit={(v) => patchSide(i, { name: v })} />
                     </Field>
                   </div>
@@ -225,7 +235,16 @@ function Settings({
               </div>
               {config.mode === "regalos" && (
                 <Field label="Regalos de este lado" hint="">
-                  <GiftListField tokens={side.gifts} gifts={gifts} onChange={(g) => patchSide(i, { gifts: g })} />
+                  <GiftListField
+                    tokens={side.gifts}
+                    gifts={gifts}
+                    onChange={(g) => {
+                      const was = giftsLabel(side.gifts, gifts);
+                      // el nombre y la imagen del lado siguen a sus regalos, salvo que hayas escrito otro nombre
+                      const follows = !side.name.trim() || side.name === was;
+                      patchSide(i, { gifts: g, icon: giftIcon(g, gifts), ...(follows ? { name: giftsLabel(g, gifts) } : {}) });
+                    }}
+                  />
                 </Field>
               )}
               {config.mode === "equipos" && (
@@ -239,6 +258,26 @@ function Settings({
       </div>
     </Card>
   );
+}
+
+function findToken(t: string, gifts: GiftCatalogEntry[]): GiftCatalogEntry | undefined {
+  return /^\d+$/.test(t) ? gifts.find((g) => g.id === t) : gifts.find((g) => g.name.trim().toLowerCase() === t.trim().toLowerCase());
+}
+
+/** Nombre que se pone solo al lado: el del regalo, o "A + B" / "A +N" si son varios. */
+function giftsLabel(tokens: string[], gifts: GiftCatalogEntry[]): string {
+  const names = tokens.map((t) => findToken(t, gifts)?.name ?? t);
+  if (names.length <= 2) return names.join(" + ").slice(0, 30);
+  return `${names[0]} +${names.length - 1}`.slice(0, 30);
+}
+
+/** Imagen del lado: la del primer regalo que esté en el catálogo. */
+function giftIcon(tokens: string[], gifts: GiftCatalogEntry[]): string | undefined {
+  for (const t of tokens) {
+    const g = findToken(t, gifts);
+    if (g?.imageUrl) return g.imageUrl;
+  }
+  return undefined;
 }
 
 /**

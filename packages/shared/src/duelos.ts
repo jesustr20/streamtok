@@ -39,6 +39,8 @@ export const DuelSideConfigSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "color: #rrggbb").default("#ff3d71"),
   /** modo `regalos`: nombres de regalo (sin importar mayúsculas) o ids numéricos que suman a este lado */
   gifts: z.array(z.string().min(1).max(60)).max(20).default([]),
+  /** modo `regalos`: imagen del regalo que representa a este lado (la pone la app al elegirlo del catálogo) */
+  icon: z.string().max(2000).optional(),
   /** modo `equipos`: comandos de chat para unirse a este lado (p. ej. "!azul") */
   commands: z.array(z.string().min(1).max(30)).max(10).default([]),
 });
