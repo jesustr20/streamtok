@@ -112,8 +112,9 @@ function DuelBlock({ config, state, api, gifts, client }: { config: DuelConfig; 
         </div>
       </Card>
 
-      <Scoreboard config={config} state={state} api={api} />
       <Settings config={config} patch={patch} patchSide={patchSide} gifts={gifts} onTest={testGift} />
+      {/* justo encima del overlay, como en Metas: probar y ver el resultado sin bajar y subir */}
+      <Scoreboard config={config} state={state} api={api} />
 
       <UrlCard
         kind="duelo"
