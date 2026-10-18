@@ -67,6 +67,9 @@ function WinsPage({ state, ov, onCustomize }: { state: OverlaysState; ov: Ov; on
             >
               Reiniciar
             </Btn>
+            <Btn primary onClick={() => ov.winsControl("add", Math.max(1, Math.round(w.goal * 0.1)))}>
+              Testear (+10 %)
+            </Btn>
             <Btn onClick={running ? stop : start} disabled={!running && w.goal > 0 && w.count >= w.goal}>
               {running ? "■ Detener" : "▶ Iniciar test"}
             </Btn>

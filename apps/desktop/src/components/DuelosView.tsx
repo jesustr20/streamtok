@@ -145,6 +145,14 @@ function Scoreboard({ config, state, api }: { config: DuelConfig; state: DuelSta
     api.reset(config.id);
   };
   const manual = config.mode !== "top";
+  // "Testear (+10 %)": un solo golpe de prueba, del 10 % del marcador más alto (mínimo 1), a un lado al azar.
+  const testTen = () => {
+    const leader = Math.max(state?.sides[0]?.score ?? 0, state?.sides[1]?.score ?? 0);
+    const amount = Math.max(1, Math.round(leader * 0.1));
+    const side = Math.random() < 0.5 ? 0 : 1;
+    if (manual) api.adjust(config.id, side, amount);
+    else api.test(config.id, side, 1, TEST_DONORS[Math.floor(Math.random() * TEST_DONORS.length)], amount);
+  };
   return (
     <Card title="Marcador en vivo">
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -179,10 +187,13 @@ function Scoreboard({ config, state, api }: { config: DuelConfig; state: DuelSta
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <TestRunner config={config} api={api} />
+        <Btn primary onClick={testTen}>
+          Testear (+10 %)
+        </Btn>
         <Btn onClick={askReset}>{confirm ? "¿Seguro? Pulsa otra vez" : "Reiniciar marcador"}</Btn>
         <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>
           {config.mode === "top"
-            ? "Reinicia el ranking de donadores de esta sesión. «Iniciar test» manda donadores de prueba."
+            ? "Reinicia el ranking de donadores de esta sesión. «Iniciar test» manda donadores de prueba; «Testear (+10 %)» da un golpe del 10 % a un puesto al azar."
             : config.mode === "equipos"
               ? "Pone los dos marcadores en 0 y vacía los equipos (cada quien vuelve a elegir). «Iniciar test» manda gente de prueba a los equipos."
               : "Pone los dos marcadores en 0. Los botones +/− corrigen un error a mano. «Iniciar test» manda regalos de prueba solo a este duelo."}
