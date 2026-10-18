@@ -93,4 +93,11 @@ describe("OverlayHttpServer", () => {
     expect(html).toContain('var KIND = "nivel";');
     expect(html).toContain('var ALERT_ID = "comunidad";');
   });
+
+  it("sirve /overlay/duelo/<id> con su id", async () => {
+    const base = await start(9999);
+    const html = await (await fetch(`${base}/overlay/duelo/equipos`)).text();
+    expect(html).toContain('var KIND = "duelo";');
+    expect(html).toContain('var DUEL_ID = "equipos";');
+  });
 });

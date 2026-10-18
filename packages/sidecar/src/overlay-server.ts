@@ -24,9 +24,9 @@ export function overlayPortFromEnv(env: NodeJS.ProcessEnv): number {
   return Number.isInteger(n) && n >= 0 && n <= 65535 && env.STREAMTOK_OVERLAY_PORT ? n : OVERLAY_DEFAULT_PORT;
 }
 
-const KINDS: OverlayKind[] = ["timer", "wins", "meta", "nivel"];
+const KINDS: OverlayKind[] = ["timer", "wins", "meta", "nivel", "duelo"];
 
-/** `/overlay/<tipo>` o `/overlay/<tipo>/<id>` (el id solo lo usan los tipos con varias instancias: `meta` y `nivel`). */
+/** `/overlay/<tipo>` o `/overlay/<tipo>/<id>` (el id solo lo usan los tipos con varias instancias: `meta`, `nivel` y `duelo`). */
 function parsePath(pathname: string): { kind: OverlayKind; id: string } | null {
   const m = /^\/overlay\/([a-z]+)(?:\/([^/]*))?\/?$/.exec(pathname);
   if (!m || !(KINDS as string[]).includes(m[1])) return null;
@@ -78,7 +78,7 @@ export class OverlayHttpServer {
       res.end("No encontrado");
       return;
     }
-    const html = overlayPage(target.kind, this.wsPort, target.kind === "meta" || target.kind === "nivel" ? { id: target.id } : {});
+    const html = overlayPage(target.kind, this.wsPort, target.kind === "meta" || target.kind === "nivel" || target.kind === "duelo" ? { id: target.id } : {});
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(method === "HEAD" ? undefined : html);
   }

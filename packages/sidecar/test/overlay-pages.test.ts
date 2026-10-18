@@ -183,3 +183,27 @@ describe("overlay de nivel", () => {
     expect(html).toContain('id="fx"');
   });
 });
+
+describe("overlay de duelo", () => {
+  it("se conecta al canal duelos con su id y trae los tres diseños", () => {
+    const html = overlayPage("duelo", 7331, { id: "equipos" });
+    expect(html).toContain('var KIND = "duelo";');
+    expect(html).toContain('var DUEL_ID = "equipos";');
+    expect(html).toContain('channel: "duelos"');
+    expect(OVERLAY_DESIGNS.duelo.map((d) => d.id)).toEqual(["barra", "versus", "marcador"]);
+    for (const d of OVERLAY_DESIGNS.duelo) expect(html).toContain(`[data-design="${d.id}"]`);
+  });
+
+  it("la vista previa activa el modo demo y marca la página como lista", () => {
+    expect(overlayPage("duelo", 7331, { id: "top", demo: true })).toContain("var DEMO_MODE = true;");
+    expect(overlayPage("duelo", 7331, { id: "top" })).toContain("var DEMO_MODE = false;");
+    expect(overlayPage("duelo", 7331)).toContain('setAttribute("data-ready", "1")');
+  });
+
+  it("dibuja los dos lados, la barra y marca a quien va ganando", () => {
+    const html = overlayPage("duelo", 7331, { id: "top" });
+    for (const id of ["nameA", "nameB", "scoreA", "scoreB", "fill"]) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain("data-lead");
+    expect(html).toContain("@keyframes duPop");
+  });
+});

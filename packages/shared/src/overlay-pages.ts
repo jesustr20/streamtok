@@ -700,6 +700,228 @@ const NIVEL_JS = `
   connect();
 `;
 
+// ---------------------------------------------------------------------------
+// Duelos (ADR 0015): dos lados que compiten (Regalo vs Regalo, Azul vs Rojo, Top 1 vs Top 2)
+// ---------------------------------------------------------------------------
+
+const DUELO_CSS = `
+  .duel { position: relative; }
+  .title { grid-column: 1 / -1; text-align: center; font: 800 20px/1.1 "Segoe UI", sans-serif; letter-spacing: 5px; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+  .side { --c: var(--ca, #ff3d71); min-width: 0; }
+  .side.b { --c: var(--cb, #3da5ff); }
+  .who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .avatar { position: relative; flex: none; box-sizing: border-box; border-radius: 50%; overflow: hidden; background: #2b2f3a; border: 3px solid var(--c); display: flex; align-items: center; justify-content: center; font: 800 28px/1 "Segoe UI", sans-serif; color: #fff; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .names { min-width: 0; }
+  .names b, .names small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 8px rgba(0, 0, 0, .7); }
+  .names b { font-weight: 800; }
+  .names small { min-height: 1.3em; font-weight: 700; letter-spacing: 1px; opacity: .85; }
+  .score, .barScore { font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; text-shadow: 0 2px 10px rgba(0, 0, 0, .6); }
+  .vs { font: italic 900 30px/1 "Segoe UI", sans-serif; text-align: center; text-shadow: 0 2px 10px rgba(0, 0, 0, .7); }
+  .bar { display: none; position: relative; grid-column: 1 / -1; overflow: hidden; background: var(--cb, #3da5ff); }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 50%; background: var(--ca, #ff3d71); transition: width .7s cubic-bezier(.3, .8, .3, 1); }
+  .barScore { display: none; }
+  .pop { animation: duPop .4s ease-out; }
+  @keyframes duPop { 0% { transform: scale(1); } 35% { transform: scale(1.28); } 100% { transform: scale(1); } }
+  @keyframes duIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+  #root.in .duel { animation: duIn .5s ease-out both; }
+  .duel[data-lead="a"] .side.a .names b::before, .duel[data-lead="b"] .side.b .names b::before { content: "♛ "; color: #ffc233; }
+
+  /* Barra de fuerza: caras arriba y una barra que se mueve hacia quien va ganando */
+  body[data-design="barra"] .duel { width: 760px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
+  body[data-design="barra"] .side.b .who { flex-direction: row-reverse; text-align: right; }
+  body[data-design="barra"] .avatar { width: 64px; height: 64px; }
+  body[data-design="barra"] .names b { font-size: 26px; line-height: 1.2; }
+  body[data-design="barra"] .names small { font-size: 13px; line-height: 1.3; }
+  body[data-design="barra"] .vs, body[data-design="barra"] .score { display: none; }
+  body[data-design="barra"] .bar { display: block; height: 56px; border-radius: 28px; border: 3px solid rgba(255, 255, 255, .22); box-shadow: 0 6px 20px rgba(0, 0, 0, .45); }
+  body[data-design="barra"] .fill { box-shadow: 4px 0 0 rgba(255, 255, 255, .85); }
+  body[data-design="barra"] .barScore { display: block; position: absolute; top: 0; line-height: 50px; font-size: 30px; z-index: 2; }
+  body[data-design="barra"] .barScore.a { left: 22px; }
+  body[data-design="barra"] .barScore.b { right: 22px; }
+
+  /* Frente a frente: dos tarjetas grandes con foto; la que va ganando sube */
+  body[data-design="versus"] .duel { width: 700px; padding-top: 12px; display: grid; grid-template-columns: 1fr 84px 1fr; gap: 10px 0; align-items: center; }
+  body[data-design="versus"] .side { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; box-sizing: border-box; height: 262px; padding: 18px 12px 14px; border-radius: 26px; border: 3px solid var(--c); background: var(--bg, linear-gradient(160deg, rgba(24, 20, 40, .92), rgba(12, 10, 22, .92))); box-shadow: 0 8px 26px rgba(0, 0, 0, .5); transition: transform .4s, box-shadow .4s; }
+  body[data-design="versus"] .who { flex-direction: column; gap: 8px; width: 100%; }
+  body[data-design="versus"] .avatar { width: 112px; height: 112px; font-size: 48px; }
+  body[data-design="versus"] .names { width: 100%; }
+  body[data-design="versus"] .names b { font-size: 28px; line-height: 1.2; }
+  body[data-design="versus"] .names small { font-size: 14px; }
+  body[data-design="versus"] .score { font-size: 58px; line-height: 1; text-shadow: 0 0 18px var(--c), 0 2px 10px rgba(0, 0, 0, .6); }
+  body[data-design="versus"] .duel[data-lead="a"] .side.a, body[data-design="versus"] .duel[data-lead="b"] .side.b { transform: translateY(-8px) scale(1.03); box-shadow: 0 0 34px var(--c), 0 8px 26px rgba(0, 0, 0, .5); }
+
+  /* Marcador: dos bloques de color con el nombre y los puntos, y una barra fina debajo */
+  body[data-design="marcador"] .duel { width: 560px; display: grid; grid-template-columns: 1fr 60px 1fr; gap: 8px 0; }
+  body[data-design="marcador"] .title, body[data-design="marcador"] .avatar { display: none; }
+  body[data-design="marcador"] .side { display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; height: 92px; padding: 8px 20px; background: var(--c); box-shadow: 0 6px 20px rgba(0, 0, 0, .4); transition: filter .4s; }
+  body[data-design="marcador"] .side.a { border-radius: 18px 0 0 18px; align-items: flex-start; }
+  body[data-design="marcador"] .side.b { border-radius: 0 18px 18px 0; align-items: flex-end; text-align: right; }
+  body[data-design="marcador"] .who { width: 100%; }
+  body[data-design="marcador"] .names { width: 100%; }
+  body[data-design="marcador"] .names b { font-size: 22px; line-height: 1.2; letter-spacing: 2px; text-transform: uppercase; }
+  body[data-design="marcador"] .names small { font-size: 12px; line-height: 1.3; }
+  body[data-design="marcador"] .score { font-size: 44px; line-height: 1.05; }
+  body[data-design="marcador"] .vs { display: flex; align-items: center; justify-content: center; background: #0d0d14; font-size: 20px; }
+  body[data-design="marcador"] .bar { display: block; height: 12px; border-radius: 6px; }
+  body[data-design="marcador"] .duel[data-lead="a"] .side.b, body[data-design="marcador"] .duel[data-lead="b"] .side.a { filter: brightness(.75); }
+`;
+
+const DUELO_BODY = `
+  <div id="root" class="hidden"><div class="duel" id="duel">
+    <div class="title hidden" id="title"></div>
+    <div class="side a"><div class="who"><div class="avatar"><img id="avA" class="hidden" referrerpolicy="no-referrer" alt=""><span id="iniA"></span></div><div class="names"><b id="nameA"></b><small id="subA"></small></div></div><div class="score" id="scoreA">0</div></div>
+    <div class="vs">VS</div>
+    <div class="side b"><div class="who"><div class="avatar"><img id="avB" class="hidden" referrerpolicy="no-referrer" alt=""><span id="iniB"></span></div><div class="names"><b id="nameB"></b><small id="subB"></small></div></div><div class="score" id="scoreB">0</div></div>
+    <div class="bar"><div class="fill" id="fill"></div><span class="barScore a" id="barA">0</span><span class="barScore b" id="barB">0</span></div>
+  </div></div>
+`;
+
+/**
+ * Duelos. Pide la configuración y el marcador al canal "duelos" y se queda con los de su id. En la
+ * vista previa de la app (`demo`) el marcador sube solo con nombres de ejemplo.
+ */
+const DUELO_JS = `
+  var q = new URLSearchParams(location.search);
+  var designOverride = q.get("design") || DESIGN_OVERRIDE || null;
+  var DEMO = DEMO_MODE || q.get("demo") === "1";
+  var config = null, state = null, retry = 0, ws = null, demoTimer = null, demoScore = [18, 11], shown = false, last = [null, null];
+  var DEMO_NAMES = ["Valentina", "Carlos_92"];
+  var rootEl = document.getElementById("root"), duelEl = document.getElementById("duel"), titleEl = document.getElementById("title"), fillEl = document.getElementById("fill");
+  var S = [];
+  ["A", "B"].forEach(function (p) {
+    S.push({ av: document.getElementById("av" + p), ini: document.getElementById("ini" + p), name: document.getElementById("name" + p), sub: document.getElementById("sub" + p), score: document.getElementById("score" + p), bar: document.getElementById("bar" + p), url: "" });
+  });
+
+  function applyStyle() {
+    var style = config.style;
+    document.body.setAttribute("data-design", designOverride || style.designId);
+    var root = document.documentElement.style;
+    var vars = { "--text": style.textColor, "--bg": style.backgroundColor, "--ca": config.sides[0].color, "--cb": config.sides[1].color };
+    for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }
+    root.setProperty("--scale", style.scale || 1);
+  }
+
+  function fmt(n) { try { return Number(n).toLocaleString("es"); } catch (e) { return String(n); } }
+
+  function demoSide(i) {
+    return { score: demoScore[i], supporters: [{ name: DEMO_NAMES[i] }], members: Math.round(demoScore[i] / 3) + 1, name: DEMO_NAMES[i] };
+  }
+
+  // Lo que se dibuja en cada lado, según el modo del duelo.
+  function sides() {
+    var out = [];
+    for (var i = 0; i < 2; i++) {
+      var sc = config.sides[i];
+      var st = DEMO ? demoSide(i) : ((state && state.sides[i]) || { score: 0, supporters: [] });
+      var mvp = st.supporters && st.supporters[0], name, sub = "", avatar;
+      if (config.mode === "top") {
+        name = st.name || "\\u2014";
+        sub = "TOP " + (i + 1);
+        avatar = st.avatarUrl;
+      } else {
+        name = sc.name || (i ? "B" : "A");
+        avatar = mvp && mvp.avatarUrl;
+        if (config.mode === "equipos") sub = (st.members || 0) + ((st.members || 0) === 1 ? " persona" : " personas");
+        else if (mvp && mvp.name) sub = "MVP: " + mvp.name;
+        else if (sc.gifts && sc.gifts.length && sc.gifts.join(" + ") !== name) sub = sc.gifts.join(" + ");
+      }
+      out.push({ name: name, sub: sub, avatar: avatar, score: st.score || 0 });
+    }
+    return out;
+  }
+
+  function setAvatar(s, v) {
+    s.ini.textContent = v.name === "\\u2014" ? "?" : v.name.trim().charAt(0).toUpperCase();
+    var url = v.avatar || "";
+    if (url === s.url) return;
+    s.url = url;
+    if (url) {
+      s.av.onerror = function () { s.av.classList.add("hidden"); s.ini.classList.remove("hidden"); };
+      s.av.src = url;
+      s.av.classList.remove("hidden");
+      s.ini.classList.add("hidden");
+    } else {
+      s.av.removeAttribute("src");
+      s.av.classList.add("hidden");
+      s.ini.classList.remove("hidden");
+    }
+  }
+
+  function pop(el) {
+    el.classList.remove("pop");
+    void el.offsetWidth;
+    el.classList.add("pop");
+  }
+
+  function render() {
+    if (!config) return;
+    var v = sides(), total = v[0].score + v[1].score;
+    var pa = total > 0 ? Math.min(97, Math.max(3, (v[0].score * 100) / total)) : 50;
+    fillEl.style.width = pa + "%";
+    titleEl.textContent = config.title || "";
+    if (config.title) titleEl.classList.remove("hidden"); else titleEl.classList.add("hidden");
+    for (var i = 0; i < 2; i++) {
+      S[i].name.textContent = v[i].name;
+      S[i].sub.textContent = v[i].sub;
+      S[i].score.textContent = fmt(v[i].score);
+      S[i].bar.textContent = fmt(v[i].score);
+      setAvatar(S[i], v[i]);
+      if (last[i] !== null && last[i] !== v[i].score) { pop(S[i].score); pop(S[i].bar); }
+      last[i] = v[i].score;
+    }
+    duelEl.setAttribute("data-lead", v[0].score === v[1].score ? "" : v[0].score > v[1].score ? "a" : "b");
+    if (!shown) {
+      shown = true;
+      rootEl.classList.remove("hidden");
+      rootEl.classList.add("in");
+    }
+  }
+
+  function startDemo() {
+    if (demoTimer) return;
+    demoTimer = setInterval(function () {
+      demoScore[Math.random() < 0.55 ? 0 : 1] += 1 + Math.floor(Math.random() * 6);
+      if (demoScore[0] + demoScore[1] > 400) demoScore = [18, 11];
+      render();
+    }, 1100);
+  }
+
+  function schedule() { retry = Math.min(retry + 1, 6); setTimeout(connect, 500 * retry); }
+
+  function connect() {
+    try { ws = new WebSocket("ws://localhost:" + WS_PORT); } catch (e) { schedule(); return; }
+    ws.onopen = function () {
+      retry = 0;
+      ws.send(JSON.stringify({ channel: "duelos", payload: { kind: "get-state" } }));
+    };
+    ws.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data);
+        if (m.channel !== "duelos" || !m.payload || m.payload.kind !== "state") return;
+        var found = null, i;
+        for (i = 0; i < m.payload.configs.length; i++) {
+          if (!DUEL_ID || m.payload.configs[i].id === DUEL_ID) { found = m.payload.configs[i]; break; }
+        }
+        config = found;
+        state = null;
+        if (found) {
+          for (i = 0; i < m.payload.states.length; i++) if (m.payload.states[i].id === found.id) state = m.payload.states[i];
+          applyStyle();
+          render();
+          if (DEMO) startDemo();
+        }
+        document.documentElement.setAttribute("data-ready", "1");
+      } catch (e) {}
+    };
+    ws.onclose = schedule;
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+
+  document.body.setAttribute("data-design", designOverride || "barra");
+  connect();
+`;
+
 /** Texto como literal JS seguro dentro de un <script> (escapa `<` para que no cierre la etiqueta). */
 function jsString(value: string): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
@@ -708,18 +930,19 @@ function jsString(value: string): string {
 export interface OverlayPageOptions {
   /** Diseño forzado (vista previa dentro de la app, donde no hay `?design=`). */
   design?: string;
-  /** Id de la instancia (`meta` y `nivel`): qué meta o alerta dibuja. Vacío = la primera. */
+  /** Id de la instancia (`meta`, `nivel` y `duelo`): qué meta, alerta o duelo dibuja. Vacío = la primera. */
   id?: string;
-  /** Vista previa de la app: el overlay `nivel` enseña avisos de ejemplo sin esperar al LIVE. */
+  /** Vista previa de la app: `nivel` y `duelo` enseñan datos de ejemplo sin esperar al LIVE. */
   demo?: boolean;
 }
 
 export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPageOptions = {}): string {
   const meta = kind === "meta";
   const nivel = kind === "nivel";
-  const css = nivel ? NIVEL_CSS : meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
-  const body = nivel ? NIVEL_BODY : meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
-  const kindJs = nivel ? "" : meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
+  const duelo = kind === "duelo";
+  const css = duelo ? DUELO_CSS : nivel ? NIVEL_CSS : meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
+  const body = duelo ? DUELO_BODY : nivel ? NIVEL_BODY : meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
+  const kindJs = nivel || duelo ? "" : meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
   return `<!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8">
@@ -736,11 +959,12 @@ ${body}
   var DESIGN_OVERRIDE = ${jsString(opts.design ?? "")};
   var GOAL_ID = ${jsString(opts.id ?? "")};
   var ALERT_ID = ${jsString(opts.id ?? "")};
+  var DUEL_ID = ${jsString(opts.id ?? "")};
   var DEMO_MODE = ${opts.demo ? "true" : "false"};
   // Funciones de dibujo de este overlay (definen render()).
   ${kindJs}
   // Conexión, estado y estilo comunes.
-  ${nivel ? NIVEL_JS : meta ? META_COMMON_JS : COMMON_JS}
+  ${duelo ? DUELO_JS : nivel ? NIVEL_JS : meta ? META_COMMON_JS : COMMON_JS}
 })();
 </script>
 </body></html>`;
