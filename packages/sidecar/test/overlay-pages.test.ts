@@ -185,6 +185,18 @@ describe("overlay de nivel", () => {
 });
 
 describe("overlay de duelo", () => {
+  it("la vista previa usa datos reales en cuanto el duelo tiene puntos", () => {
+    const html = overlayPage("duelo", 7331, { id: "regalo-vs-regalo", demo: true });
+    expect(html).toContain("function demoNow()");
+    expect(html).toContain("demoNow() ? demoSide(i)");
+  });
+
+  it("dibuja la imagen del regalo de cada lado (icon) dentro del círculo", () => {
+    const html = overlayPage("duelo", 7331, { id: "regalo-vs-regalo" });
+    expect(html).toContain("sc.icon");
+    expect(html).toContain(".avatar.gift");
+  });
+
   it("se conecta al canal duelos con su id y trae los tres diseños", () => {
     const html = overlayPage("duelo", 7331, { id: "equipos" });
     expect(html).toContain('var KIND = "duelo";');

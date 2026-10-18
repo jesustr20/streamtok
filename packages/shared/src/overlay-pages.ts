@@ -730,6 +730,8 @@ const DUELO_CSS = `
   /* Barra de fuerza: caras arriba y una barra que se mueve hacia quien va ganando */
   body[data-design="barra"] .duel { width: 760px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
   body[data-design="barra"] .side.b .who { flex-direction: row-reverse; text-align: right; }
+  .avatar.gift { background: rgba(255,255,255,.1); }
+  .avatar.gift img { box-sizing: border-box; padding: 14%; object-fit: contain; }
   body[data-design="barra"] .avatar { width: 64px; height: 64px; }
   body[data-design="barra"] .names b { font-size: 26px; line-height: 1.2; }
   body[data-design="barra"] .names small { font-size: 13px; line-height: 1.3; }
@@ -804,6 +806,13 @@ const DUELO_JS = `
 
   function fmt(n) { try { return Number(n).toLocaleString("es"); } catch (e) { return String(n); } }
 
+  // La vista previa de la app usa datos de ejemplo solo mientras el duelo está a cero; con puntos reales, muestra los reales.
+  function demoNow() {
+    if (!DEMO) return false;
+    var real = state && state.sides;
+    return !(real && ((real[0].score || 0) > 0 || (real[1].score || 0) > 0));
+  }
+
   function demoSide(i) {
     return { score: demoScore[i], supporters: [{ name: DEMO_NAMES[i] }], members: Math.round(demoScore[i] / 3) + 1, name: DEMO_NAMES[i] };
   }
@@ -813,8 +822,8 @@ const DUELO_JS = `
     var out = [];
     for (var i = 0; i < 2; i++) {
       var sc = config.sides[i];
-      var st = DEMO ? demoSide(i) : ((state && state.sides[i]) || { score: 0, supporters: [] });
-      var mvp = st.supporters && st.supporters[0], name, sub = "", avatar;
+      var st = demoNow() ? demoSide(i) : ((state && state.sides[i]) || { score: 0, supporters: [] });
+      var mvp = st.supporters && st.supporters[0], name, sub = "", avatar, gift = false;
       if (config.mode === "top") {
         name = st.name || "\\u2014";
         sub = "TOP " + (i + 1);
@@ -823,16 +832,21 @@ const DUELO_JS = `
         name = sc.name || (i ? "B" : "A");
         avatar = mvp && mvp.avatarUrl;
         if (config.mode === "equipos") sub = (st.members || 0) + ((st.members || 0) === 1 ? " persona" : " personas");
-        else if (mvp && mvp.name) sub = "MVP: " + mvp.name;
-        else if (sc.gifts && sc.gifts.length && sc.gifts.join(" + ") !== name) sub = sc.gifts.join(" + ");
+        else {
+          // regalos: arriba, quien más aporta a este lado; debajo y más pequeño, el regalo. Sin aportes aún, el regalo va arriba.
+          var label = sc.name || (sc.gifts && sc.gifts.join(" + ")) || name;
+          if (sc.icon) { avatar = sc.icon; gift = true; }
+          if (mvp && mvp.name) { name = mvp.name; sub = label; } else name = label;
+        }
       }
-      out.push({ name: name, sub: sub, avatar: avatar, score: st.score || 0 });
+      out.push({ name: name, sub: sub, avatar: avatar, gift: gift, score: st.score || 0 });
     }
     return out;
   }
 
   function setAvatar(s, v) {
     s.ini.textContent = v.name === "\\u2014" ? "?" : v.name.trim().charAt(0).toUpperCase();
+    s.av.parentNode.classList.toggle("gift", !!v.gift);
     var url = v.avatar || "";
     if (url === s.url) return;
     s.url = url;

@@ -82,6 +82,23 @@ describe("DuelosEngine · regalos", () => {
     expect(s.sides[1].score).toBe(1);
   });
 
+  it("por monedas cada regalo suma su valor; por cantidad, 1 cueste lo que cueste", () => {
+    const porMonedas = { ...regalos, id: "m", metric: "coins" as const, sides: [{ ...regalos.sides[0], gifts: ["Gem Gun"] }, regalos.sides[1]] as DuelConfig["sides"] };
+    const engine = engineWith(porMonedas, { ...porMonedas, id: "q", metric: "gifts" });
+    engine.handleLiveEvent(live({ giftName: "Gem Gun", giftId: 99, coins: 500, repeatEnd: true }));
+    expect(engine.getState("m")!.sides[0].score).toBe(500);
+    expect(engine.getState("q")!.sides[0].score).toBe(1);
+  });
+
+  it("por monedas cada regalo suma su valor; por cantidad, 1 cueste lo que cueste", () => {
+    const side0 = { ...regalos.sides[0], gifts: ["Gem Gun"] };
+    const porMonedas: DuelConfig = { ...regalos, id: "m", metric: "coins", sides: [side0, regalos.sides[1]] };
+    const engine = engineWith(porMonedas, { ...porMonedas, id: "q", metric: "gifts" });
+    engine.handleLiveEvent(live({ giftName: "Gem Gun", giftId: 99, coins: 500, repeatEnd: true }));
+    expect(engine.getState("m")!.sides[0].score).toBe(500);
+    expect(engine.getState("q")!.sides[0].score).toBe(1);
+  });
+
   it("un combo suma solo lo nuevo de cada mensaje", () => {
     const engine = engineWith(regalos);
     const g = { giftName: "Rose", giftId: 5655 };
