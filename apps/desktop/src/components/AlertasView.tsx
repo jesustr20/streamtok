@@ -1,6 +1,7 @@
 import { ALERT_KINDS, type AlertConfig, type AlertKind } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { useAlertas } from "../lib/use-alertas";
+import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
 import { Btn, Card, DesignCard, Field, NumberField, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
 
@@ -54,6 +55,15 @@ function AlertBlock({ config, api }: { config: AlertConfig; api: Api }) {
   };
   const usesJoin = config.kinds.includes("fanJoin");
   const designId = config.style.designId;
+  // Test: lanza avisos de ejemplo de los tipos activados, uno tras otro (esperando a que termine el anterior).
+  const TEST_MAX = 10;
+  const { running, count, start, stop } = useTestRunner((n) => {
+    const on = config.kinds;
+    if (on.length === 0) return null;
+    api.test(on[Math.floor(Math.random() * on.length)]);
+    return n + 1 >= TEST_MAX ? null : config.durationSec * 1000 + 800 + Math.random() * 1200;
+  });
+  useEffect(() => stop, [config.id, stop]);
 
   return (
     <>
@@ -81,6 +91,12 @@ function AlertBlock({ config, api }: { config: AlertConfig; api: Api }) {
         <div style={{ fontSize: 11.5, color: "#9A9CA5" }}>
           En la frase, <b>{"{nombre}"}</b> se cambia por el nombre del usuario y <b>{"{nivel}"}</b> por su nivel. “Probar” lanza un aviso de
           ejemplo a todos los overlays de alertas que lo muestren.
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Btn onClick={running ? stop : start} disabled={!running && config.kinds.length === 0}>
+            {running ? `■ Detener (${count}/${TEST_MAX})` : "▶ Iniciar test"}
+          </Btn>
+          <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>Lanza avisos de ejemplo al azar con los tipos marcados.</span>
         </div>
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
           <div style={{ width: 150 }}>

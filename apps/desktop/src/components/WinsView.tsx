@@ -1,6 +1,7 @@
 import type { OverlaysState } from "@streamtok/shared";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useOverlays, type Ov } from "../lib/use-overlays";
+import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
 import { Btn, Card, Field, NumberField, UrlCard, grid3, inputStyle } from "./overlays-ui";
 
@@ -33,6 +34,16 @@ function WinsPage({ state, ov, onCustomize }: { state: OverlaysState; ov: Ov; on
   const w = state.wins;
   const [title, setTitle] = useState(w.title);
   useEffect(() => setTitle(w.title), [w.title]);
+  // Test: suma de a 1 a intervalos al azar hasta la meta (o 10 si no hay meta). "Detener" lo deja donde estaba.
+  const cap = w.goal > 0 ? w.goal : w.count + 10;
+  const seen = useRef(w.count);
+  seen.current = w.count;
+  const { running, start, stop } = useTestRunner(() => {
+    if (seen.current >= cap) return null;
+    ov.winsControl("add", 1);
+    seen.current += 1;
+    return seen.current >= cap ? null : 700 + Math.random() * 1100;
+  });
 
   return (
     <>
@@ -48,7 +59,17 @@ function WinsPage({ state, ov, onCustomize }: { state: OverlaysState; ov: Ov; on
             <Btn primary onClick={() => ov.winsControl("add", 1)}>
               + 1
             </Btn>
-            <Btn onClick={() => ov.winsControl("reset")}>Reiniciar</Btn>
+            <Btn
+              onClick={() => {
+                stop();
+                ov.winsControl("reset");
+              }}
+            >
+              Reiniciar
+            </Btn>
+            <Btn onClick={running ? stop : start} disabled={!running && w.goal > 0 && w.count >= w.goal}>
+              {running ? "■ Detener" : "▶ Iniciar test"}
+            </Btn>
           </div>
         </div>
         <div style={grid3}>

@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useDuelos } from "../lib/use-duelos";
 import { useGiftCatalog } from "../lib/use-gift-catalog";
+import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
 import { GiftPicker } from "./GiftPicker";
 import { Btn, Card, DesignCard, Field, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
@@ -203,43 +204,21 @@ const TEST_MAX = 30;
  * Top 2: donadores de prueba. Se detiene solo a los 30 o con "Detener"; el marcador queda donde estaba.
  */
 function TestRunner({ config, api }: { config: DuelConfig; api: Api }) {
-  const [running, setRunning] = useState(false);
-  const [sent, setSent] = useState(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const live = useRef({ config, api });
-  live.current = { config, api };
-  const stop = () => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    setRunning(false);
-  };
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
   const ready = config.mode !== "regalos" || config.sides.every((s) => s.gifts.length > 0);
-
-  const tick = (n: number) => {
-    const { config: c, api: a } = live.current;
+  const { running, count, start, stop } = useTestRunner((n) => {
     const side = Math.random() < 0.5 ? 0 : 1;
     // casi siempre 1 o 2 regalos; de vez en cuando un combo grande
     const units = Math.random() < 0.15 ? 3 + Math.floor(Math.random() * 6) : 1 + Math.floor(Math.random() * 2);
-    const pool = c.mode === "top" ? TEST_DONORS : TEST_NAMES;
-    const coins = c.mode === "regalos" ? undefined : TEST_COINS[Math.floor(Math.random() * TEST_COINS.length)];
-    a.test(c.id, side, units, pool[Math.floor(Math.random() * pool.length)], coins);
-    setSent(n + 1);
-    if (n + 1 >= TEST_MAX) return stop();
-    timer.current = setTimeout(() => tick(n + 1), 350 + Math.random() * 1150);
-  };
-  const start = () => {
-    setRunning(true);
-    setSent(0);
-    tick(0);
-  };
+    const pool = config.mode === "top" ? TEST_DONORS : TEST_NAMES;
+    const coins = config.mode === "regalos" ? undefined : TEST_COINS[Math.floor(Math.random() * TEST_COINS.length)];
+    api.test(config.id, side, units, pool[Math.floor(Math.random() * pool.length)], coins);
+    return n + 1 >= TEST_MAX ? null : 350 + Math.random() * 1150;
+  });
 
   return (
-    <>
-      <Btn onClick={running ? stop : start} disabled={!running && !ready}>
-        {running ? `■ Detener (${sent}/${TEST_MAX})` : "▶ Iniciar test"}
-      </Btn>
-    </>
+    <Btn onClick={running ? stop : start} disabled={!running && !ready}>
+      {running ? `■ Detener (${count}/${TEST_MAX})` : "▶ Iniciar test"}
+    </Btn>
   );
 }
 

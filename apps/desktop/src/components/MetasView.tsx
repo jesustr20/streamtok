@@ -9,6 +9,7 @@ import {
 } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useGoals } from "../lib/use-goals";
+import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
 import { AccionesPicker, Btn, Card, DesignCard, Field, NumberField, UrlCard, cardStyle, grid3, inputStyle } from "./overlays-ui";
 
@@ -17,51 +18,89 @@ const PRESET_IDS = new Set(GOAL_PRESETS.map((p) => p.id));
 
 const TEST_LIMIT = 0.95;
 
+/** Paso al azar del test: entre el 1,5 % y el 6 % de la meta. */
+function randomStep(target: number): number {
+  const lo = Math.max(1, Math.round(target * 0.015));
+  const hi = Math.max(lo, Math.round(target * 0.06));
+  return lo + Math.floor(Math.random() * (hi - lo + 1));
+}
+
 /**
  * "Iniciar test": sube la meta poco a poco con pasos al azar (como si llegaran likes, regalos…) hasta que
  * la detengas. Se para sola al 95 %: así nunca llega a cumplirse la meta ni se disparan sus "Acciones al
  * finalizar". Al detenerlo, la meta se queda donde estaba.
  */
 function GoalTestRunner({ id, current, target, api }: { id: string; current: number; target: number; api: Api }) {
-  const [running, setRunning] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const live = useRef({ id, target, api });
-  live.current = { id, target, api };
+  const acc = useRef(current);
   const limit = Math.floor(target * TEST_LIMIT);
-  const stop = () => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    setRunning(false);
-  };
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+  const { running, start, stop } = useTestRunner(() => {
+    const step = Math.min(randomStep(target), limit - acc.current);
+    if (step < 1) return null;
+    api.control(id, "add", step);
+    acc.current += step;
+    return acc.current >= limit ? null : 350 + Math.random() * 850;
+  });
   // si cambias de meta, no debe seguir sumando; si la reinicias o la bajas a mano a mitad del test, también se detiene
-  useEffect(() => stop, [id]);
+  useEffect(() => stop, [id, stop]);
   const prev = useRef(current);
   useEffect(() => {
     if (running && current < prev.current) stop();
     prev.current = current;
-  }, [current]);
+  }, [current, running, stop]);
 
-  const tick = (acc: number) => {
-    const { id: gid, target: t, api: a } = live.current;
-    const max = Math.floor(t * TEST_LIMIT);
-    const lo = Math.max(1, Math.round(t * 0.015));
-    const hi = Math.max(lo, Math.round(t * 0.06));
-    const step = Math.min(lo + Math.floor(Math.random() * (hi - lo + 1)), max - acc);
-    if (step < 1) return stop();
-    a.control(gid, "add", step);
-    if (acc + step >= max) return stop();
-    timer.current = setTimeout(() => tick(acc + step), 350 + Math.random() * 850);
-  };
-  const start = () => {
-    setRunning(true);
-    tick(current);
+  return (
+    <Btn
+      onClick={() => {
+        if (running) return stop();
+        acc.current = current;
+        start();
+      }}
+      disabled={!running && current >= limit}
+    >
+      {running ? "■ Detener" : "▶ Iniciar test"}
+    </Btn>
+  );
+}
+
+/** Metas rotativas: el mismo test, repartido al azar entre las metas del ciclo; y reiniciarlas todas. */
+function RotationTest({ goals, api }: { goals: Goal[]; api: Api }) {
+  const active = goals.filter((g) => g.config.rotate);
+  const [confirm, setConfirm] = useState(false);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => void (confirmTimer.current && clearTimeout(confirmTimer.current)), []);
+  const open = (g: Goal) => g.state.current < Math.floor(g.config.target * TEST_LIMIT);
+  const { running, start, stop } = useTestRunner(() => {
+    const eligible = active.filter(open);
+    if (eligible.length === 0) return null;
+    const g = eligible[Math.floor(Math.random() * eligible.length)];
+    const step = Math.min(randomStep(g.config.target), Math.floor(g.config.target * TEST_LIMIT) - g.state.current);
+    if (step >= 1) api.control(g.config.id, "add", step);
+    return eligible.length === 1 && step >= Math.floor(g.config.target * TEST_LIMIT) - g.state.current ? null : 350 + Math.random() * 850;
+  });
+  const resetAll = () => {
+    if (!confirm) {
+      setConfirm(true);
+      confirmTimer.current = setTimeout(() => setConfirm(false), 3000);
+      return;
+    }
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    setConfirm(false);
+    stop();
+    for (const g of active) api.control(g.config.id, "reset");
   };
 
   return (
-    <Btn onClick={running ? stop : start} disabled={!running && current >= limit}>
-      {running ? "■ Detener" : "▶ Iniciar test"}
-    </Btn>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <Btn onClick={running ? stop : start} disabled={!running && !active.some(open)}>
+        {running ? "■ Detener" : "▶ Iniciar test"}
+      </Btn>
+      <Btn onClick={resetAll} disabled={active.length === 0}>
+        {confirm ? "¿Seguro? Pulsa otra vez" : "Reiniciar metas del ciclo"}
+      </Btn>
+      <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>
+        El test sube las metas del ciclo al azar y se para al 95 % (no las cumple). Reiniciar las pone en 0.
+      </span>
+    </div>
   );
 }
 
@@ -173,6 +212,7 @@ function RotationCard({ goals, api }: { goals: Goal[]; api: Api }) {
             </label>
           ))}
         </div>
+        <RotationTest goals={goals} api={api} />
       </Card>
       <UrlCard kind="meta" id={GOAL_ROTATION_ID} title="Overlay de metas rotativas" showPreview stable />
     </>
