@@ -1,5 +1,6 @@
 export * from "./action.js";
 export * from "./alertas.js";
+export * from "./duelos.js";
 export * from "./community-rule.js";
 export * from "./event.js";
 export * from "./event-log.js";

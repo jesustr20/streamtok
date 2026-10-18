@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { ALERT_PRESETS, GOAL_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
+import { ALERT_PRESETS, DUEL_PRESETS, GOAL_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventRecorder, maxBytesFromEnv } from "./event-recorder.js";
 import {
@@ -18,6 +18,8 @@ import { RoomController, RoomStateEngine } from "./room-state.js";
 import { GoalsController } from "./goals-controller.js";
 import { AlertasEngine, AlertasStore, defaultAlertasFilePath } from "./alertas.js";
 import { AlertasController } from "./alertas-controller.js";
+import { DuelosEngine, DuelosStore, defaultDuelosFilePath } from "./duelos.js";
+import { DuelosController } from "./duelos-controller.js";
 import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
 import { OverlayHttpServer, overlayPortFromEnv } from "./overlay-server.js";
 import { OverlaysController } from "./overlays-controller.js";
@@ -164,6 +166,20 @@ alertas.on("log", (entry) => {
 });
 new AlertasController(server, alertas);
 
+// Duelos (ADR 0015): Regalo vs Regalo, Azul vs Rojo y Top 1 vs Top 2 para /overlay/duelo/<id>.
+const duelos = new DuelosEngine({
+  presets: DUEL_PRESETS,
+  store: new DuelosStore(defaultDuelosFilePath(), (message) =>
+    // eslint-disable-next-line no-console
+    console.warn("[duelos:warn]", message),
+  ),
+});
+duelos.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[duelos:${entry.level}]`, entry.message);
+});
+new DuelosController(server, duelos);
+
 // Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
 const room = new RoomStateEngine();
 new RoomController(server, room);
@@ -181,7 +197,7 @@ overlayHttp
   .listen()
   .then((port) => {
     // eslint-disable-next-line no-console
-    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins, /overlay/meta/<id> y /overlay/nivel/<id>`);
+    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins, /overlay/meta/<id>, /overlay/nivel/<id> y /overlay/duelo/<id>`);
   })
   .catch((err) => {
     // No tumba el sidecar: sin el servidor de overlays todo lo demás sigue funcionando.
@@ -207,6 +223,7 @@ server.onChannel("live-event", (payload) => {
   overlayCounters.handleLiveEvent(evt);
   goals.handleLiveEvent(evt);
   alertas.handleLiveEvent(evt);
+  duelos.handleLiveEvent(evt);
   engine.handleEvent(evt).catch((err) => {
     // eslint-disable-next-line no-console
     console.error("Error procesando live-event:", err);
@@ -238,6 +255,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     overlayCounters.handleLiveEvent(evt);
     goals.handleLiveEvent(evt);
     alertas.handleLiveEvent(evt);
+    duelos.handleLiveEvent(evt);
     engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
@@ -254,6 +272,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     overlayCounters.resetSession();
     goals.resetSession();
     alertas.resetSession();
+    duelos.resetSession();
     room.reset();
   },
 });

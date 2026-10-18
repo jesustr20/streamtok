@@ -114,6 +114,7 @@ const PREVIEW_RESERVE: Record<OverlayKind, { w: number; h: number }> = {
   wins: { w: 560, h: 150 },
   meta: { w: 560, h: 150 },
   nivel: { w: 560, h: 150 },
+  duelo: { w: 560, h: 152 },
 };
 
 /** Redondea hacia arriba al siguiente múltiplo de 10 (un poco de margen). */
@@ -270,7 +271,7 @@ export function Preview({
     () => overlayPage(kind, SIDECAR_WS_PORT, {
         ...(designId ? { design: designId } : {}),
         ...(id ? { id } : {}),
-        ...(kind === "nivel" ? { demo: true } : {}),
+        ...(kind === "nivel" || kind === "duelo" ? { demo: true } : {}),
       }),
     [kind, id, designId],
   );
