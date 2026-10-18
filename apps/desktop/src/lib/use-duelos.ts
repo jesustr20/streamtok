@@ -35,5 +35,11 @@ export function useDuelos(client: SidecarClient | null) {
     [client],
   );
 
-  return { configs: data?.configs ?? null, states: data?.states ?? [], error, save, reset, adjust };
+  const test = useCallback(
+    (id: string, side: 0 | 1, units: number, name: string, coins?: number) =>
+      client?.send("duelos", { kind: "test", id, side, units, name, ...(coins ? { coins } : {}) }),
+    [client],
+  );
+
+  return { configs: data?.configs ?? null, states: data?.states ?? [], error, save, reset, adjust, test };
 }

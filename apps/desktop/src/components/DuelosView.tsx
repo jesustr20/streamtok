@@ -177,16 +177,69 @@ function Scoreboard({ config, state, api }: { config: DuelConfig; state: DuelSta
         })}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <TestRunner config={config} api={api} />
         <Btn onClick={askReset}>{confirm ? "¿Seguro? Pulsa otra vez" : "Reiniciar marcador"}</Btn>
         <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>
           {config.mode === "top"
-            ? "Reinicia el ranking de donadores de esta sesión."
+            ? "Reinicia el ranking de donadores de esta sesión. «Iniciar test» manda donadores de prueba."
             : config.mode === "equipos"
-              ? "Pone los dos marcadores en 0 y vacía los equipos (cada quien vuelve a elegir)."
-              : "Pone los dos marcadores en 0. Los botones +/− corrigen un error a mano."}
+              ? "Pone los dos marcadores en 0 y vacía los equipos (cada quien vuelve a elegir). «Iniciar test» manda gente de prueba a los equipos."
+              : "Pone los dos marcadores en 0. Los botones +/− corrigen un error a mano. «Iniciar test» manda regalos de prueba solo a este duelo."}
         </span>
       </div>
     </Card>
+  );
+}
+
+const TEST_NAMES = ["Valentina", "Carlos_92", "Luna", "Diego", "Mia", "Joaquín", "Sofi", "Andrés", "Cami", "Nico"];
+// en Top 1 vs Top 2 pocos nombres, para que se disputen los puestos
+const TEST_DONORS = ["Valentina", "Carlos_92", "Luna", "Diego", "Mia"];
+const TEST_COINS = [1, 5, 30, 100, 500];
+const TEST_MAX = 30;
+
+/**
+ * "Iniciar test": manda regalos de prueba al azar (solo cuentan en este duelo, no activan Acciones).
+ * Regalo vs Regalo: a un lado u otro; Azul vs Rojo: gente de prueba que entra a un equipo y suma; Top 1 vs
+ * Top 2: donadores de prueba. Se detiene solo a los 30 o con "Detener"; el marcador queda donde estaba.
+ */
+function TestRunner({ config, api }: { config: DuelConfig; api: Api }) {
+  const [running, setRunning] = useState(false);
+  const [sent, setSent] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const live = useRef({ config, api });
+  live.current = { config, api };
+  const stop = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    setRunning(false);
+  };
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+  const ready = config.mode !== "regalos" || config.sides.every((s) => s.gifts.length > 0);
+
+  const tick = (n: number) => {
+    const { config: c, api: a } = live.current;
+    const side = Math.random() < 0.5 ? 0 : 1;
+    // casi siempre 1 o 2 regalos; de vez en cuando un combo grande
+    const units = Math.random() < 0.15 ? 3 + Math.floor(Math.random() * 6) : 1 + Math.floor(Math.random() * 2);
+    const pool = c.mode === "top" ? TEST_DONORS : TEST_NAMES;
+    const coins = c.mode === "regalos" ? undefined : TEST_COINS[Math.floor(Math.random() * TEST_COINS.length)];
+    a.test(c.id, side, units, pool[Math.floor(Math.random() * pool.length)], coins);
+    setSent(n + 1);
+    if (n + 1 >= TEST_MAX) return stop();
+    timer.current = setTimeout(() => tick(n + 1), 350 + Math.random() * 1150);
+  };
+  const start = () => {
+    setRunning(true);
+    setSent(0);
+    tick(0);
+  };
+
+  return (
+    <>
+      <Btn onClick={running ? stop : start} disabled={!running && !ready}>
+        {running ? `■ Detener (${sent}/${TEST_MAX})` : "▶ Iniciar test"}
+      </Btn>
+    </>
   );
 }
 
