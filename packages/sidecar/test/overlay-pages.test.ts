@@ -185,6 +185,12 @@ describe("overlay de nivel", () => {
 });
 
 describe("overlay de duelo", () => {
+  it("el ejemplo de la vista previa suma el valor del regalo de cada lado", () => {
+    const html = overlayPage("duelo", 7331, { id: "regalo-vs-regalo", demo: true });
+    expect(html).toContain("function unitOf(i)");
+    expect(html).toContain("c.cost");
+  });
+
   it("la vista previa usa datos reales en cuanto el duelo tiene puntos", () => {
     const html = overlayPage("duelo", 7331, { id: "regalo-vs-regalo", demo: true });
     expect(html).toContain("function demoNow()");

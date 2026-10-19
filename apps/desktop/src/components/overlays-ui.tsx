@@ -91,6 +91,7 @@ export function UrlCard({
             onSize={setSize}
             reserve={reserve ?? (kind === "meta" || stable ? PREVIEW_RESERVE[kind] : undefined)}
             waitReady={stable}
+            live={kind === "duelo"}
           />
           {onCustomize && <Btn onClick={onCustomize}>{customizeLabel}</Btn>}
         </div>
@@ -255,6 +256,7 @@ export function Preview({
   onSize,
   reserve,
   waitReady = false,
+  live = false,
 }: {
   kind: OverlayKind;
   id?: string;
@@ -265,15 +267,17 @@ export function Preview({
   reserve?: { w: number; h: number };
   /** no se muestra ni se mide hasta que la página recibe sus datos */
   waitReady?: boolean;
+  /** muestra los datos reales (marcador en 0 incluido) en vez de números de ejemplo; para lo que el usuario está probando */
+  live?: boolean;
   onSize?: (size: { w: number; h: number }) => void;
 }) {
   const html = useMemo(
     () => overlayPage(kind, SIDECAR_WS_PORT, {
         ...(designId ? { design: designId } : {}),
         ...(id ? { id } : {}),
-        ...(kind === "nivel" || kind === "duelo" ? { demo: true } : {}),
+        ...(kind === "nivel" || (kind === "duelo" && !live) ? { demo: true } : {}),
       }),
-    [kind, id, designId],
+    [kind, id, designId, live],
   );
   const frame = useRef<HTMLIFrameElement>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);

@@ -84,6 +84,9 @@ export class DuelosController extends EventEmitter {
       case "adjust":
         this.duelos.adjust(msg.id, msg.side, msg.delta);
         return;
+      case "test":
+        this.duelos.test(msg.id, msg.side, msg.units, msg.name, msg.coins);
+        return;
       default:
         return; // `state` y `error` los emite el sidecar
     }

@@ -56,6 +56,18 @@ describe("DuelosController", () => {
     server.close();
   });
 
+  it("un regalo de prueba (test) suma en el duelo y llega a todos", async () => {
+    const a = await connect(server);
+    const b = await connect(server);
+    sockets.push(a.ws, b.ws);
+    await a.next(isState);
+    await b.next(isState);
+    a.send({ kind: "test", id: "regalo-vs-regalo", side: 0, units: 2, name: "Luna" });
+    const m = await b.next(isState);
+    expect(m.payload.states[0].sides[0].score).toBe(2);
+    expect(m.payload.states[0].sides[0].supporters[0].name).toBe("Luna");
+  });
+
   it("manda la configuración y el marcador al conectarse", async () => {
     const c = await connect(server);
     sockets.push(c.ws);

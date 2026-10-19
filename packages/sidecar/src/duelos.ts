@@ -195,6 +195,40 @@ export class DuelosEngine extends EventEmitter {
     this.changed();
   }
 
+  /**
+   * Regalos de prueba (botón "Iniciar test"): una persona de prueba manda `units` regalos, solo en este duelo.
+   * - regalos: suma al lado indicado; con monedas vale `units` veces el valor del regalo del lado (`cost`).
+   * - equipos: la persona entra al equipo indicado (si aún no tenía) y suma a su equipo.
+   * - top: suma a esa persona en el ranking de donadores (`coins` por regalo).
+   */
+  test(id: string, side: Side, units: number, name: string, coins?: number): void {
+    const config = this.configs.find((c) => c.id === id);
+    if (!config || !isNum(units) || units < 1) return;
+    const acc = this.acc(id);
+    const handle = `@prueba-${name.toLowerCase()}`;
+    const each = isNum(coins) && coins > 0 ? coins : 1;
+
+    if (config.mode === "top") {
+      add(acc.donors, handle, name, undefined, units * each, MAX_DONORS);
+    } else if (config.mode === "equipos") {
+      if (!acc.members.has(handle)) {
+        if (acc.members.size >= MAX_MEMBERS) return;
+        acc.members.set(handle, side);
+      }
+      const team = acc.members.get(handle) as Side;
+      const value = config.metric === "coins" ? units * each : units;
+      acc.scores[team] += value;
+      add(acc.supporters[team], handle, name, undefined, value, MAX_SUPPORTERS);
+    } else {
+      const cost = config.sides[side].cost;
+      const value = config.metric === "coins" ? units * (cost && cost > 0 ? cost : 1) : units;
+      acc.scores[side] += value;
+      add(acc.supporters[side], handle, name, undefined, value, MAX_SUPPORTERS);
+    }
+    acc.updatedAt = Date.now();
+    this.changed();
+  }
+
   handleLiveEvent(evt: LiveEvent): void {
     if (this.configs.length === 0) return;
     const handle = handleKey(evt.username);

@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useDuelos } from "../lib/use-duelos";
 import { useGiftCatalog } from "../lib/use-gift-catalog";
+import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
 import { GiftPicker } from "./GiftPicker";
 import { Btn, Card, DesignCard, Field, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
@@ -53,7 +54,7 @@ export function DuelosView({ client, selected }: { client: SidecarClient | null;
       {!api.configs ? (
         <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>Conectando con el sidecar…</div>
       ) : config ? (
-        <DuelBlock key={config.id} config={config} state={api.states.find((s) => s.id === config.id)} api={api} gifts={gifts} />
+        <DuelBlock key={config.id} config={config} state={api.states.find((s) => s.id === config.id)} api={api} gifts={gifts} client={client} />
       ) : (
         <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>Este duelo no existe.</div>
       )}
@@ -61,7 +62,7 @@ export function DuelosView({ client, selected }: { client: SidecarClient | null;
   );
 }
 
-function DuelBlock({ config, state, api, gifts }: { config: DuelConfig; state: DuelState | undefined; api: Api; gifts: GiftCatalogEntry[] }) {
+function DuelBlock({ config, state, api, gifts, client }: { config: DuelConfig; state: DuelState | undefined; api: Api; gifts: GiftCatalogEntry[]; client: SidecarClient | null }) {
   const [open, setOpen] = useState(false);
   const patch = (p: Partial<DuelConfig>) => api.save({ ...config, ...p });
   const patchSide = (i: Side, p: Partial<DuelSideConfig>) => {
@@ -78,15 +79,30 @@ function DuelBlock({ config, state, api, gifts }: { config: DuelConfig; state: D
       const icon = giftIcon(s.gifts, gifts) ?? s.icon;
       // el nombre es el del regalo; solo se pone cuando todos sus regalos ya están en el catálogo (o son nombres)
       const ready = s.gifts.length > 0 && s.gifts.every((t) => !/^\d+$/.test(t) || findToken(t, gifts));
-      return { ...s, icon, name: ready ? giftsLabel(s.gifts, gifts) : s.name };
+      return { ...s, icon, cost: giftCost(s.gifts, gifts) ?? s.cost, name: ready ? giftsLabel(s.gifts, gifts) : s.name };
     };
     const [a, b] = config.sides;
     const na = fix(a);
     const nb = fix(b);
-    if (na.icon === a.icon && na.name === a.name && nb.icon === b.icon && nb.name === b.name) return;
+    if (na.icon === a.icon && na.cost === a.cost && na.name === a.name && nb.icon === b.icon && nb.cost === b.cost && nb.name === b.name) return;
     api.save({ ...config, sides: [na, nb] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gifts, config.mode, config.sides[0].gifts.join("|"), config.sides[1].gifts.join("|"), config.sides[0].icon, config.sides[1].icon]);
+  }, [gifts, config.mode, config.sides[0].gifts.join("|"), config.sides[1].gifts.join("|"), config.sides[0].icon, config.sides[1].icon, config.sides[0].cost, config.sides[1].cost]);
+
+  // Envía un regalo de prueba por el mismo camino que uno real (igual que el Simulador), para ver cómo suma.
+  const testGift = (g: GiftCatalogEntry) => {
+    const id = g.id !== undefined && /^\d+$/.test(g.id) ? Number(g.id) : undefined;
+    client?.send("live-event", {
+      event: "gift",
+      username: "@prueba",
+      nickname: "Prueba",
+      giftName: g.name,
+      giftId: id,
+      coins: g.cost,
+      repeatEnd: true,
+      timestamp: Date.now(),
+    });
+  };
 
   return (
     <>
@@ -96,8 +112,9 @@ function DuelBlock({ config, state, api, gifts }: { config: DuelConfig; state: D
         </div>
       </Card>
 
+      <Settings config={config} patch={patch} patchSide={patchSide} gifts={gifts} onTest={testGift} />
+      {/* justo encima del overlay, como en Metas: probar y ver el resultado sin bajar y subir */}
       <Scoreboard config={config} state={state} api={api} />
-      <Settings config={config} patch={patch} patchSide={patchSide} gifts={gifts} />
 
       <UrlCard
         kind="duelo"
@@ -129,6 +146,14 @@ function Scoreboard({ config, state, api }: { config: DuelConfig; state: DuelSta
     api.reset(config.id);
   };
   const manual = config.mode !== "top";
+  // "Testear (+10 %)": un solo golpe de prueba, del 10 % del marcador más alto (mínimo 1), a un lado al azar.
+  const testTen = () => {
+    const leader = Math.max(state?.sides[0]?.score ?? 0, state?.sides[1]?.score ?? 0);
+    const amount = Math.max(1, Math.round(leader * 0.1));
+    const side = Math.random() < 0.5 ? 0 : 1;
+    if (manual) api.adjust(config.id, side, amount);
+    else api.test(config.id, side, 1, TEST_DONORS[Math.floor(Math.random() * TEST_DONORS.length)], amount);
+  };
   return (
     <Card title="Marcador en vivo">
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -162,16 +187,50 @@ function Scoreboard({ config, state, api }: { config: DuelConfig; state: DuelSta
         })}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <TestRunner config={config} api={api} />
+        <Btn primary onClick={testTen}>
+          Testear (+10 %)
+        </Btn>
         <Btn onClick={askReset}>{confirm ? "¿Seguro? Pulsa otra vez" : "Reiniciar marcador"}</Btn>
         <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>
           {config.mode === "top"
-            ? "Reinicia el ranking de donadores de esta sesión."
+            ? "Reinicia el ranking de donadores de esta sesión. «Iniciar test» manda donadores de prueba; «Testear (+10 %)» da un golpe del 10 % a un puesto al azar."
             : config.mode === "equipos"
-              ? "Pone los dos marcadores en 0 y vacía los equipos (cada quien vuelve a elegir)."
-              : "Pone los dos marcadores en 0. Los botones +/− corrigen un error a mano."}
+              ? "Pone los dos marcadores en 0 y vacía los equipos (cada quien vuelve a elegir). «Iniciar test» manda gente de prueba a los equipos."
+              : "Pone los dos marcadores en 0. Los botones +/− corrigen un error a mano. «Iniciar test» manda regalos de prueba solo a este duelo."}
         </span>
       </div>
     </Card>
+  );
+}
+
+const TEST_NAMES = ["Valentina", "Carlos_92", "Luna", "Diego", "Mia", "Joaquín", "Sofi", "Andrés", "Cami", "Nico"];
+// en Top 1 vs Top 2 pocos nombres, para que se disputen los puestos
+const TEST_DONORS = ["Valentina", "Carlos_92", "Luna", "Diego", "Mia"];
+const TEST_COINS = [1, 5, 30, 100, 500];
+const TEST_MAX = 30;
+
+/**
+ * "Iniciar test": manda regalos de prueba al azar (solo cuentan en este duelo, no activan Acciones).
+ * Regalo vs Regalo: a un lado u otro; Azul vs Rojo: gente de prueba que entra a un equipo y suma; Top 1 vs
+ * Top 2: donadores de prueba. Se detiene solo a los 30 o con "Detener"; el marcador queda donde estaba.
+ */
+function TestRunner({ config, api }: { config: DuelConfig; api: Api }) {
+  const ready = config.mode !== "regalos" || config.sides.every((s) => s.gifts.length > 0);
+  const { running, count, start, stop } = useTestRunner((n) => {
+    const side = Math.random() < 0.5 ? 0 : 1;
+    // casi siempre 1 o 2 regalos; de vez en cuando un combo grande
+    const units = Math.random() < 0.15 ? 3 + Math.floor(Math.random() * 6) : 1 + Math.floor(Math.random() * 2);
+    const pool = config.mode === "top" ? TEST_DONORS : TEST_NAMES;
+    const coins = config.mode === "regalos" ? undefined : TEST_COINS[Math.floor(Math.random() * TEST_COINS.length)];
+    api.test(config.id, side, units, pool[Math.floor(Math.random() * pool.length)], coins);
+    return n + 1 >= TEST_MAX ? null : 350 + Math.random() * 1150;
+  });
+
+  return (
+    <Btn onClick={running ? stop : start} disabled={!running && !ready}>
+      {running ? `■ Detener (${count}/${TEST_MAX})` : "▶ Iniciar test"}
+    </Btn>
   );
 }
 
@@ -181,11 +240,13 @@ function Settings({
   patch,
   patchSide,
   gifts,
+  onTest,
 }: {
   config: DuelConfig;
   patch: (p: Partial<DuelConfig>) => void;
   patchSide: (i: Side, p: Partial<DuelSideConfig>) => void;
   gifts: GiftCatalogEntry[];
+  onTest: (gift: GiftCatalogEntry) => void;
 }) {
   const metrics = DUEL_MODES.find((m) => m.id === config.mode)?.metrics ?? ["coins"];
   return (
@@ -260,9 +321,10 @@ function Settings({
                   <GiftListField
                     tokens={side.gifts}
                     gifts={gifts}
+                    onTest={onTest}
                     onChange={(g) => {
                       // el nombre y la imagen del lado son siempre los de su regalo
-                      patchSide(i, { gifts: g, icon: giftIcon(g, gifts), ...(g.length ? { name: giftsLabel(g, gifts) } : {}) });
+                      patchSide(i, { gifts: g, icon: giftIcon(g, gifts), cost: giftCost(g, gifts), ...(g.length ? { name: giftsLabel(g, gifts) } : {}) });
                     }}
                   />
                 </Field>
@@ -300,12 +362,21 @@ function giftIcon(tokens: string[], gifts: GiftCatalogEntry[]): string | undefin
   return undefined;
 }
 
+/** Valor en monedas del lado: el del primer regalo que esté en el catálogo. */
+function giftCost(tokens: string[], gifts: GiftCatalogEntry[]): number | undefined {
+  for (const t of tokens) {
+    const g = findToken(t, gifts);
+    if (g) return g.cost;
+  }
+  return undefined;
+}
+
 /**
  * Regalos de un lado: fichas con imagen y un selector del catálogo para añadir más. Se guarda el
  * nombre del regalo; si hay dos con el mismo nombre (p. ej. dos "Balloons"), su número, que es único.
  * Sigue habiendo un campo para escribir uno a mano, por si el catálogo aún no lo tiene.
  */
-function GiftListField({ tokens, gifts, onChange }: { tokens: string[]; gifts: GiftCatalogEntry[]; onChange: (tokens: string[]) => void }) {
+function GiftListField({ tokens, gifts, onChange, onTest }: { tokens: string[]; gifts: GiftCatalogEntry[]; onChange: (tokens: string[]) => void; onTest: (gift: GiftCatalogEntry) => void }) {
   const [manual, setManual] = useState("");
   const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
   const find = (t: string) => (/^\d+$/.test(t) ? gifts.find((g) => g.id === t) : gifts.find((g) => same(g.name, t)));
@@ -331,6 +402,16 @@ function GiftListField({ tokens, gifts, onChange }: { tokens: string[]; gifts: G
               {g && <img src={g.imageUrl} alt="" referrerPolicy="no-referrer" style={{ width: 24, height: 24, borderRadius: 4, objectFit: "cover" }} />}
               <b style={{ fontWeight: 700 }}>{g?.name ?? t}</b>
               {g && <span style={{ color: "#9A9CA5", fontSize: 11 }}>{g.cost} 🪙</span>}
+              {g && (
+                <button
+                  type="button"
+                  title="Envía un regalo de prueba (como el Simulador): suma en el marcador de este duelo"
+                  onClick={() => onTest(g)}
+                  style={{ border: "1px solid #2A2C33", borderRadius: 6, background: "#1A1C22", color: "#C9CBD2", cursor: "pointer", fontSize: 11, padding: "2px 7px" }}
+                >
+                  Probar
+                </button>
+              )}
               <button
                 type="button"
                 aria-label={`Quitar ${g?.name ?? t}`}
