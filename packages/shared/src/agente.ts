@@ -56,6 +56,85 @@ export function providerInfo(id: AgentProviderId): AgentProviderInfo {
 /** Qué claves hay guardadas (solo si hay o no; la clave nunca sale del sidecar). */
 export type AgentKeyStatus = Record<AgentProviderId, boolean>;
 
+// ---------------------------------------------------------------------------
+// Voz (fase c, pieza 1: voces del sistema)
+// ---------------------------------------------------------------------------
+
+export const AgentVoiceSchema = z.object({
+  /** el overlay lee la respuesta en voz alta */
+  enabled: z.boolean().default(true),
+  /** tipo de voz que se busca entre las instaladas */
+  gender: z.enum(["female", "male"]).default("female"),
+  /** nombre exacto de una voz instalada; vacío = elegir sola según `gender` */
+  voiceName: z.string().max(120).default(""),
+  rate: z.number().min(0.5).max(1.8).default(1),
+  volume: z.number().min(0).max(1).default(1),
+  /** lee también la pregunta antes de responder ("Valentina pregunta: ...") */
+  readQuestion: z.boolean().default(false),
+});
+export type AgentVoice = z.infer<typeof AgentVoiceSchema>;
+
+export interface VoiceLike {
+  name: string;
+  lang: string;
+}
+
+const FEMALE_RE = /(sabina|helena|elena|laura|paulina|dalia|camila|salome|elvira|lucia|valentina|monica|paloma|marisol|esperanza|female|mujer|femenin)/i;
+const MALE_RE = /(pablo|raul|jorge|diego|alvaro|juan|carlos|andres|enrique|tomas|alonso|gonzalo|\bmale\b|hombre|masculin)/i;
+const LATAM_RE = /^es[-_](mx|us|419|ar|co|pe|cl|ve|uy|ec|bo|py|cr|gt|hn|ni|pa|pr|do|sv|cu)/i;
+
+/**
+ * Elige entre las voces instaladas la que mejor encaja: solo español; el nombre exacto manda;
+ * luego el género por el nombre (mujer/hombre), el español latino y las voces "Online"/"Natural".
+ * Devuelve undefined si no hay voz en español (el navegador usará la suya por defecto).
+ */
+export function pickVoice<T extends VoiceLike>(voices: T[], voice: Pick<AgentVoice, "gender" | "voiceName">): T | undefined {
+  const exact = voice.voiceName ? voices.find((v) => v.name === voice.voiceName) : undefined;
+  if (exact) return exact;
+  let best: T | undefined;
+  let bestScore = -Infinity;
+  for (const v of voices) {
+    if (!/^es/i.test(v.lang)) continue;
+    const female = FEMALE_RE.test(v.name);
+    const male = !female && MALE_RE.test(v.name);
+    let score = 0;
+    if (voice.gender === "female") score += female ? 10 : male ? -10 : 0;
+    else score += male ? 10 : female ? -10 : 0;
+    if (LATAM_RE.test(v.lang)) score += 3;
+    if (/(online|natural)/i.test(v.name)) score += 2;
+    if (/google/i.test(v.name)) score += 1;
+    if (score > bestScore) {
+      best = v;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** La misma regla de `pickVoice` como JS para la página del overlay (un test comprueba que dan lo mismo). */
+export const PICK_VOICE_JS = String.raw`
+  function pickVoice(voices, gender, voiceName) {
+    var FEMALE = /(sabina|helena|elena|laura|paulina|dalia|camila|salome|elvira|lucia|valentina|monica|paloma|marisol|esperanza|female|mujer|femenin)/i;
+    var MALE = /(pablo|raul|jorge|diego|alvaro|juan|carlos|andres|enrique|tomas|alonso|gonzalo|\bmale\b|hombre|masculin)/i;
+    var LATAM = /^es[-_](mx|us|419|ar|co|pe|cl|ve|uy|ec|bo|py|cr|gt|hn|ni|pa|pr|do|sv|cu)/i;
+    var i, v;
+    if (voiceName) { for (i = 0; i < voices.length; i++) if (voices[i].name === voiceName) return voices[i]; }
+    var best = null, bestScore = -Infinity;
+    for (i = 0; i < voices.length; i++) {
+      v = voices[i];
+      if (!/^es/i.test(v.lang)) continue;
+      var female = FEMALE.test(v.name), male = !female && MALE.test(v.name), score = 0;
+      if (gender === "female") score += female ? 10 : male ? -10 : 0;
+      else score += male ? 10 : female ? -10 : 0;
+      if (LATAM.test(v.lang)) score += 3;
+      if (/(online|natural)/i.test(v.name)) score += 2;
+      if (/google/i.test(v.name)) score += 1;
+      if (score > bestScore) { best = v; bestScore = score; }
+    }
+    return best;
+  }
+`;
+
 export const AgentConfigSchema = z.object({
   enabled: z.boolean().default(true),
   /** nombre con el que se presenta el agente */
@@ -81,6 +160,7 @@ export const AgentConfigSchema = z.object({
   model: z.string().max(80).default(""),
   /** cómo quieres que hable (tono, humor...); se suma a las reglas fijas */
   personality: z.string().max(300).default(""),
+  voice: AgentVoiceSchema.default({}),
   style: OverlayStyleSchema.default({ designId: "panel" }),
 });
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;

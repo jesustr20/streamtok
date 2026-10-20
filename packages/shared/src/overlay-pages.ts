@@ -1,3 +1,4 @@
+import { PICK_VOICE_JS } from "./agente.js";
 import type { OverlayKind } from "./overlays.js";
 
 /**
@@ -1238,6 +1239,25 @@ const AGENTE_JS = `
     else { imgEl.classList.add("hidden"); imgEl.removeAttribute("src"); }
   }
 
+  ${PICK_VOICE_JS}
+
+  // Lee la respuesta en voz alta con una voz del sistema, una sola vez por pregunta. En la vista previa de demo no habla.
+  var spokenId = "";
+  function speak(c) {
+    var v = config && config.voice;
+    if (!v || !v.enabled || DEMO || !window.speechSynthesis || !c.answer || spokenId === c.id) return;
+    spokenId = c.id;
+    try {
+      window.speechSynthesis.cancel();
+      var text = (v.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer;
+      var u = new SpeechSynthesisUtterance(text);
+      var pick = pickVoice(window.speechSynthesis.getVoices(), v.gender, v.voiceName);
+      if (pick) { u.voice = pick; u.lang = pick.lang; } else u.lang = "es-ES";
+      u.rate = v.rate; u.volume = v.volume;
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+
   function typeStep() {
     var c = state && state.current;
     if (!c || !c.answer) return;
@@ -1259,6 +1279,7 @@ const AGENTE_JS = `
     }
     cardEl.classList.remove("hidden");
     if (!c.answer) { aEl.textContent = "Pensando..."; return; }
+    speak(c);
     if (!typeTimer && typedLen < c.answer.length) typeTimer = setInterval(typeStep, 35);
   }
 
@@ -1293,6 +1314,7 @@ const AGENTE_JS = `
   }
 
   setInterval(renderBar, 500);
+  try { if (window.speechSynthesis) window.speechSynthesis.getVoices(); } catch (e) {}
   document.body.setAttribute("data-design", designOverride || "panel");
   connect();
 `;
