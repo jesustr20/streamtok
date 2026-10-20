@@ -91,7 +91,7 @@ export function UrlCard({
             onSize={setSize}
             reserve={reserve ?? (kind === "meta" || stable ? PREVIEW_RESERVE[kind] : undefined)}
             waitReady={stable}
-            live={kind === "duelo"}
+            live={kind === "duelo" || kind === "top"}
           />
           {onCustomize && <Btn onClick={onCustomize}>{customizeLabel}</Btn>}
         </div>
@@ -116,6 +116,7 @@ const PREVIEW_RESERVE: Record<OverlayKind, { w: number; h: number }> = {
   meta: { w: 560, h: 150 },
   nivel: { w: 560, h: 150 },
   duelo: { w: 560, h: 152 },
+  top: { w: 440, h: 350 },
 };
 
 /** Redondea hacia arriba al siguiente múltiplo de 10 (un poco de margen). */
@@ -275,7 +276,7 @@ export function Preview({
     () => overlayPage(kind, SIDECAR_WS_PORT, {
         ...(designId ? { design: designId } : {}),
         ...(id ? { id } : {}),
-        ...(kind === "nivel" || (kind === "duelo" && !live) ? { demo: true } : {}),
+        ...(kind === "nivel" || ((kind === "duelo" || kind === "top") && !live) ? { demo: true } : {}),
       }),
     [kind, id, designId, live],
   );

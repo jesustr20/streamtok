@@ -947,6 +947,220 @@ const DUELO_JS = `
   connect();
 `;
 
+// ---------------------------------------------------------------------------
+// Tops (ADR 0017): rankings de espectadores (Top Gifters, Likes, Comentarios, Compartidos)
+// ---------------------------------------------------------------------------
+
+const TOP_CSS = `
+  .top { --gold: var(--accent, #ffc233); position: relative; }
+  .head { display: flex; align-items: baseline; justify-content: center; gap: 10px; text-align: center; text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+  .head b { font: 800 18px/1.2 "Segoe UI", sans-serif; letter-spacing: 3px; text-transform: uppercase; }
+  .head small { font: 700 12px/1.2 "Segoe UI", sans-serif; letter-spacing: 1px; opacity: .7; text-transform: uppercase; }
+  .av { position: relative; flex: none; box-sizing: border-box; border-radius: 50%; overflow: hidden; background: #2b2f3a; display: flex; align-items: center; justify-content: center; font: 800 20px/1 "Segoe UI", sans-serif; color: #fff; }
+  .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .av i { font-style: normal; }
+  .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; text-shadow: 0 2px 8px rgba(0, 0, 0, .7); }
+  .sc { font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; text-shadow: 0 2px 10px rgba(0, 0, 0, .6); }
+  .empty { opacity: .35; }
+  .pop { animation: tpPop .4s ease-out; }
+  @keyframes tpPop { 0% { transform: scale(1); } 35% { transform: scale(1.22); } 100% { transform: scale(1); } }
+  @keyframes tpIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+  #root.in .top { animation: tpIn .5s ease-out both; }
+  .r1 { --rc: #ffc233; } .r2 { --rc: #c5ccd6; } .r3 { --rc: #d98a4a; }
+
+  /* Lista: tarjeta con los primeros puestos en filas de altura fija */
+  body[data-design="lista"] .top { width: 420px; box-sizing: border-box; padding: 14px 14px 12px; border-radius: 20px; border: 2px solid var(--gold); background: var(--bg, linear-gradient(160deg, rgba(24, 20, 40, .92), rgba(12, 10, 22, .92))); box-shadow: 0 8px 26px rgba(0, 0, 0, .5); }
+  body[data-design="lista"] .head { height: 30px; margin-bottom: 10px; }
+  body[data-design="lista"] .podium { display: none; }
+  body[data-design="lista"] .row { display: flex; align-items: center; gap: 10px; box-sizing: border-box; height: 48px; margin-bottom: 6px; padding: 0 12px 0 8px; border-radius: 14px; background: rgba(255, 255, 255, .07); }
+  body[data-design="lista"] .row:last-child { margin-bottom: 0; }
+  body[data-design="lista"] .rk { flex: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font: 900 15px/1 "Segoe UI", sans-serif; background: var(--rc, #4a4e5c); color: #1b1620; }
+  body[data-design="lista"] .av { width: 36px; height: 36px; border: 2px solid var(--rc, rgba(255, 255, 255, .25)); }
+  body[data-design="lista"] .nm { flex: 1; font-size: 18px; }
+  body[data-design="lista"] .sc { font-size: 20px; color: var(--rc, #fff); }
+
+  /* Podio: los tres primeros con foto grande sobre un pedestal */
+  body[data-design="podio"] .top { width: 480px; box-sizing: border-box; padding: 14px 14px 0; border-radius: 20px; border: 2px solid var(--gold); background: var(--bg, linear-gradient(160deg, rgba(24, 20, 40, .92), rgba(12, 10, 22, .92))); box-shadow: 0 8px 26px rgba(0, 0, 0, .5); overflow: hidden; }
+  body[data-design="podio"] .head { height: 30px; margin-bottom: 8px; }
+  body[data-design="podio"] .list { display: none; }
+  body[data-design="podio"] .podium { display: flex; align-items: flex-end; justify-content: center; gap: 12px; height: 262px; }
+  body[data-design="podio"] .slot { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  body[data-design="podio"] .slot .crown { height: 24px; font-size: 22px; line-height: 24px; color: var(--rc); text-shadow: 0 0 10px var(--rc); visibility: hidden; }
+  body[data-design="podio"] .slot.r1 .crown { visibility: visible; }
+  body[data-design="podio"] .slot .av { width: 64px; height: 64px; border: 3px solid var(--rc); font-size: 26px; margin-bottom: 6px; }
+  body[data-design="podio"] .slot.r1 .av { width: 84px; height: 84px; font-size: 32px; }
+  body[data-design="podio"] .slot .nm { width: 100%; font-size: 17px; line-height: 1.25; }
+  body[data-design="podio"] .slot .sc { font-size: 20px; line-height: 1.2; color: var(--rc); margin-bottom: 8px; }
+  body[data-design="podio"] .slot .ped { width: 100%; display: flex; align-items: flex-start; justify-content: center; box-sizing: border-box; padding-top: 8px; border-radius: 12px 12px 0 0; font: 900 30px/1 "Segoe UI", sans-serif; color: #1b1620; background: var(--rc); }
+  body[data-design="podio"] .slot.r1 .ped { height: 96px; }
+  body[data-design="podio"] .slot.r2 .ped { height: 70px; }
+  body[data-design="podio"] .slot.r3 .ped { height: 50px; }
+`;
+
+const TOP_BODY = `
+  <div id="root" class="hidden"><div class="top" id="top">
+    <div class="head"><b id="title"></b><small id="sub"></small></div>
+    <div class="list" id="list"></div>
+    <div class="podium" id="podium"></div>
+  </div></div>
+`;
+
+/**
+ * Tops. Pide la configuración y el ranking al canal "tops" y se queda con los de su id. En la vista
+ * previa de la app (`demo`) el ranking sube solo con nombres de ejemplo.
+ */
+const TOP_JS = `
+  var q = new URLSearchParams(location.search);
+  var designOverride = q.get("design") || DESIGN_OVERRIDE || null;
+  var DEMO = DEMO_MODE || q.get("demo") === "1";
+  var config = null, state = null, retry = 0, ws = null, demoTimer = null, shown = false;
+  var METRIC_UNITS = { coins: "monedas", likes: "likes", comments: "comentarios", shares: "compartidos" };
+  var DEMO_NAMES = ["Valentina", "Carlos_92", "Luna", "Diego", "Mia", "Joaquin", "Sofi", "Andres", "Cami", "Nico"];
+  var demoScores = null;
+  var rootEl = document.getElementById("root"), listEl = document.getElementById("list"), podEl = document.getElementById("podium");
+  var titleEl = document.getElementById("title"), subEl = document.getElementById("sub");
+  var rows = [], slots = [], built = 0, lastScores = [];
+
+  function fmt(n) { try { return Number(n).toLocaleString("es"); } catch (e) { return String(n); } }
+  function rankClass(i) { return i < 3 ? " r" + (i + 1) : ""; }
+
+  function applyStyle() {
+    var style = config.style;
+    document.body.setAttribute("data-design", designOverride || style.designId);
+    var root = document.documentElement.style;
+    var vars = { "--text": style.textColor, "--bg": style.backgroundColor, "--accent": style.accentColor };
+    for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }
+    root.setProperty("--scale", style.scale || 1);
+  }
+
+  function avatarHtml() { return '<span class="av"><img class="hidden" referrerpolicy="no-referrer" alt=""><i></i></span>'; }
+
+  // Las filas se crean una vez por cantidad de puestos (y los 3 huecos del podio una sola vez).
+  function build(count) {
+    var i, html = "";
+    built = count;
+    for (i = 0; i < count; i++) html += '<div class="row' + rankClass(i) + '"><span class="rk">' + (i + 1) + "</span>" + avatarHtml() + '<span class="nm"></span><span class="sc"></span></div>';
+    listEl.innerHTML = html;
+    rows = [].slice.call(listEl.children).map(function (el) { return pick(el); });
+    var order = [1, 0, 2];
+    html = "";
+    for (i = 0; i < 3; i++) html += '<div class="slot r' + (order[i] + 1) + '"><div class="crown">&#9819;</div>' + avatarHtml() + '<div class="nm"></div><div class="sc"></div><div class="ped">' + (order[i] + 1) + "</div></div>";
+    podEl.innerHTML = html;
+    slots = [];
+    [].slice.call(podEl.children).forEach(function (el, n) { var s = pick(el); slots[order[n]] = s; });
+    lastScores = [];
+  }
+
+  function pick(el) {
+    return { el: el, img: el.querySelector("img"), ini: el.querySelector("i"), nm: el.querySelector(".nm"), sc: el.querySelector(".sc"), url: "" };
+  }
+
+  function setAvatar(s, entry) {
+    s.ini.textContent = entry ? entry.name.trim().charAt(0).toUpperCase() : "?";
+    var url = (entry && entry.avatarUrl) || "";
+    if (url === s.url) return;
+    s.url = url;
+    if (url) {
+      s.img.onerror = function () { s.img.classList.add("hidden"); s.ini.classList.remove("hidden"); };
+      s.img.src = url;
+      s.img.classList.remove("hidden");
+      s.ini.classList.add("hidden");
+    } else {
+      s.img.removeAttribute("src");
+      s.img.classList.add("hidden");
+      s.ini.classList.remove("hidden");
+    }
+  }
+
+  function pop(el) {
+    el.classList.remove("pop");
+    void el.offsetWidth;
+    el.classList.add("pop");
+  }
+
+  function entries() {
+    if (DEMO) {
+      if (!demoScores) {
+        var base = config.metric === "coins" ? 900 : config.metric === "likes" ? 400 : 60;
+        demoScores = DEMO_NAMES.map(function (n, i) { return { name: n, score: Math.round(base * (1 - i * 0.09)) }; });
+      }
+      return demoScores.slice().sort(function (a, b) { return b.score - a.score; });
+    }
+    return (state && state.entries) || [];
+  }
+
+  function render() {
+    if (!config) return;
+    if (built !== config.count) build(config.count);
+    var list = entries(), i;
+    var def = { coins: "Top Gifters", likes: "Top Likes", comments: "Top Comentarios", shares: "Top Compartidos" };
+    titleEl.textContent = config.title || def[config.metric] || "Top";
+    subEl.textContent = (METRIC_UNITS[config.metric] || "") + " \\u00b7 " + (config.period === "day" ? "hoy" : "este LIVE");
+    for (i = 0; i < built; i++) paint(rows[i], list[i], i);
+    for (i = 0; i < 3; i++) paint(slots[i], list[i], i);
+    if (!shown) {
+      shown = true;
+      rootEl.classList.remove("hidden");
+      rootEl.classList.add("in");
+    }
+  }
+
+  function paint(s, entry, i) {
+    s.nm.textContent = entry ? entry.name : "\\u2014";
+    s.sc.textContent = entry ? fmt(entry.score) : "";
+    s.el.classList.toggle("empty", !entry);
+    setAvatar(s, entry);
+    var key = (s.el.className.indexOf("slot") >= 0 ? "p" : "l") + i, was = lastScores[key], now = entry ? entry.score : 0;
+    if (was !== undefined && was !== now) pop(s.sc);
+    lastScores[key] = now;
+  }
+
+  function startDemo() {
+    if (demoTimer) return;
+    demoTimer = setInterval(function () {
+      if (!demoScores) return;
+      var k = Math.floor(Math.random() * Math.min(5, demoScores.length));
+      var step = config.metric === "coins" ? 20 + Math.floor(Math.random() * 90) : 1 + Math.floor(Math.random() * 9);
+      demoScores[k].score += step;
+      render();
+    }, 1200);
+  }
+
+  function schedule() { retry = Math.min(retry + 1, 6); setTimeout(connect, 500 * retry); }
+
+  function connect() {
+    try { ws = new WebSocket("ws://localhost:" + WS_PORT); } catch (e) { schedule(); return; }
+    ws.onopen = function () {
+      retry = 0;
+      ws.send(JSON.stringify({ channel: "tops", payload: { kind: "get-state" } }));
+    };
+    ws.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data);
+        if (m.channel !== "tops" || !m.payload || m.payload.kind !== "state") return;
+        var found = null, i;
+        for (i = 0; i < m.payload.configs.length; i++) {
+          if (!TOP_ID || m.payload.configs[i].id === TOP_ID) { found = m.payload.configs[i]; break; }
+        }
+        config = found;
+        state = null;
+        if (found) {
+          for (i = 0; i < m.payload.states.length; i++) if (m.payload.states[i].id === found.id) state = m.payload.states[i];
+          applyStyle();
+          render();
+          if (DEMO) startDemo();
+        }
+        document.documentElement.setAttribute("data-ready", "1");
+      } catch (e) {}
+    };
+    ws.onclose = schedule;
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+
+  document.body.setAttribute("data-design", designOverride || "lista");
+  connect();
+`;
+
 /** Texto como literal JS seguro dentro de un <script> (escapa `<` para que no cierre la etiqueta). */
 function jsString(value: string): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
@@ -955,9 +1169,9 @@ function jsString(value: string): string {
 export interface OverlayPageOptions {
   /** Diseño forzado (vista previa dentro de la app, donde no hay `?design=`). */
   design?: string;
-  /** Id de la instancia (`meta`, `nivel` y `duelo`): qué meta, alerta o duelo dibuja. Vacío = la primera. */
+  /** Id de la instancia (`meta`, `nivel`, `duelo` y `top`): qué meta, alerta o duelo dibuja. Vacío = la primera. */
   id?: string;
-  /** Vista previa de la app: `nivel` y `duelo` enseñan datos de ejemplo sin esperar al LIVE. */
+  /** Vista previa de la app: `nivel`, `duelo` y `top` enseñan datos de ejemplo sin esperar al LIVE. */
   demo?: boolean;
 }
 
@@ -965,9 +1179,10 @@ export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPage
   const meta = kind === "meta";
   const nivel = kind === "nivel";
   const duelo = kind === "duelo";
-  const css = duelo ? DUELO_CSS : nivel ? NIVEL_CSS : meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
-  const body = duelo ? DUELO_BODY : nivel ? NIVEL_BODY : meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
-  const kindJs = nivel || duelo ? "" : meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
+  const top = kind === "top";
+  const css = top ? TOP_CSS : duelo ? DUELO_CSS : nivel ? NIVEL_CSS : meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
+  const body = top ? TOP_BODY : duelo ? DUELO_BODY : nivel ? NIVEL_BODY : meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
+  const kindJs = nivel || duelo || top ? "" : meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
   return `<!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8">
@@ -985,11 +1200,12 @@ ${body}
   var GOAL_ID = ${jsString(opts.id ?? "")};
   var ALERT_ID = ${jsString(opts.id ?? "")};
   var DUEL_ID = ${jsString(opts.id ?? "")};
+  var TOP_ID = ${jsString(opts.id ?? "")};
   var DEMO_MODE = ${opts.demo ? "true" : "false"};
   // Funciones de dibujo de este overlay (definen render()).
   ${kindJs}
   // Conexión, estado y estilo comunes.
-  ${duelo ? DUELO_JS : nivel ? NIVEL_JS : meta ? META_COMMON_JS : COMMON_JS}
+  ${top ? TOP_JS : duelo ? DUELO_JS : nivel ? NIVEL_JS : meta ? META_COMMON_JS : COMMON_JS}
 })();
 </script>
 </body></html>`;

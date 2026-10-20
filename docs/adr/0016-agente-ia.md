@@ -66,7 +66,7 @@ Para saberlo, este mismo parche agrega `/overlay/prueba-audio`, una página que 
 ## Límites y riesgos
 
 - Un modelo puede equivocarse: las respuestas son "certeras y cortas", no garantizadas. En trivia se mitiga como arriba; si se vuelve un problema, se agrega un banco de preguntas revisado.
-- Falta confirmar si TikTok LIVE Studio reproduce el audio de un overlay web (la página de prueba lo dirá) y el límite exacto de caracteres de un comentario.
+- El audio de un overlay web **sí se reproduce en TikTok LIVE Studio** sin que nadie pulse nada (probado el 2026-10-19 con `/overlay/prueba-audio`: Web Audio, archivo `<audio>` y la voz del sistema). Sigue sin confirmarse el límite exacto de caracteres de un comentario de TikTok.
 - Los proveedores cobran por uso y tienen sus propias políticas de datos; el usuario es quien las acepta al poner su clave.
 - El texto de desconocidos nunca es 100 % inofensivo: la defensa principal es que el agente no pueda hacer nada más que escribir texto.
 

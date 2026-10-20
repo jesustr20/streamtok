@@ -10,11 +10,12 @@ import { Sidebar } from "./components/Sidebar";
 import { TemporizadorView } from "./components/TemporizadorView";
 import { AlertasView } from "./components/AlertasView";
 import { DuelosView } from "./components/DuelosView";
+import { TopsView } from "./components/TopsView";
 import { MetasView } from "./components/MetasView";
 import { WinsView } from "./components/WinsView";
 import { SidecarClient } from "./lib/ws-client";
 
-export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas" | "alertas" | "duelos";
+export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas" | "alertas" | "duelos" | "tops";
 
 export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
@@ -28,6 +29,7 @@ export function App() {
   const [metaSel, setMetaSel] = useState("rotativa");
   const [alertSel, setAlertSel] = useState("comunidad");
   const [duelSel, setDuelSel] = useState("regalo-vs-regalo");
+  const [topSel, setTopSel] = useState("gifters");
 
   useEffect(() => {
     // Catálogo offline: se pide apenas arranca la app, independientemente
@@ -94,6 +96,11 @@ export function App() {
           setView("alertas");
         }}
         duelSel={duelSel}
+        topSel={topSel}
+        onSelectTop={(id) => {
+          setTopSel(id);
+          setView("tops");
+        }}
         onSelectDuel={(id) => {
           setDuelSel(id);
           setView("duelos");
@@ -134,6 +141,7 @@ export function App() {
         {view === "metas" && <MetasView client={client} selected={metaSel} />}
         {view === "alertas" && <AlertasView client={client} selected={alertSel} />}
         {view === "duelos" && <DuelosView client={client} selected={duelSel} />}
+        {view === "tops" && <TopsView client={client} selected={topSel} />}
       </main>
     </div>
   );

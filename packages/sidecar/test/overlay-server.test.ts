@@ -30,6 +30,13 @@ describe("OverlayHttpServer", () => {
     }
   });
 
+  it("sirve /overlay/top/<id> con su id", async () => {
+    const base = await start();
+    const html = await (await fetch(`${base}/overlay/top/gifters`)).text();
+    expect(html).toContain('var KIND = "top";');
+    expect(html).toContain('var TOP_ID = "gifters";');
+  });
+
   it("sirve la página de prueba de audio en /overlay/prueba-audio", async () => {
     const base = await start();
     const res = await fetch(`${base}/overlay/prueba-audio`);

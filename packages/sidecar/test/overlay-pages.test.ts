@@ -225,3 +225,19 @@ describe("overlay de duelo", () => {
     expect(html).toContain("@keyframes duPop");
   });
 });
+
+describe("overlay de tops", () => {
+  it("se conecta al canal tops con su id y trae los dos diseños", () => {
+    const html = overlayPage("top", 7331, { id: "likes" });
+    expect(html).toContain('var KIND = "top";');
+    expect(html).toContain('var TOP_ID = "likes";');
+    expect(html).toContain('channel: "tops"');
+    expect(OVERLAY_DESIGNS.top.map((d) => d.id)).toEqual(["lista", "podio"]);
+    for (const d of OVERLAY_DESIGNS.top) expect(html).toContain(`[data-design="${d.id}"]`);
+  });
+
+  it("la vista previa de la app activa el ejemplo", () => {
+    expect(overlayPage("top", 7331, { id: "likes", demo: true })).toContain("var DEMO_MODE = true;");
+    expect(overlayPage("top", 7331, { id: "likes" })).toContain("var DEMO_MODE = false;");
+  });
+});
