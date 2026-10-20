@@ -197,10 +197,26 @@ export class TopsEngine extends EventEmitter {
       if (config.metric === "coins") value = evt.event === "gift" ? coins : 0;
       else if (config.metric === "likes") value = evt.event === "like" ? (isNum(evt.likeCount) ? evt.likeCount : 1) : 0;
       else if (config.metric === "comments") value = evt.event === "comment" ? 1 : 0;
-      else value = evt.event === "share" ? 1 : 0;
+      else if (config.metric === "shares") value = evt.event === "share" ? 1 : 0;
+      // "trivia" no viene de eventos del LIVE: lo suma `credit`
       if (value <= 0) continue;
       const acc = this.acc(config.id);
       add(acc.people, handle, name, evt.avatarUrl, value);
+      acc.updatedAt = this.now().getTime();
+      touched = true;
+    }
+    if (touched) this.changed();
+  }
+
+  /** Suma a una persona en los rankings que cuentan `metric` (lo usa la trivia del agente para el Top Trivia). */
+  credit(metric: TopConfig["metric"], handle: string, name: string, avatarUrl: string | undefined, amount: number): void {
+    if (!isNum(amount) || amount <= 0) return;
+    this.rollover();
+    let touched = false;
+    for (const config of this.configs) {
+      if (config.metric !== metric) continue;
+      const acc = this.acc(config.id);
+      add(acc.people, handleKey(handle), name, avatarUrl, amount);
       acc.updatedAt = this.now().getTime();
       touched = true;
     }

@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 import { AgentConfigSchema, AgentMessageSchema, type AgentProviderId } from "@streamtok/shared";
 import type { AgenteEngine } from "./agente.js";
 import type { ModelService } from "./agente-model.js";
+import type { TriviaEngine } from "./agente-trivia.js";
 import { formatZodError } from "./mapping-rules.js";
 import type { StreamTokWsServer } from "./ws-server.js";
 
@@ -24,13 +25,18 @@ export class AgenteController extends EventEmitter {
     private server: StreamTokWsServer,
     private agente: AgenteEngine,
     private model?: ModelService,
+    private trivia?: TriviaEngine,
   ) {
     super();
     this.server.on("client-connected", (socket) => this.sendStateTo(socket));
     this.server.onChannel("agente", (payload, socket) => this.handle(payload, socket));
     this.agente.on("state", () => this.scheduleBroadcast());
     this.model?.on("state", () => this.scheduleBroadcast());
-    this.ticker = setInterval(() => this.agente.tick(), TICK_EVERY_MS);
+    this.trivia?.on("state", () => this.scheduleBroadcast());
+    this.ticker = setInterval(() => {
+      this.agente.tick();
+      this.trivia?.tick();
+    }, TICK_EVERY_MS);
     this.ticker.unref?.();
   }
 
@@ -42,6 +48,7 @@ export class AgenteController extends EventEmitter {
       // solo si hay clave o no: la clave misma nunca sale del sidecar
       keys: this.model?.keyStatus() ?? { deepseek: false, openai: false, gemini: false, claude: false },
       modelCalls: this.model?.modelCalls ?? 0,
+      trivia: this.trivia?.getState() ?? { phase: "idle" as const, options: [], deadline: 0, answers: 0, startedAt: 0 },
       serverNow: Date.now(),
     };
   }
@@ -95,6 +102,12 @@ export class AgenteController extends EventEmitter {
         return;
       case "reset":
         this.agente.reset();
+        return;
+      case "trivia-start":
+        if (!this.trivia?.start(msg.sample)) this.server.sendTo(socket, "agente", { kind: "error", message: "Ya hay una trivia en curso." });
+        return;
+      case "trivia-cancel":
+        this.trivia?.cancel();
         return;
       case "set-key":
         this.model?.setKey(msg.provider, msg.key);

@@ -128,6 +128,7 @@ export class AgenteEngine extends EventEmitter {
   private fanClub = new Set<string>();
   private credits = new Map<string, Credit>();
   private lastAsk = new Map<string, number>();
+  private prizes = new Map<string, Credit>();
   private coinStreaks = new Map<string, number>();
   private saving = false;
   private dirty = false;
@@ -186,10 +187,23 @@ export class AgenteEngine extends EventEmitter {
     this.sharers.clear();
     this.fanClub.clear();
     this.credits.clear();
+    this.prizes.clear();
     this.lastAsk.clear();
     this.coinStreaks.clear();
     this.answered = 0;
     this.reset();
+  }
+
+  /** Premio de la trivia: la próxima pregunta de esta persona pasa primero (aunque no cumpla los requisitos) y se salta su espera. */
+  grantPrize(handle: string, coins: number): void {
+    const key = handleKey(handle);
+    this.prizes.set(key, { coins, until: this.now() + this.config.giftCreditMin * 60_000 });
+    this.lastAsk.delete(key);
+  }
+
+  /** ¿Hay una respuesta en pantalla o preguntas esperando? (la trivia no se mete en medio) */
+  isBusy(): boolean {
+    return this.current !== undefined || this.queue.length > 0;
   }
 
   /** Pregunta de prueba desde la app: no pasa por el chat ni pide requisitos. */
@@ -228,12 +242,14 @@ export class AgenteEngine extends EventEmitter {
     if (question === undefined) return;
     const text = clamp(question, this.config.maxQuestionChars);
     if (!text) return;
-    const credit = this.activeCredit(handle);
-    if (!this.eligible(handle, credit)) return;
+    const prize = this.activePrize(handle);
+    const credit = this.activeCredit(handle) + prize;
+    if (prize === 0 && !this.eligible(handle, credit)) return;
     const last = this.lastAsk.get(handle);
     if (last !== undefined && this.now() - last < this.config.userCooldownSec * 1000) return; // espera su turno para volver a preguntar
     if (this.enqueue(handle, name, evt.avatarUrl, text, credit)) {
       this.credits.delete(handle);
+      this.prizes.delete(handle);
       this.lastAsk.set(handle, this.now());
     }
   }
@@ -302,6 +318,11 @@ export class AgenteEngine extends EventEmitter {
 
   private activeCredit(handle: string): number {
     const c = this.credits.get(handle);
+    return c && c.until > this.now() ? c.coins : 0;
+  }
+
+  private activePrize(handle: string): number {
+    const c = this.prizes.get(handle);
     return c && c.until > this.now() ? c.coins : 0;
   }
 

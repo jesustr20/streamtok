@@ -1,4 +1,4 @@
-import { AGENT_PROVIDERS, pickVoice, providerInfo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
+import { AGENT_PROVIDERS, TRIVIA_DIFFICULTY_NAMES, pickVoice, type AgentTriviaConfig, providerInfo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { useTestRunner } from "../lib/use-test-runner";
@@ -105,9 +105,11 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
 
       <Voz config={config} patch={patch} />
 
+      <Trivia config={config} api={api} patch={patch} hasKey={keys[config.provider]} />
+
       <Queue config={config} state={state} api={api} />
 
-      <UrlCard kind="agente" title="Overlay" stable reserve={{ w: 480, h: 230 }} onCustomize={() => setOpen((v) => !v)} customizeLabel={open ? "Ocultar diseño" : "Personalizar diseño"} />
+      <UrlCard kind="agente" title="Overlay" stable reserve={{ w: 480, h: 440 }} onCustomize={() => setOpen((v) => !v)} customizeLabel={open ? "Ocultar diseño" : "Personalizar diseño"} />
       {open && <DesignCard kind="agente" style={config.style} onChange={(style) => patch({ style })} />}
     </>
   );
@@ -203,6 +205,97 @@ function Voz({ config, patch }: { config: AgentConfig; patch: (p: Partial<AgentC
         <Btn primary onClick={preview}>
           ▶ Probar voz
         </Btn>
+      </div>
+    </Card>
+  );
+}
+
+/** Trivia: el agente lanza preguntas con opciones cuando el chat está tranquilo. */
+function Trivia({ config, api, patch, hasKey }: { config: AgentConfig; api: Api; patch: (p: Partial<AgentConfig>) => void; hasKey: boolean }) {
+  const t = config.trivia;
+  const set = (p: Partial<AgentTriviaConfig>) => patch({ trivia: { ...t, ...p } });
+  const st = api.trivia;
+  const busy = st !== null && st.phase !== "idle";
+  const PHASE: Record<string, string> = { idle: "En reposo", generating: "Preparando la pregunta…", open: "Abierta: la gente está respondiendo", reveal: "Enseñando la respuesta" };
+  return (
+    <Card title="Trivia">
+      <div style={{ fontSize: 12.5, color: "#C9CBD2", lineHeight: 1.55 }}>
+        Cuando nadie comenta ni regala durante un rato, el agente lanza una pregunta con opciones. La gente responde escribiendo la letra (A, B, C o D) y el
+        primero que acierta gana: su próxima pregunta al agente pasa primero y suma un acierto en <b>Top Trivia</b> (Overlays → Tops y MVP). Cada pregunta
+        gasta una llamada del modelo.
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ width: 150 }}>
+          <Field label="Trivia automática" hint={hasKey ? "sale sola con el chat quieto" : "necesita una clave de modelo guardada"}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <input type="checkbox" checked={t.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
+              {t.enabled ? "Activada" : "Apagada"}
+            </label>
+          </Field>
+        </div>
+        <div style={{ width: 170 }}>
+          <Field label="Chat callado (seg.)" hint="sin comentarios ni regalos">
+            <NumberField value={t.idleSec} min={15} integer onCommit={(v) => set({ idleSec: Math.min(1800, Math.max(15, Math.round(v))) })} />
+          </Field>
+        </div>
+        <div style={{ width: 170 }}>
+          <Field label="Tiempo para responder (seg.)" hint="">
+            <NumberField value={t.answerSec} min={10} integer onCommit={(v) => set({ answerSec: Math.min(120, Math.max(10, Math.round(v))) })} />
+          </Field>
+        </div>
+        <div style={{ width: 130 }}>
+          <Field label="Opciones" hint="">
+            <select value={t.options} onChange={(e) => set({ options: Number(e.target.value) as 3 | 4 })} style={{ ...inputStyle, width: "100%" }}>
+              <option value={3}>3 (A, B, C)</option>
+              <option value={4}>4 (A a D)</option>
+            </select>
+          </Field>
+        </div>
+        <div style={{ width: 130 }}>
+          <Field label="Dificultad" hint="">
+            <select value={t.difficulty} onChange={(e) => set({ difficulty: e.target.value as AgentTriviaConfig["difficulty"] })} style={{ ...inputStyle, width: "100%" }}>
+              {(Object.keys(TRIVIA_DIFFICULTY_NAMES) as AgentTriviaConfig["difficulty"][]).map((d) => (
+                <option key={d} value={d}>
+                  {TRIVIA_DIFFICULTY_NAMES[d]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <Field label="Temas" hint="separados por comas; el agente elige uno al azar">
+            <CommitInput value={t.topics} max={200} onCommit={(v) => set({ topics: v })} />
+          </Field>
+        </div>
+        <div style={{ width: 170 }}>
+          <Field label="Máximo por hora" hint="protege tu saldo">
+            <NumberField value={t.maxPerHour} min={1} integer onCommit={(v) => set({ maxPerHour: Math.min(60, Math.max(1, Math.round(v))) })} />
+          </Field>
+        </div>
+        <div style={{ width: 170 }}>
+          <Field label="Premio (monedas de prioridad)" hint="qué tan rápido pasa su pregunta">
+            <NumberField value={t.prizeCoins} min={1} integer onCommit={(v) => set({ prizeCoins: Math.min(1000, Math.max(1, Math.round(v))) })} />
+          </Field>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <Btn onClick={() => api.startTrivia(true)} disabled={busy}>
+          ▶ Trivia de prueba
+        </Btn>
+        <Btn primary onClick={() => api.startTrivia(false)} disabled={busy || !hasKey}>
+          Lanzar trivia con el modelo
+        </Btn>
+        <Btn onClick={api.cancelTrivia} disabled={!busy}>
+          Cancelar
+        </Btn>
+        <span style={{ fontSize: 12, color: "#9A9CA5" }}>
+          {st ? `${PHASE[st.phase]}${st.phase === "open" ? ` · ${st.answers} respuestas` : ""}` : ""}
+        </span>
+      </div>
+      <div style={{ fontSize: 11.5, color: "#9A9CA5" }}>
+        «Trivia de prueba» usa preguntas de ejemplo (sin clave ni gasto). Para probar la respuesta, escribe la letra desde el chat del LIVE; en la app puedes mirar el overlay de abajo.
       </div>
     </Card>
   );

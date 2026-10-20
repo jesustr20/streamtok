@@ -9,7 +9,7 @@ import { OverlayStyleSchema } from "./overlays.js";
  * Cada ranking cuenta UNA cosa (`metric`) durante la sesión del LIVE o durante el día (`period`).
  */
 
-export const TopMetricSchema = z.enum(["coins", "likes", "comments", "shares"]);
+export const TopMetricSchema = z.enum(["coins", "likes", "comments", "shares", "trivia"]);
 export type TopMetric = z.infer<typeof TopMetricSchema>;
 
 export const TOP_METRIC_NAMES: Record<TopMetric, string> = {
@@ -17,6 +17,7 @@ export const TOP_METRIC_NAMES: Record<TopMetric, string> = {
   likes: "Likes",
   comments: "Comentarios",
   shares: "Compartidos",
+  trivia: "Aciertos de trivia",
 };
 
 /** Unidad corta para el texto (p. ej. "1 200 monedas"). */
@@ -25,6 +26,7 @@ export const TOP_METRIC_UNITS: Record<TopMetric, string> = {
   likes: "likes",
   comments: "comentarios",
   shares: "compartidos",
+  trivia: "aciertos",
 };
 
 /** `session`: empieza de cero al conectarte a otro LIVE. `day`: empieza de cero cada día (hora de tu equipo). */
@@ -134,6 +136,8 @@ export const TOP_PRESETS: TopConfig[] = [
   TopConfigSchema.parse({ id: "likes", title: "Top Likes", metric: "likes", period: "session", count: 5, style: { designId: "lista" } }),
   TopConfigSchema.parse({ id: "comentarios", title: "Top Comentarios", metric: "comments", period: "session", count: 5, style: { designId: "lista" } }),
   TopConfigSchema.parse({ id: "compartidos", title: "Top Compartidos", metric: "shares", period: "session", count: 5, style: { designId: "lista" } }),
+  // lo alimenta la trivia del agente (ADR 0016), no un evento del LIVE
+  TopConfigSchema.parse({ id: "trivia", title: "Top Trivia", metric: "trivia", period: "day", count: 5, style: { designId: "lista" } }),
 ];
 
 /** Día local como YYYY-MM-DD (para los rankings "del día"). */

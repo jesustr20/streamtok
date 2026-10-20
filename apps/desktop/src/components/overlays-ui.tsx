@@ -117,7 +117,7 @@ const PREVIEW_RESERVE: Record<OverlayKind, { w: number; h: number }> = {
   nivel: { w: 560, h: 150 },
   duelo: { w: 560, h: 152 },
   top: { w: 440, h: 350 },
-  agente: { w: 480, h: 230 },
+  agente: { w: 480, h: 440 },
 };
 
 /** Redondea hacia arriba al siguiente múltiplo de 10 (un poco de margen). */
