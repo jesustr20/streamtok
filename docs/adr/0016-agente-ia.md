@@ -77,3 +77,9 @@ Para saberlo, este mismo parche agrega `/overlay/prueba-audio`, una página que 
 - Voz solo con `speechSynthesis`: depende del navegador de cada app.
 - Un banco de trivia escrito a mano: la idea es que el agente lo haga solo; se puede sumar un banco opcional después.
 - Que el agente ejecute Acciones: ampliaría mucho el daño posible de un engaño.
+
+## Avance de la implementación
+
+- **Fase (a), pieza 1 — hecha:** contratos (`shared/src/agente.ts`), motor de la cola (`sidecar/src/agente.ts`: requisitos configurables, prioridad por monedas, una gratis cada N segundos al azar, una pregunta por persona, crédito del regalo con caducidad), canal WS `agente`, `agente.json`, overlay `/overlay/agente` y pantalla «Agente IA». El `Responder` de fábrica es un texto de prueba: el motor ya acepta cualquier `Responder`.
+- **Pieza 2 — pendiente:** adaptadores de modelo (compatible con OpenAI, que cubre DeepSeek/OpenAI/Gemini, y Claude), panel de proveedores y claves con «Probar conexión», y la guardia de seguridad (límites, tope de gasto, defensas contra inyección de instrucciones).
+- Fases posteriores: trivia + Top Trivia, voz, relleno y explicaciones periódicas.

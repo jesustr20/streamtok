@@ -20,6 +20,8 @@ import { AlertasEngine, AlertasStore, defaultAlertasFilePath } from "./alertas.j
 import { AlertasController } from "./alertas-controller.js";
 import { DuelosEngine, DuelosStore, defaultDuelosFilePath } from "./duelos.js";
 import { DuelosController } from "./duelos-controller.js";
+import { AgenteEngine, AgenteStore, defaultAgenteFilePath } from "./agente.js";
+import { AgenteController } from "./agente-controller.js";
 import { TopsEngine, TopsStore, defaultTopsFilePath } from "./tops.js";
 import { TopsController } from "./tops-controller.js";
 import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
@@ -196,6 +198,19 @@ tops.on("log", (entry) => {
 });
 new TopsController(server, tops);
 
+// Agente IA (ADR 0016): cola de preguntas con prioridad para /overlay/agente. Las respuestas reales llegan con el modelo.
+const agente = new AgenteEngine({
+  store: new AgenteStore(defaultAgenteFilePath(), (message) =>
+    // eslint-disable-next-line no-console
+    console.warn("[agente:warn]", message),
+  ),
+});
+agente.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[agente:${entry.level}]`, entry.message);
+});
+new AgenteController(server, agente);
+
 // Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
 const room = new RoomStateEngine();
 new RoomController(server, room);
@@ -241,6 +256,7 @@ server.onChannel("live-event", (payload) => {
   alertas.handleLiveEvent(evt);
   duelos.handleLiveEvent(evt);
   tops.handleLiveEvent(evt);
+  agente.handleLiveEvent(evt);
   engine.handleEvent(evt).catch((err) => {
     // eslint-disable-next-line no-console
     console.error("Error procesando live-event:", err);
@@ -274,6 +290,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     alertas.handleLiveEvent(evt);
     duelos.handleLiveEvent(evt);
     tops.handleLiveEvent(evt);
+    agente.handleLiveEvent(evt);
     engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("Error procesando live-event (TikTok):", err);
@@ -292,6 +309,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     alertas.resetSession();
     duelos.resetSession();
     tops.resetSession();
+    agente.resetSession();
     room.reset();
   },
 });

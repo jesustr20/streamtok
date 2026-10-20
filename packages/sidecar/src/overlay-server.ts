@@ -25,7 +25,7 @@ export function overlayPortFromEnv(env: NodeJS.ProcessEnv): number {
   return Number.isInteger(n) && n >= 0 && n <= 65535 && env.STREAMTOK_OVERLAY_PORT ? n : OVERLAY_DEFAULT_PORT;
 }
 
-const KINDS: OverlayKind[] = ["timer", "wins", "meta", "nivel", "duelo", "top"];
+const KINDS: OverlayKind[] = ["timer", "wins", "meta", "nivel", "duelo", "top", "agente"];
 
 /** `/overlay/<tipo>` o `/overlay/<tipo>/<id>` (el id solo lo usan los tipos con varias instancias: `meta`, `nivel`, `duelo` y `top`). */
 function parsePath(pathname: string): { kind: OverlayKind; id: string } | null {

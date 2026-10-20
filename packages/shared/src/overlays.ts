@@ -189,7 +189,7 @@ export function timerRateText(t: {
 /** Puerto por defecto del servidor HTTP de overlays del sidecar (127.0.0.1). */
 export const OVERLAY_DEFAULT_PORT = 7340;
 
-export type OverlayKind = "timer" | "wins" | "meta" | "nivel" | "duelo" | "top";
+export type OverlayKind = "timer" | "wins" | "meta" | "nivel" | "duelo" | "top" | "agente";
 
 export interface OverlayDesign {
   id: string;
@@ -230,6 +230,7 @@ export const OVERLAY_DESIGNS: Record<OverlayKind, OverlayDesign[]> = {
     { id: "lista", name: "Lista" },
     { id: "podio", name: "Podio" },
   ],
+  agente: [{ id: "panel", name: "Panel" }],
 };
 
 // ---------------------------------------------------------------------------
