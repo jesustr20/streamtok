@@ -25,7 +25,7 @@ const OVERLAY_ITEMS: NavItem[] = [
   { id: "temporizador", label: "Temporizador", enabled: true },
   { id: "wins", label: "Wins", enabled: true },
   { id: "metas", label: "Metas", enabled: true },
-  { id: "tops", label: "Tops y MVP", enabled: false },
+  { id: "tops", label: "Tops y MVP", enabled: true },
   { id: "duelos", label: "Batallas y duelos", enabled: true },
   { id: "juegos-interactivos", label: "Juegos de stream", enabled: false },
   { id: "alertas", label: "Alertas y efectos", enabled: true },
@@ -50,6 +50,15 @@ export const ALERT_NAV: { id: string; label: string }[] = [
   { id: "comunidad", label: "Comunidad (Quiéreme)" },
   { id: "donador", label: "Nivel de donador" },
   { id: "todas", label: "Todas (rotativo)" },
+];
+
+/** Sub-items de Tops y MVP; el id es el del ranking. */
+export const TOP_NAV: { id: string; label: string }[] = [
+  { id: "gifters", label: "Top Gifters" },
+  { id: "gifters-dia", label: "Top Gifters del día" },
+  { id: "likes", label: "Top Likes" },
+  { id: "comentarios", label: "Top Comentarios" },
+  { id: "compartidos", label: "Top Compartidos" },
 ];
 
 /** Sub-items de Batallas y duelos; el id es el del duelo. */
@@ -86,6 +95,8 @@ export function Sidebar({
   onSelectAlert,
   duelSel,
   onSelectDuel,
+  topSel,
+  onSelectTop,
 }: {
   view: ViewId;
   client: SidecarClient | null;
@@ -96,6 +107,8 @@ export function Sidebar({
   onSelectAlert: (id: string) => void;
   duelSel: string;
   onSelectDuel: (id: string) => void;
+  topSel: string;
+  onSelectTop: (id: string) => void;
 }) {
   const { conn, account: remembered } = useTiktokConnection(client);
   // Mientras hay conexión manda lo que reporta el sidecar; si no, la última cuenta recordada.
@@ -110,6 +123,7 @@ export function Sidebar({
   const [metasOpen, setMetasOpen] = useState(true);
   const [alertasOpen, setAlertasOpen] = useState(true);
   const [duelosOpen, setDuelosOpen] = useState(true);
+  const [topsOpen, setTopsOpen] = useState(true);
   const showPhoto = !!avatarUrl && failedAvatar !== avatarUrl;
 
   return (
@@ -252,7 +266,9 @@ export function Sidebar({
                       ? alertasOpen ? "▾" : "▸"
                       : item.id === "duelos"
                         ? duelosOpen ? "▾" : "▸"
-                        : undefined
+                        : item.id === "tops"
+                          ? topsOpen ? "▾" : "▸"
+                          : undefined
                 }
                 onClick={() => {
                   if (item.id === "metas") {
@@ -261,6 +277,9 @@ export function Sidebar({
                   } else if (item.id === "alertas") {
                     setAlertasOpen((v) => (view === "alertas" ? !v : true));
                     onNavigate("alertas");
+                  } else if (item.id === "tops") {
+                    setTopsOpen((v) => (view === "tops" ? !v : true));
+                    onNavigate("tops");
                   } else if (item.id === "duelos") {
                     setDuelosOpen((v) => (view === "duelos" ? !v : true));
                     onNavigate("duelos");
@@ -289,6 +308,18 @@ export function Sidebar({
                     indent={2}
                     active={view === "alertas" && alertSel === a.id}
                     onClick={() => onSelectAlert(a.id)}
+                  />
+                ))}
+              {item.id === "tops" &&
+                topsOpen &&
+                TOP_NAV.map((t) => (
+                  <NavButton
+                    key={t.id}
+                    label={t.label}
+                    enabled
+                    indent={2}
+                    active={view === "tops" && topSel === t.id}
+                    onClick={() => onSelectTop(t.id)}
                   />
                 ))}
               {item.id === "duelos" &&

@@ -14,4 +14,5 @@ export * from "./overlay-pages.js";
 export * from "./overlays.js";
 export * from "./profile.js";
 export * from "./room.js";
+export * from "./tops.js";
 export * from "./tiktok-connection.js";
