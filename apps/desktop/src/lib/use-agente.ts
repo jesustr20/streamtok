@@ -40,6 +40,7 @@ export function useAgente(client: SidecarClient | null) {
   );
 
   const startTrivia = useCallback((sample: boolean) => client?.send("agente", { kind: "trivia-start", sample }), [client]);
+  const showTip = useCallback(() => client?.send("agente", { kind: "tip-now" }), [client]);
   const cancelTrivia = useCallback(() => client?.send("agente", { kind: "trivia-cancel" }), [client]);
   const setKey = useCallback(
     (provider: AgentProviderId, key: string) => {
@@ -80,5 +81,6 @@ export function useAgente(client: SidecarClient | null) {
     testConnection,
     startTrivia,
     cancelTrivia,
+    showTip,
   };
 }

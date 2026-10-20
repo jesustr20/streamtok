@@ -106,6 +106,9 @@ export class AgenteController extends EventEmitter {
       case "trivia-start":
         if (!this.trivia?.start(msg.sample)) this.server.sendTo(socket, "agente", { kind: "error", message: "Ya hay una trivia en curso." });
         return;
+      case "tip-now":
+        if (!this.agente.showTip()) this.server.sendTo(socket, "agente", { kind: "error", message: "No hay avisos que mostrar: marca algún requisito o añade un aviso tuyo." });
+        return;
       case "trivia-cancel":
         this.trivia?.cancel();
         return;

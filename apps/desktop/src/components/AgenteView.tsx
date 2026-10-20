@@ -1,4 +1,4 @@
-import { AGENT_PROVIDERS, TRIVIA_DIFFICULTY_NAMES, pickVoice, type AgentTriviaConfig, providerInfo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
+import { AGENT_PROVIDERS, TRIVIA_DIFFICULTY_NAMES, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { useTestRunner } from "../lib/use-test-runner";
@@ -106,6 +106,8 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
       <Voz config={config} patch={patch} />
 
       <Trivia config={config} api={api} patch={patch} hasKey={keys[config.provider]} />
+
+      <Avisos config={config} api={api} patch={patch} />
 
       <Queue config={config} state={state} api={api} />
 
@@ -296,6 +298,70 @@ function Trivia({ config, api, patch, hasKey }: { config: AgentConfig; api: Api;
       </div>
       <div style={{ fontSize: 11.5, color: "#9A9CA5" }}>
         «Trivia de prueba» usa preguntas de ejemplo (sin clave ni gasto). Para probar la respuesta, escribe la letra desde el chat del LIVE; en la app puedes mirar el overlay de abajo.
+      </div>
+    </Card>
+  );
+}
+
+/** Avisos periódicos: el agente explica solo cómo participar (no gasta saldo del modelo). */
+function Avisos({ config, api, patch }: { config: AgentConfig; api: Api; patch: (p: Partial<AgentConfig>) => void }) {
+  const t = config.tips;
+  const set = (p: Partial<AgentTipsConfig>) => patch({ tips: { ...t, ...p } });
+  const [text, setText] = useState(t.custom.join("\n"));
+  useEffect(() => setText(t.custom.join("\n")), [t.custom]);
+  const commit = () => {
+    const lines = text.split("\n").map((l) => l.trim().slice(0, 140)).filter(Boolean).slice(0, 5);
+    if (lines.join("\n") !== t.custom.join("\n")) set({ custom: lines });
+    else setText(lines.join("\n"));
+  };
+  const factory = buildTips({ ...config, tips: { ...t, custom: [] } });
+  return (
+    <Card title="Avisos periódicos">
+      <div style={{ fontSize: 12.5, color: "#C9CBD2", lineHeight: 1.55 }}>
+        Cada cierto tiempo, si el agente no está respondiendo ni hay una trivia abierta, el overlay muestra (y lee en voz alta) un aviso que explica cómo
+        participar. Se arman solos según lo que tengas configurado, y puedes añadir los tuyos. No gastan saldo del modelo.
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ width: 150 }}>
+          <Field label="Avisos" hint="">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <input type="checkbox" checked={t.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
+              {t.enabled ? "Activados" : "Apagados"}
+            </label>
+          </Field>
+        </div>
+        <div style={{ width: 190 }}>
+          <Field label="Uno cada (seg.)" hint="de 30 a 3600">
+            <NumberField value={t.everySec} min={30} integer onCommit={(v) => set({ everySec: Math.min(3600, Math.max(30, Math.round(v))) })} />
+          </Field>
+        </div>
+        <div style={{ flex: 1, minWidth: 280 }}>
+          <Field label="Tus avisos (uno por línea, hasta 5)" hint="salen después de los de fábrica">
+            <textarea
+              value={text}
+              rows={3}
+              maxLength={800}
+              onChange={(e) => setText(e.target.value)}
+              onBlur={commit}
+              style={{ ...inputStyle, width: "100%", resize: "vertical", fontFamily: "inherit" }}
+            />
+          </Field>
+        </div>
+      </div>
+      {factory.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>Avisos de fábrica ahora</div>
+          {factory.map((f) => (
+            <div key={f} style={{ fontSize: 12.5, color: "#9A9CA5", padding: "6px 10px", borderRadius: 8, background: "#0E0F12" }}>
+              {f}
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Btn primary onClick={api.showTip}>
+          ▶ Mostrar el siguiente aviso
+        </Btn>
       </div>
     </Card>
   );
