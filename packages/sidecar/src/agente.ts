@@ -127,6 +127,7 @@ export class AgenteEngine extends EventEmitter {
   private sharers = new Set<string>();
   private fanClub = new Set<string>();
   private credits = new Map<string, Credit>();
+  private lastAsk = new Map<string, number>();
   private coinStreaks = new Map<string, number>();
   private saving = false;
   private dirty = false;
@@ -185,6 +186,7 @@ export class AgenteEngine extends EventEmitter {
     this.sharers.clear();
     this.fanClub.clear();
     this.credits.clear();
+    this.lastAsk.clear();
     this.coinStreaks.clear();
     this.answered = 0;
     this.reset();
@@ -228,7 +230,12 @@ export class AgenteEngine extends EventEmitter {
     if (!text) return;
     const credit = this.activeCredit(handle);
     if (!this.eligible(handle, credit)) return;
-    if (this.enqueue(handle, name, evt.avatarUrl, text, credit)) this.credits.delete(handle);
+    const last = this.lastAsk.get(handle);
+    if (last !== undefined && this.now() - last < this.config.userCooldownSec * 1000) return; // espera su turno para volver a preguntar
+    if (this.enqueue(handle, name, evt.avatarUrl, text, credit)) {
+      this.credits.delete(handle);
+      this.lastAsk.set(handle, this.now());
+    }
   }
 
   /** Avanza el agente: saca la respuesta de pantalla cuando se cumple su tiempo y atiende la siguiente pregunta. Se llama cada segundo. */

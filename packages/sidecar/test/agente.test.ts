@@ -127,6 +127,18 @@ describe("AgenteEngine: quién puede preguntar", () => {
     expect(s.queue[0].question.length).toBeLessThanOrEqual(20);
   });
 
+  it("cada persona espera su enfriamiento antes de volver a preguntar", () => {
+    const { engine, advance } = setup({ userCooldownSec: 30 });
+    engine.handleLiveEvent(comment("@ana", "!ia uno", { isFollower: true }));
+    engine.tick();
+    advance(10_000);
+    engine.handleLiveEvent(comment("@ana", "!ia dos", { isFollower: true }));
+    expect(engine.getState().queueSize).toBe(0);
+    advance(21_000);
+    engine.handleLiveEvent(comment("@ana", "!ia tres", { isFollower: true }));
+    expect(engine.getState().queueSize).toBe(1);
+  });
+
   it("respeta el tamaño máximo de la cola", () => {
     const { engine } = setup({ maxQueue: 5 });
     for (let i = 0; i < 8; i++) engine.handleLiveEvent(comment(`@u${i}`, "!ia hola", { isFollower: true }));

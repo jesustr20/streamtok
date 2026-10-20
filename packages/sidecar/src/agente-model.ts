@@ -1,0 +1,217 @@
+import { EventEmitter } from "node:events";
+import { AGENT_PROVIDERS, providerInfo, type AgentConfig, type AgentKeyStatus, type AgentProviderId } from "@streamtok/shared";
+import type { Responder } from "./agente.js";
+import { NO_MODEL, OUT_OF_BUDGET, REFUSAL, cleanAnswer, looksLikeInjection, sanitizeQuestion, systemPrompt, userPrompt } from "./agente-guard.js";
+import type { KeysStorePort } from "./agente-keys.js";
+
+/** Cuánto esperamos al modelo antes de rendirnos. */
+const TIMEOUT_MS = 20_000;
+/** Tokens de salida: 140 caracteres caben de sobra y así una respuesta nunca sale cara. */
+const MAX_TOKENS = 120;
+
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+}>;
+
+export interface ModelCall {
+  provider: AgentProviderId;
+  key: string;
+  model: string;
+  system: string;
+  user: string;
+  maxTokens: number;
+}
+
+function httpMessage(provider: AgentProviderId, status: number, body: string): string {
+  const name = providerInfo(provider).name;
+  if (status === 401 || status === 403) return `${name} rechazó la clave (error ${status}).`;
+  if (status === 402) return `${name}: sin saldo (error 402).`;
+  if (status === 429) return `${name}: demasiadas llamadas o límite de uso (error 429).`;
+  let detail = "";
+  try {
+    const j = JSON.parse(body) as { error?: { message?: string } | string };
+    detail = typeof j.error === "string" ? j.error : (j.error?.message ?? "");
+  } catch {
+    /* sin detalle */
+  }
+  return `${name} respondió con error ${status}${detail ? `: ${detail.slice(0, 120)}` : ""}.`;
+}
+
+/** Una llamada al modelo. Habla la API de OpenAI (DeepSeek, OpenAI, Gemini) o la de Claude. */
+export async function callModel(fetchImpl: FetchLike, c: ModelCall): Promise<string> {
+  const info = providerInfo(c.provider);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const anthropic = info.api === "anthropic";
+    const url = anthropic ? `${info.baseUrl}/v1/messages` : `${info.baseUrl}/chat/completions`;
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (anthropic) {
+      headers["x-api-key"] = c.key;
+      headers["anthropic-version"] = "2023-06-01";
+    } else headers.authorization = `Bearer ${c.key}`;
+    const body = anthropic
+      ? { model: c.model, max_tokens: c.maxTokens, temperature: 0.3, system: c.system, messages: [{ role: "user", content: c.user }] }
+      : {
+          model: c.model,
+          max_tokens: c.maxTokens,
+          temperature: 0.3,
+          messages: [
+            { role: "system", content: c.system },
+            { role: "user", content: c.user },
+          ],
+        };
+    let res;
+    try {
+      res = await fetchImpl(url, { method: "POST", headers, body: JSON.stringify(body), signal: ctrl.signal });
+    } catch (err) {
+      if (ctrl.signal.aborted) throw new Error(`${info.name} tardó más de ${TIMEOUT_MS / 1000} s en responder.`);
+      throw new Error(`No se pudo conectar con ${info.name}: ${scrub((err as Error).message, c.key)}`);
+    }
+    const raw = await res.text();
+    if (!res.ok) throw new Error(scrub(httpMessage(c.provider, res.status, raw), c.key));
+    let json: any;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      throw new Error(`${info.name} devolvió algo que no se entiende.`);
+    }
+    const text: unknown = anthropic ? json?.content?.[0]?.text : json?.choices?.[0]?.message?.content;
+    if (typeof text !== "string" || !text.trim()) throw new Error(`${info.name} devolvió una respuesta vacía.`);
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Por si un mensaje de error de red trajera la clave. */
+function scrub(message: string, key: string): string {
+  return key ? message.split(key).join("***") : message;
+}
+
+export interface ModelServiceOptions {
+  keys: KeysStorePort;
+  fetchImpl?: FetchLike;
+}
+
+/**
+ * Pone el modelo detrás del agente: guarda las claves, aplica las defensas y lleva la cuenta de
+ * llamadas del LIVE. `respond` es el `Responder` del motor. Eventos: `log` ({level, message}), `state`.
+ */
+export class ModelService extends EventEmitter {
+  private keys: Partial<Record<AgentProviderId, string>>;
+  private fetchImpl: FetchLike;
+  private calls = 0;
+  private budgetWarned = false;
+  private saving = false;
+  private dirty = false;
+  private idle: Promise<void> = Promise.resolve();
+
+  constructor(private opts: ModelServiceOptions) {
+    super();
+    this.keys = { ...opts.keys.load().keys };
+    this.fetchImpl = opts.fetchImpl ?? ((url, init) => fetch(url, init));
+  }
+
+  keyStatus(): AgentKeyStatus {
+    const out = {} as AgentKeyStatus;
+    for (const p of AGENT_PROVIDERS) out[p.id] = Boolean(this.keys[p.id]);
+    return out;
+  }
+
+  get modelCalls(): number {
+    return this.calls;
+  }
+
+  setKey(provider: AgentProviderId, key: string): void {
+    this.keys[provider] = key.trim();
+    this.persist();
+    this.emit("state");
+  }
+
+  removeKey(provider: AgentProviderId): void {
+    delete this.keys[provider];
+    this.persist();
+    this.emit("state");
+  }
+
+  /** Nuevo LIVE: el tope de llamadas vuelve a cero. */
+  resetSession(): void {
+    this.calls = 0;
+    this.budgetWarned = false;
+    this.emit("state");
+  }
+
+  flush(): Promise<void> {
+    return this.idle;
+  }
+
+  readonly respond: Responder = async (rawQuestion, { config }) => {
+    const question = sanitizeQuestion(rawQuestion);
+    if (!question || looksLikeInjection(question)) return REFUSAL;
+    const key = this.keys[config.provider];
+    if (!key) return NO_MODEL;
+    if (this.calls >= config.maxModelCalls) {
+      if (!this.budgetWarned) {
+        this.budgetWarned = true;
+        this.emit("log", { level: "warn", message: `Se llegó al tope de ${config.maxModelCalls} llamadas al modelo en este LIVE; el agente deja de responder hasta el próximo.` });
+      }
+      return OUT_OF_BUDGET;
+    }
+    this.calls++;
+    this.emit("state");
+    const text = await callModel(this.fetchImpl, {
+      provider: config.provider,
+      key,
+      model: modelFor(config),
+      system: systemPrompt(config),
+      user: userPrompt(question),
+      maxTokens: MAX_TOKENS,
+    });
+    return cleanAnswer(text);
+  };
+
+  /** «Probar conexión»: una llamada mínima (no cuenta para el tope). */
+  async testConnection(provider: AgentProviderId, config: AgentConfig): Promise<{ ok: boolean; message: string; ms: number }> {
+    const key = this.keys[provider];
+    const t0 = Date.now();
+    if (!key) return { ok: false, message: `Falta la clave de ${providerInfo(provider).name}.`, ms: 0 };
+    try {
+      await callModel(this.fetchImpl, {
+        provider,
+        key,
+        model: provider === config.provider ? modelFor(config) : providerInfo(provider).defaultModel,
+        system: "Responde solo con la palabra: ok",
+        user: "ping",
+        maxTokens: 5,
+      });
+      return { ok: true, message: `${providerInfo(provider).name} responde bien.`, ms: Date.now() - t0 };
+    } catch (err) {
+      return { ok: false, message: (err as Error).message, ms: Date.now() - t0 };
+    }
+  }
+
+  private persist(): void {
+    this.dirty = true;
+    if (this.saving) return;
+    this.saving = true;
+    this.idle = (async () => {
+      try {
+        while (this.dirty) {
+          this.dirty = false;
+          await this.opts.keys.save({ keys: { ...this.keys } });
+        }
+      } catch (err) {
+        this.emit("log", { level: "error", message: `No se pudo guardar las claves: ${(err as Error).message}` });
+      } finally {
+        this.saving = false;
+      }
+    })();
+  }
+}
+
+function modelFor(config: AgentConfig): string {
+  return config.model.trim() || providerInfo(config.provider).defaultModel;
+}
