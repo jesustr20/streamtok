@@ -3,6 +3,7 @@ import { WebSocket } from "ws";
 import { AgentConfigSchema } from "@streamtok/shared";
 import { AgenteEngine } from "../src/agente.js";
 import { AgenteController } from "../src/agente-controller.js";
+import { ModelService, type FetchLike } from "../src/agente-model.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
 
 type Msg = { channel: string; payload: any };
@@ -59,6 +60,28 @@ describe("AgenteController", () => {
     expect(m.payload.state.queue[0]).toMatchObject({ name: "Ana", coins: 20 });
     c.send({ kind: "reset" });
     await c.next((x) => isState(x) && x.payload.state.queueSize === 0);
+  });
+
+  it("claves: se guardan, nunca se devuelven y «Probar conexión» responde", async () => {
+    const saved: any[] = [];
+    const fetchImpl: FetchLike = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: "ok" } }] }) });
+    const model = new ModelService({ keys: { load: () => ({ keys: {} }), save: async (d) => void saved.push(d) }, fetchImpl });
+    const srv = new StreamTokWsServer(0);
+    const eng = new AgenteEngine({ store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} } });
+    new AgenteController(srv, eng, model);
+    const c = await connect(srv);
+    sockets.push(c.ws);
+    const first = await c.next(isState);
+    expect(first.payload.keys).toEqual({ deepseek: false, openai: false, gemini: false, claude: false });
+    c.send({ kind: "set-key", provider: "deepseek", key: "sk-secreta-123456" });
+    const withKey = await c.next((x) => isState(x) && x.payload.keys.deepseek === true);
+    expect(JSON.stringify(withKey)).not.toContain("sk-secreta-123456");
+    c.send({ kind: "test-connection", provider: "deepseek" });
+    const r = await c.next((x) => x.channel === "agente" && x.payload.kind === "test-result");
+    expect(r.payload).toMatchObject({ provider: "deepseek", ok: true });
+    c.send({ kind: "remove-key", provider: "deepseek" });
+    await c.next((x) => isState(x) && x.payload.keys.deepseek === false);
+    srv.close();
   });
 
   it("save cambia la configuración y una inválida da error", async () => {

@@ -22,6 +22,8 @@ import { DuelosEngine, DuelosStore, defaultDuelosFilePath } from "./duelos.js";
 import { DuelosController } from "./duelos-controller.js";
 import { AgenteEngine, AgenteStore, defaultAgenteFilePath } from "./agente.js";
 import { AgenteController } from "./agente-controller.js";
+import { KeysStore, defaultKeysFilePath } from "./agente-keys.js";
+import { ModelService } from "./agente-model.js";
 import { TopsEngine, TopsStore, defaultTopsFilePath } from "./tops.js";
 import { TopsController } from "./tops-controller.js";
 import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
@@ -198,18 +200,29 @@ tops.on("log", (entry) => {
 });
 new TopsController(server, tops);
 
-// Agente IA (ADR 0016): cola de preguntas con prioridad para /overlay/agente. Las respuestas reales llegan con el modelo.
+// Agente IA (ADR 0016): cola de preguntas con prioridad para /overlay/agente. Las respuestas las da el modelo que elijas (DeepSeek, OpenAI, Gemini o Claude) con tu clave.
+const agenteModel = new ModelService({
+  keys: new KeysStore(defaultKeysFilePath(), (message) =>
+    // eslint-disable-next-line no-console
+    console.warn("[agente:warn]", message),
+  ),
+});
 const agente = new AgenteEngine({
   store: new AgenteStore(defaultAgenteFilePath(), (message) =>
     // eslint-disable-next-line no-console
     console.warn("[agente:warn]", message),
   ),
+  responder: agenteModel.respond,
+});
+agenteModel.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[agente:${entry.level}]`, entry.message);
 });
 agente.on("log", (entry) => {
   // eslint-disable-next-line no-console
   console.log(`[agente:${entry.level}]`, entry.message);
 });
-new AgenteController(server, agente);
+new AgenteController(server, agente, agenteModel);
 
 // Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
 const room = new RoomStateEngine();
@@ -310,6 +323,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     duelos.resetSession();
     tops.resetSession();
     agente.resetSession();
+    agenteModel.resetSession();
     room.reset();
   },
 });

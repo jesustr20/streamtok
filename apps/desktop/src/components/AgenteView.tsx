@@ -1,4 +1,4 @@
-import type { AgentConfig, AgentEligibility, AgentState } from "@streamtok/shared";
+import { AGENT_PROVIDERS, providerInfo, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { useTestRunner } from "../lib/use-test-runner";
@@ -29,13 +29,13 @@ export function AgenteView({ client }: { client: SidecarClient | null }) {
       {!api.config || !api.state ? (
         <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>Conectando con el sidecar…</div>
       ) : (
-        <Block config={api.config} state={api.state} api={api} />
+        <Block config={api.config} state={api.state} keys={api.keys ?? { deepseek: false, openai: false, gemini: false, claude: false }} api={api} />
       )}
     </div>
   );
 }
 
-function Block({ config, state, api }: { config: AgentConfig; state: AgentState; api: Api }) {
+function Block({ config, state, keys, api }: { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; api: Api }) {
   const [open, setOpen] = useState(false);
   const patch = (p: Partial<AgentConfig>) => api.save({ ...config, ...p });
   return (
@@ -43,8 +43,8 @@ function Block({ config, state, api }: { config: AgentConfig; state: AgentState;
       <Card title="Cómo funciona">
         <div style={{ fontSize: 13, color: "#C9CBD2", lineHeight: 1.55 }}>
           Quien cumpla lo que marques abajo escribe <b>{config.command} su pregunta</b> en el chat y entra a la cola. Las preguntas de quienes
-          mandaron regalos pasan primero (más monedas, antes); las demás salen una cada {config.freeEverySec} segundos. Por ahora el agente contesta un
-          texto de prueba: el modelo (DeepSeek, OpenAI, Claude…) se conecta en el siguiente paso.
+          mandaron regalos pasan primero (más monedas, antes); las demás salen una cada {config.freeEverySec} segundos. Las respuestas las da el modelo que elijas
+          abajo, con tu propia clave.
         </div>
       </Card>
 
@@ -101,11 +101,128 @@ function Block({ config, state, api }: { config: AgentConfig; state: AgentState;
         </div>
       </Card>
 
+      <Modelo config={config} keys={keys} api={api} patch={patch} />
+
       <Queue config={config} state={state} api={api} />
 
       <UrlCard kind="agente" title="Overlay" stable reserve={{ w: 480, h: 230 }} onCustomize={() => setOpen((v) => !v)} customizeLabel={open ? "Ocultar diseño" : "Personalizar diseño"} />
       {open && <DesignCard kind="agente" style={config.style} onChange={(style) => patch({ style })} />}
     </>
+  );
+}
+
+const KEY_STATE_COLORS = { ok: "#5BE37D", bad: "#E5484D" };
+
+/** Proveedor de modelo: claves propias (solo se guardan en tu equipo), «Probar conexión» y cuál usar. */
+function Modelo({ config, keys, api, patch }: { config: AgentConfig; keys: AgentKeyStatus; api: Api; patch: (p: Partial<AgentConfig>) => void }) {
+  const withKey = AGENT_PROVIDERS.filter((p) => keys[p.id]);
+  const info = providerInfo(config.provider);
+  return (
+    <Card title="Modelo de IA">
+      <div style={{ fontSize: 12.5, color: "#9A9CA5", lineHeight: 1.5 }}>
+        Usa tu propia clave de API. Se guarda solo en este equipo, la lee únicamente el sidecar y nunca se muestra de nuevo ni se manda al overlay.
+        Cada respuesta consume saldo de tu cuenta con el proveedor: puedes limitarlo abajo.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {AGENT_PROVIDERS.map((p) => (
+          <ProviderRow key={p.id} id={p.id} has={keys[p.id]} api={api} />
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ width: 220 }}>
+          <Field label="Modelo en uso" hint={withKey.length === 0 ? "guarda una clave para poder elegir" : "solo aparecen los que tienen clave"}>
+            <select
+              value={keys[config.provider] ? config.provider : ""}
+              disabled={withKey.length === 0}
+              onChange={(e) => patch({ provider: e.target.value as AgentProviderId, model: "" })}
+              style={{ ...inputStyle, width: "100%" }}
+            >
+              {!keys[config.provider] && <option value="">— elige uno —</option>}
+              {withKey.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div style={{ width: 240 }}>
+          <Field label="Nombre del modelo" hint={`vacío = ${info.defaultModel}`}>
+            <CommitInput value={config.model} max={80} onCommit={(v) => patch({ model: v })} />
+          </Field>
+        </div>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <Field label="Cómo habla (opcional)" hint="tono o humor; las reglas de seguridad no se pueden cambiar">
+            <CommitInput value={config.personality} max={300} onCommit={(v) => patch({ personality: v })} />
+          </Field>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ width: 200 }}>
+          <Field label="Tope de respuestas por LIVE" hint={`llevas ${api.modelCalls} en este LIVE`}>
+            <NumberField value={config.maxModelCalls} min={1} integer onCommit={(v) => patch({ maxModelCalls: Math.min(5000, Math.max(1, Math.round(v))) })} />
+          </Field>
+        </div>
+        <div style={{ width: 200 }}>
+          <Field label="Espera entre preguntas (seg.)" hint="por persona, contra el spam">
+            <NumberField value={config.userCooldownSec} min={0} integer onCommit={(v) => patch({ userCooldownSec: Math.min(3600, Math.max(0, Math.round(v))) })} />
+          </Field>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ProviderRow({ id, has, api }: { id: AgentProviderId; has: boolean; api: Api }) {
+  const [text, setText] = useState("");
+  const info = providerInfo(id);
+  const test = api.tests[id];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 10px", borderRadius: 10, background: "#0E0F12" }}>
+      <span style={{ width: 90, fontWeight: 700, fontSize: 13 }}>{info.name}</span>
+      {has ? (
+        <>
+          <span style={{ fontSize: 12.5, color: KEY_STATE_COLORS.ok }}>● Clave guardada</span>
+          <Btn onClick={() => api.testConnection(id)} disabled={test === "pending"}>
+            {test === "pending" ? "Probando…" : "Probar conexión"}
+          </Btn>
+          <Btn onClick={() => api.removeKey(id)}>Quitar clave</Btn>
+          {test && test !== "pending" && (
+            <span style={{ fontSize: 12, color: test.ok ? KEY_STATE_COLORS.ok : KEY_STATE_COLORS.bad }}>
+              {test.ok ? `✔ ${test.message} (${test.ms} ms)` : `✖ ${test.message}`}
+            </span>
+          )}
+        </>
+      ) : (
+        <>
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={text}
+            placeholder={`Clave de ${info.name} (${info.keyUrl})`}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && text.trim().length >= 8) {
+                api.setKey(id, text.trim());
+                setText("");
+              }
+            }}
+            style={{ ...inputStyle, flex: 1, minWidth: 220 }}
+          />
+          <Btn
+            primary
+            disabled={text.trim().length < 8}
+            onClick={() => {
+              api.setKey(id, text.trim());
+              setText("");
+            }}
+          >
+            Guardar
+          </Btn>
+        </>
+      )}
+    </div>
   );
 }
 

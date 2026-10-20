@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import type { WebSocket } from "ws";
-import { AgentConfigSchema, AgentMessageSchema } from "@streamtok/shared";
+import { AgentConfigSchema, AgentMessageSchema, type AgentProviderId } from "@streamtok/shared";
 import type { AgenteEngine } from "./agente.js";
+import type { ModelService } from "./agente-model.js";
 import { formatZodError } from "./mapping-rules.js";
 import type { StreamTokWsServer } from "./ws-server.js";
 
@@ -22,17 +23,27 @@ export class AgenteController extends EventEmitter {
   constructor(
     private server: StreamTokWsServer,
     private agente: AgenteEngine,
+    private model?: ModelService,
   ) {
     super();
     this.server.on("client-connected", (socket) => this.sendStateTo(socket));
     this.server.onChannel("agente", (payload, socket) => this.handle(payload, socket));
     this.agente.on("state", () => this.scheduleBroadcast());
+    this.model?.on("state", () => this.scheduleBroadcast());
     this.ticker = setInterval(() => this.agente.tick(), TICK_EVERY_MS);
     this.ticker.unref?.();
   }
 
   private statePayload() {
-    return { kind: "state" as const, config: this.agente.getConfig(), state: this.agente.getState(), serverNow: Date.now() };
+    return {
+      kind: "state" as const,
+      config: this.agente.getConfig(),
+      state: this.agente.getState(),
+      // solo si hay clave o no: la clave misma nunca sale del sidecar
+      keys: this.model?.keyStatus() ?? { deepseek: false, openai: false, gemini: false, claude: false },
+      modelCalls: this.model?.modelCalls ?? 0,
+      serverNow: Date.now(),
+    };
   }
 
   private scheduleBroadcast() {
@@ -53,6 +64,13 @@ export class AgenteController extends EventEmitter {
 
   private sendStateTo(socket: WebSocket) {
     this.server.sendTo(socket, "agente", this.statePayload());
+  }
+
+  private async testConnection(provider: AgentProviderId, socket: WebSocket) {
+    const r = this.model
+      ? await this.model.testConnection(provider, this.agente.getConfig())
+      : { ok: false, message: "El modelo no está disponible.", ms: 0 };
+    this.server.sendTo(socket, "agente", { kind: "test-result", provider, ...r });
   }
 
   private handle(payload: unknown, socket: WebSocket) {
@@ -77,6 +95,15 @@ export class AgenteController extends EventEmitter {
         return;
       case "reset":
         this.agente.reset();
+        return;
+      case "set-key":
+        this.model?.setKey(msg.provider, msg.key);
+        return;
+      case "remove-key":
+        this.model?.removeKey(msg.provider);
+        return;
+      case "test-connection":
+        void this.testConnection(msg.provider, socket);
         return;
       default:
         return;
