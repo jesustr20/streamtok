@@ -10,12 +10,13 @@ import { Sidebar } from "./components/Sidebar";
 import { TemporizadorView } from "./components/TemporizadorView";
 import { AlertasView } from "./components/AlertasView";
 import { DuelosView } from "./components/DuelosView";
+import { AgenteView } from "./components/AgenteView";
 import { TopsView } from "./components/TopsView";
 import { MetasView } from "./components/MetasView";
 import { WinsView } from "./components/WinsView";
 import { SidecarClient } from "./lib/ws-client";
 
-export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas" | "alertas" | "duelos" | "tops";
+export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas" | "alertas" | "duelos" | "tops" | "agente";
 
 export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
@@ -142,6 +143,7 @@ export function App() {
         {view === "alertas" && <AlertasView client={client} selected={alertSel} />}
         {view === "duelos" && <DuelosView client={client} selected={duelSel} />}
         {view === "tops" && <TopsView client={client} selected={topSel} />}
+        {view === "agente" && <AgenteView client={client} />}
       </main>
     </div>
   );

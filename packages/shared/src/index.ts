@@ -1,4 +1,5 @@
 export * from "./action.js";
+export * from "./agente.js";
 export * from "./alertas.js";
 export * from "./duelos.js";
 export * from "./community-rule.js";

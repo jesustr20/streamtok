@@ -1161,6 +1161,142 @@ const TOP_JS = `
   connect();
 `;
 
+const AGENTE_CSS = `
+  .ag { --gold: var(--accent, #7c5cff); position: relative; width: 460px; box-sizing: border-box; }
+  .ag .bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; box-sizing: border-box; padding: 8px 14px; border-radius: 14px; background: var(--bg, rgba(14, 12, 28, .92)); border: 2px solid var(--gold); box-shadow: 0 6px 20px rgba(0, 0, 0, .45); font: 800 12px/1.2 "Segoe UI", sans-serif; letter-spacing: 1px; text-transform: uppercase; }
+  .ag .bar b { color: var(--gold); letter-spacing: 2px; }
+  .ag .bar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+  .ag .bar .sep { opacity: .35; }
+  .ag .bar .free.ready { color: #5be37d; }
+  .ag .bar .hint { opacity: .65; }
+  .ag .card { margin-top: 8px; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; background: var(--bg, rgba(14, 12, 28, .92)); border: 2px solid rgba(255, 255, 255, .18); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+  .ag .who { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .av { position: relative; flex: none; box-sizing: border-box; width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: #2b2f3a; display: flex; align-items: center; justify-content: center; font: 800 16px/1 "Segoe UI", sans-serif; color: #fff; border: 2px solid var(--gold); }
+  .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .av i { font-style: normal; }
+  .ag .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 800 16px/1.2 "Segoe UI", sans-serif; }
+  .ag .coins { flex: none; font: 900 13px/1 "Segoe UI", sans-serif; padding: 4px 8px; border-radius: 10px; background: #ffc233; color: #1b1620; }
+  .ag .q { font: 600 15px/1.3 "Segoe UI", sans-serif; opacity: .8; margin-bottom: 8px; overflow-wrap: anywhere; }
+  .ag .a { font: 700 18px/1.35 "Segoe UI", sans-serif; overflow-wrap: anywhere; min-height: 24px; }
+  .ag .a .cur { display: inline-block; width: 8px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--gold); animation: agBlink 1s steps(2) infinite; }
+  @keyframes agBlink { 50% { opacity: 0; } }
+  @keyframes agIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  .ag .card.in { animation: agIn .35s ease-out both; }
+`;
+
+const AGENTE_BODY = `
+  <div id="root" class="hidden"><div class="ag" id="ag">
+    <div class="bar"><span class="dot"></span><b id="agname"></b><span class="sep">|</span><span id="agqueue"></span><span class="sep">|</span><span class="free" id="agfree"></span><span class="sep">|</span><span class="hint">Los regalos dan prioridad</span></div>
+    <div class="card hidden" id="agcard">
+      <div class="who"><span class="av"><img class="hidden" referrerpolicy="no-referrer" alt=""><i></i></span><span class="nm" id="agwho"></span><span class="coins hidden" id="agcoins"></span></div>
+      <div class="q" id="agq"></div>
+      <div class="a" id="aga"></div>
+    </div>
+  </div></div>
+`;
+
+/**
+ * Agente IA. Pide la configuración y el estado al canal "agente": arriba la barra con el tamaño de la
+ * cola y cuándo sale la próxima pregunta gratis; debajo, la pregunta que se atiende y la respuesta
+ * escrita letra a letra. En la vista previa (`demo`) enseña una pregunta de ejemplo.
+ */
+const AGENTE_JS = `
+  var q = new URLSearchParams(location.search);
+  var designOverride = q.get("design") || DESIGN_OVERRIDE || null;
+  var DEMO = DEMO_MODE || q.get("demo") === "1";
+  var config = null, state = null, retry = 0, ws = null, offset = 0, shown = false;
+  var typedId = "", typedLen = 0, typeTimer = null;
+  var rootEl = document.getElementById("root"), cardEl = document.getElementById("agcard");
+  var nameEl = document.getElementById("agname"), queueEl = document.getElementById("agqueue"), freeEl = document.getElementById("agfree");
+  var whoEl = document.getElementById("agwho"), coinsEl = document.getElementById("agcoins"), qEl = document.getElementById("agq"), aEl = document.getElementById("aga");
+  var avEl = cardEl.querySelector(".av"), imgEl = avEl.querySelector("img"), iniEl = avEl.querySelector("i");
+  var DEMO_STATE = { queueSize: 3, queue: [], nextFreeAt: 0, answered: 0, updatedAt: 0, current: { id: "demo", name: "Valentina", question: "\\u00bfCu\\u00e1ntos planetas tiene el sistema solar?", coins: 0, answer: "Ocho: Mercurio, Venus, Tierra, Marte, Júpiter, Saturno, Urano y Neptuno.", startedAt: 0, showMs: 600000 } };
+
+  function applyStyle() {
+    var style = config.style;
+    document.body.setAttribute("data-design", designOverride || style.designId);
+    var root = document.documentElement.style;
+    var vars = { "--text": style.textColor, "--bg": style.backgroundColor, "--accent": style.accentColor };
+    for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }
+    root.setProperty("--scale", style.scale || 1);
+  }
+
+  function now() { return Date.now() + offset; }
+
+  function renderBar() {
+    if (!config || !state) return;
+    nameEl.textContent = config.name;
+    queueEl.textContent = "Cola " + state.queueSize;
+    var left = Math.ceil((state.nextFreeAt - now()) / 1000);
+    if (left <= 0) { freeEl.textContent = "Gratis ya"; freeEl.className = "free ready"; }
+    else { freeEl.textContent = "Gratis en " + left + " s"; freeEl.className = "free"; }
+  }
+
+  function setAvatar(c) {
+    iniEl.textContent = (c.name || "?").trim().charAt(0).toUpperCase();
+    if (c.avatarUrl) { imgEl.onerror = function () { imgEl.classList.add("hidden"); }; imgEl.src = c.avatarUrl; imgEl.classList.remove("hidden"); }
+    else { imgEl.classList.add("hidden"); imgEl.removeAttribute("src"); }
+  }
+
+  function typeStep() {
+    var c = state && state.current;
+    if (!c || !c.answer) return;
+    typedLen = Math.min(c.answer.length, typedLen + 2);
+    aEl.textContent = c.answer.slice(0, typedLen);
+    if (typedLen < c.answer.length) { var cur = document.createElement("span"); cur.className = "cur"; aEl.appendChild(cur); }
+    else { clearInterval(typeTimer); typeTimer = null; }
+  }
+
+  function renderCard() {
+    var c = state && state.current;
+    if (!c) { cardEl.classList.add("hidden"); typedId = ""; if (typeTimer) { clearInterval(typeTimer); typeTimer = null; } return; }
+    if (typedId !== c.id) {
+      typedId = c.id; typedLen = 0;
+      cardEl.classList.remove("in"); void cardEl.offsetWidth; cardEl.classList.add("in");
+      whoEl.textContent = c.name; qEl.textContent = c.question; aEl.textContent = "";
+      setAvatar(c);
+      if (c.coins > 0) { coinsEl.textContent = c.coins + " \\u{1FA99}"; coinsEl.classList.remove("hidden"); } else coinsEl.classList.add("hidden");
+    }
+    cardEl.classList.remove("hidden");
+    if (!c.answer) { aEl.textContent = "Pensando..."; return; }
+    if (!typeTimer && typedLen < c.answer.length) typeTimer = setInterval(typeStep, 35);
+  }
+
+  function render() {
+    renderBar();
+    renderCard();
+    if (!shown) { shown = true; rootEl.classList.remove("hidden"); }
+  }
+
+  function schedule() { retry = Math.min(retry + 1, 6); setTimeout(connect, 500 * retry); }
+
+  function connect() {
+    try { ws = new WebSocket("ws://localhost:" + WS_PORT); } catch (e) { schedule(); return; }
+    ws.onopen = function () {
+      retry = 0;
+      ws.send(JSON.stringify({ channel: "agente", payload: { kind: "get-state" } }));
+    };
+    ws.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data);
+        if (m.channel !== "agente" || !m.payload || m.payload.kind !== "state") return;
+        config = m.payload.config;
+        state = DEMO ? DEMO_STATE : m.payload.state;
+        offset = m.payload.serverNow - Date.now();
+        applyStyle();
+        render();
+        document.documentElement.setAttribute("data-ready", "1");
+      } catch (e) {}
+    };
+    ws.onclose = schedule;
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+
+  setInterval(renderBar, 500);
+  document.body.setAttribute("data-design", designOverride || "panel");
+  connect();
+`;
+
 /** Texto como literal JS seguro dentro de un <script> (escapa `<` para que no cierre la etiqueta). */
 function jsString(value: string): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
@@ -1180,9 +1316,10 @@ export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPage
   const nivel = kind === "nivel";
   const duelo = kind === "duelo";
   const top = kind === "top";
-  const css = top ? TOP_CSS : duelo ? DUELO_CSS : nivel ? NIVEL_CSS : meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
-  const body = top ? TOP_BODY : duelo ? DUELO_BODY : nivel ? NIVEL_BODY : meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
-  const kindJs = nivel || duelo || top ? "" : meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
+  const agente = kind === "agente";
+  const css = agente ? AGENTE_CSS : top ? TOP_CSS : duelo ? DUELO_CSS : nivel ? NIVEL_CSS : meta ? META_CSS : kind === "timer" ? TIMER_CSS : WINS_CSS;
+  const body = agente ? AGENTE_BODY : top ? TOP_BODY : duelo ? DUELO_BODY : nivel ? NIVEL_BODY : meta ? META_BODY : kind === "timer" ? TIMER_BODY : WINS_BODY;
+  const kindJs = nivel || duelo || top || agente ? "" : meta ? META_JS : kind === "timer" ? TIMER_JS : WINS_JS;
   return `<!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8">
@@ -1205,7 +1342,7 @@ ${body}
   // Funciones de dibujo de este overlay (definen render()).
   ${kindJs}
   // Conexión, estado y estilo comunes.
-  ${top ? TOP_JS : duelo ? DUELO_JS : nivel ? NIVEL_JS : meta ? META_COMMON_JS : COMMON_JS}
+  ${agente ? AGENTE_JS : top ? TOP_JS : duelo ? DUELO_JS : nivel ? NIVEL_JS : meta ? META_COMMON_JS : COMMON_JS}
 })();
 </script>
 </body></html>`;

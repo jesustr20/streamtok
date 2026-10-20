@@ -241,3 +241,12 @@ describe("overlay de tops", () => {
     expect(overlayPage("top", 7331, { id: "likes" })).toContain("var DEMO_MODE = false;");
   });
 });
+
+describe("overlay agente", () => {
+  it("la página pide el canal agente y trae la barra de la cola", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain('channel: "agente"');
+    expect(html).toContain('id="agqueue"');
+    expect(html).toContain("Los regalos dan prioridad");
+  });
+});

@@ -27,6 +27,7 @@ const OVERLAY_ITEMS: NavItem[] = [
   { id: "metas", label: "Metas", enabled: true },
   { id: "tops", label: "Tops y MVP", enabled: true },
   { id: "duelos", label: "Batallas y duelos", enabled: true },
+  { id: "agente", label: "Agente IA", enabled: true },
   { id: "juegos-interactivos", label: "Juegos de stream", enabled: false },
   { id: "alertas", label: "Alertas y efectos", enabled: true },
   { id: "chat-feed", label: "Chat y feed", enabled: false },
