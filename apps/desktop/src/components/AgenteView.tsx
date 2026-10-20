@@ -1,4 +1,4 @@
-import { AGENT_PROVIDERS, providerInfo, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
+import { AGENT_PROVIDERS, pickVoice, providerInfo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { useTestRunner } from "../lib/use-test-runner";
@@ -103,11 +103,108 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
 
       <Modelo config={config} keys={keys} api={api} patch={patch} />
 
+      <Voz config={config} patch={patch} />
+
       <Queue config={config} state={state} api={api} />
 
       <UrlCard kind="agente" title="Overlay" stable reserve={{ w: 480, h: 230 }} onCustomize={() => setOpen((v) => !v)} customizeLabel={open ? "Ocultar diseño" : "Personalizar diseño"} />
       {open && <DesignCard kind="agente" style={config.style} onChange={(style) => patch({ style })} />}
     </>
+  );
+}
+
+/** Voces del sistema instaladas (en Windows llegan un momento después de abrir la página). */
+function useSystemVoices(): SpeechSynthesisVoice[] {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => (typeof speechSynthesis === "undefined" ? [] : speechSynthesis.getVoices()));
+  useEffect(() => {
+    if (typeof speechSynthesis === "undefined") return;
+    const update = () => setVoices(speechSynthesis.getVoices());
+    update();
+    speechSynthesis.addEventListener("voiceschanged", update);
+    return () => speechSynthesis.removeEventListener("voiceschanged", update);
+  }, []);
+  return voices;
+}
+
+/** Voz del agente: lee la respuesta en voz alta desde el overlay con una voz del sistema. */
+function Voz({ config, patch }: { config: AgentConfig; patch: (p: Partial<AgentConfig>) => void }) {
+  const voices = useSystemVoices();
+  const spanish = voices.filter((v) => /^es/i.test(v.lang));
+  const v = config.voice;
+  const set = (p: Partial<AgentVoice>) => patch({ voice: { ...v, ...p } });
+  const chosen = pickVoice(voices, v);
+
+  const preview = () => {
+    if (typeof speechSynthesis === "undefined") return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(`Hola, soy ${config.name}. Pregúntame lo que quieras con ${config.command}.`);
+    if (chosen) {
+      u.voice = chosen;
+      u.lang = chosen.lang;
+    } else u.lang = "es-ES";
+    u.rate = v.rate;
+    u.volume = v.volume;
+    speechSynthesis.speak(u);
+  };
+
+  return (
+    <Card title="Voz">
+      <div style={{ fontSize: 12.5, color: "#9A9CA5", lineHeight: 1.5 }}>
+        El overlay lee cada respuesta en voz alta con una voz instalada en tu equipo. TikTok LIVE Studio la reproduce sola; en OBS activa «Controlar audio mediante OBS» en la fuente de navegador.
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ width: 120 }}>
+          <Field label="Voz activada" hint="apagada, solo se lee en pantalla">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <input type="checkbox" checked={v.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
+              {v.enabled ? "Sí" : "No"}
+            </label>
+          </Field>
+        </div>
+        <div style={{ width: 150 }}>
+          <Field label="Tipo de voz" hint="busca una voz así entre las instaladas">
+            <select value={v.gender} onChange={(e) => set({ gender: e.target.value as AgentVoice["gender"], voiceName: "" })} style={{ ...inputStyle, width: "100%" }}>
+              <option value="female">Mujer</option>
+              <option value="male">Hombre</option>
+            </select>
+          </Field>
+        </div>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <Field
+            label="Voz concreta"
+            hint={spanish.length === 0 ? "no se encontró ninguna voz en español: instálala en Windows (Configuración → Hora e idioma → Voz)" : chosen ? `ahora: ${chosen.name}` : "automática"}
+          >
+            <select value={v.voiceName} onChange={(e) => set({ voiceName: e.target.value })} style={{ ...inputStyle, width: "100%" }}>
+              <option value="">Automática</option>
+              {spanish.map((x) => (
+                <option key={x.name} value={x.name}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ width: 200 }}>
+          <Field label={`Velocidad (${v.rate.toFixed(2)}×)`} hint="1 = normal">
+            <input type="range" min={0.5} max={1.8} step={0.05} value={v.rate} onChange={(e) => set({ rate: Number(e.target.value) })} />
+          </Field>
+        </div>
+        <div style={{ width: 200 }}>
+          <Field label={`Volumen (${Math.round(v.volume * 100)} %)`} hint="">
+            <input type="range" min={0} max={1} step={0.05} value={v.volume} onChange={(e) => set({ volume: Number(e.target.value) })} />
+          </Field>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, paddingBottom: 6 }}>
+          <input type="checkbox" checked={v.readQuestion} onChange={(e) => set({ readQuestion: e.target.checked })} />
+          Leer también la pregunta
+        </label>
+        <Btn primary onClick={preview}>
+          ▶ Probar voz
+        </Btn>
+      </div>
+    </Card>
   );
 }
 
