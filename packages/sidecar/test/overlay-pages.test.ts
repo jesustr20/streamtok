@@ -259,3 +259,11 @@ describe("overlay agente: trivia", () => {
     expect(html).toContain("Escribe ");
   });
 });
+
+describe("overlay agente: avisos", () => {
+  it("trae el aviso periódico y lo lee en voz alta", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain('id="agtip"');
+    expect(html).toContain("speakText(tip.id, tip.text);");
+  });
+});

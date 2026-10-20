@@ -186,6 +186,40 @@ export function parseTriviaAnswer(text: string | undefined): number | undefined 
   return m ? m[1].toLowerCase().charCodeAt(0) - 97 : undefined;
 }
 
+// ---------------------------------------------------------------------------
+// Avisos periódicos (fase d): el agente explica solo cómo participar
+// ---------------------------------------------------------------------------
+
+export const AgentTipsConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** un aviso cada tantos segundos (solo si no está respondiendo ni hay trivia abierta) */
+  everySec: z.number().int().min(30).max(3600).default(300),
+  /** tus propios avisos, que salen después de los de fábrica (uno por línea, máx. 140 caracteres) */
+  custom: z.array(z.string().trim().min(1).max(140)).max(5).default([]),
+});
+export type AgentTipsConfig = z.infer<typeof AgentTipsConfigSchema>;
+
+/**
+ * Los avisos según cómo tengas configurado el agente: cómo preguntar y quién puede, que los regalos dan
+ * prioridad y, si está activada, cómo se juega la trivia; luego los tuyos.
+ */
+export function buildTips(c: Pick<AgentConfig, "name" | "command" | "eligibility" | "freeEverySec" | "trivia" | "voice"> & { tips: AgentTipsConfig }): string[] {
+  const who: string[] = [];
+  if (c.eligibility.follow) who.push("sigues el canal");
+  if (c.eligibility.share) who.push("compartes el LIVE");
+  if (c.eligibility.fanClub) who.push("eres del Fan Club");
+  if (c.eligibility.gift) who.push("mandas un regalo");
+  const out: string[] = [];
+  if (who.length > 0) {
+    const last = who.length > 1 ? ` o ${who[who.length - 1]}` : "";
+    const first = who.length > 1 ? who.slice(0, -1).join(", ") : who[0];
+    out.push(`Soy ${c.name}. Escribe ${c.command} y tu pregunta en el chat. Puedes preguntar si ${first}${last}.`);
+  }
+  if (c.eligibility.gift) out.push(`Un regalo te da prioridad: cuantas más monedas, antes respondo tu pregunta. Sin regalo, respondo una cada ${c.freeEverySec} segundos.`);
+  if (c.trivia.enabled) out.push("Cuando el chat está tranquilo lanzo una trivia: responde con A, B, C o D y gana prioridad para tu próxima pregunta.");
+  return [...out, ...c.tips.custom];
+}
+
 export const AgentConfigSchema = z.object({
   enabled: z.boolean().default(true),
   /** nombre con el que se presenta el agente */
@@ -213,6 +247,7 @@ export const AgentConfigSchema = z.object({
   personality: z.string().max(300).default(""),
   voice: AgentVoiceSchema.default({}),
   trivia: AgentTriviaConfigSchema.default({}),
+  tips: AgentTipsConfigSchema.default({}),
   style: OverlayStyleSchema.default({ designId: "panel" }),
 });
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
@@ -258,6 +293,8 @@ export const AgentStateSchema = z.object({
   nextFreeAt: z.number(),
   /** cuántas respuestas lleva en esta sesión */
   answered: z.number().int().nonnegative(),
+  /** aviso periódico en pantalla (cómo participar) */
+  tip: z.object({ id: z.string(), text: z.string() }).optional(),
   updatedAt: z.number(),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
@@ -275,6 +312,7 @@ export type AgentFile = z.infer<typeof AgentFileSchema>;
  *  - `ask`        UI → sidecar: pregunta de prueba (con `coins` > 0 es "de regalo"); no pasa por el chat
  *  - `reset`      UI → sidecar: vacía la cola y la respuesta en pantalla
  *  - `trivia-start` / `trivia-cancel`  UI → sidecar: lanza o cancela una trivia ahora
+ *  - `tip-now`    UI → sidecar: muestra el siguiente aviso periódico ya
  *  - `set-key` / `remove-key`  UI → sidecar: guarda o borra la clave de un proveedor (solo en tu equipo)
  *  - `test-connection`         UI → sidecar: hace una llamada mínima al modelo; responde con `test-result`
  *  - `error`      sidecar → UI
@@ -302,6 +340,8 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
   // `sample`: usa una pregunta de ejemplo en vez de pedirla al modelo (para probar sin clave ni gasto)
   z.object({ kind: z.literal("trivia-start"), sample: z.boolean().default(false) }),
   z.object({ kind: z.literal("trivia-cancel") }),
+  // muestra el siguiente aviso ahora (para probarlo)
+  z.object({ kind: z.literal("tip-now") }),
   // la clave viaja una sola vez de la app al sidecar, que la guarda en tu equipo; nunca se devuelve
   z.object({ kind: z.literal("set-key"), provider: AgentProviderIdSchema, key: z.string().trim().min(8).max(300) }),
   z.object({ kind: z.literal("remove-key"), provider: AgentProviderIdSchema }),

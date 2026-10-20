@@ -6,6 +6,7 @@ import {
   AgentFileSchema,
   DEFAULT_JOIN_GIFT_NAMES,
   isJoinGift,
+  buildTips,
   parseAgentCommand,
   type AgentConfig,
   type AgentCurrent,
@@ -110,6 +111,8 @@ interface Credit {
 export interface AgenteEngineOptions {
   store: AgenteStorePort;
   responder?: Responder;
+  /** ¿puede salir un aviso periódico? (la trivia abierta lo bloquea) */
+  canShowTip?: () => boolean;
   /** reloj en ms (para pruebas) */
   now?: () => number;
   /** azar en [0,1) (para pruebas) */
@@ -121,6 +124,11 @@ export class AgenteEngine extends EventEmitter {
   private queue: Waiting[] = [];
   private current: (AgentCurrent & { answerAt?: number }) | undefined;
   private nextFreeAt = 0;
+  private tip: { id: string; text: string } | undefined;
+  private tipUntil = 0;
+  private nextTipAt = 0;
+  private tipIndex = 0;
+  private tipSeq = 0;
   private answered = 0;
   private seq = 0;
   private followers = new Set<string>();
@@ -138,13 +146,17 @@ export class AgenteEngine extends EventEmitter {
   private now: () => number;
   private random: () => number;
 
+  private opts: AgenteEngineOptions;
+
   constructor(opts: AgenteEngineOptions) {
     super();
+    this.opts = opts;
     this.store = opts.store;
     this.responder = opts.responder ?? placeholderResponder;
     this.now = opts.now ?? (() => Date.now());
     this.random = opts.random ?? Math.random;
     this.config = this.store.load().config;
+    this.nextTipAt = this.now() + this.config.tips.everySec * 1000;
   }
 
   getConfig(): AgentConfig {
@@ -161,6 +173,7 @@ export class AgenteEngine extends EventEmitter {
       queueSize: this.queue.length,
       queue: ordered.slice(0, 5).map(toItem),
       ...(this.current ? { current: toCurrent(this.current) } : {}),
+      ...(this.tip ? { tip: this.tip } : {}),
       nextFreeAt: this.nextFreeAt,
       answered: this.answered,
       updatedAt: this.now(),
@@ -169,6 +182,7 @@ export class AgenteEngine extends EventEmitter {
 
   save(config: AgentConfig): void {
     this.config = config;
+    this.nextTipAt = Math.min(this.nextTipAt, this.now() + config.tips.everySec * 1000);
     this.persist();
     this.emit("state");
   }
@@ -188,6 +202,7 @@ export class AgenteEngine extends EventEmitter {
     this.fanClub.clear();
     this.credits.clear();
     this.prizes.clear();
+    this.nextTipAt = this.now() + this.config.tips.everySec * 1000;
     this.lastAsk.clear();
     this.coinStreaks.clear();
     this.answered = 0;
@@ -262,7 +277,15 @@ export class AgenteEngine extends EventEmitter {
       this.answered++;
       this.emit("state");
     }
+    if (this.tip && (this.current || t >= this.tipUntil)) {
+      this.tip = undefined;
+      this.emit("state");
+    }
     if (this.current || !this.config.enabled) return;
+    if (!this.tip && this.config.tips.enabled && t >= this.nextTipAt && this.queue.length === 0 && (this.opts.canShowTip?.() ?? true)) {
+      this.showTip();
+      return;
+    }
     const next = this.pickNext(t);
     if (!next) return;
     this.queue = this.queue.filter((w) => w !== next);
@@ -278,8 +301,23 @@ export class AgenteEngine extends EventEmitter {
       showMs: 0,
     };
     this.current = cur;
+    this.tip = undefined; // la pregunta pasa por delante del aviso
     this.emit("state");
     void this.answer(cur);
+  }
+
+  /** Muestra el siguiente aviso periódico ya (botón de la app). Devuelve false si no hay avisos que mostrar. */
+  showTip(): boolean {
+    const tips = buildTips(this.config);
+    if (tips.length === 0) return false;
+    const t = this.now();
+    const text = tips[this.tipIndex % tips.length];
+    this.tipIndex++;
+    this.tip = { id: `tip${++this.tipSeq}`, text };
+    this.tipUntil = t + showMsFor(text);
+    this.nextTipAt = t + this.config.tips.everySec * 1000;
+    this.emit("state");
+    return true;
   }
 
   /** Espera a que terminen las escrituras pendientes (para pruebas y para cerrar). */

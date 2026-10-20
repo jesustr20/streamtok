@@ -208,12 +208,13 @@ const agenteModel = new ModelService({
     console.warn("[agente:warn]", message),
   ),
 });
-const agente = new AgenteEngine({
+const agente: AgenteEngine = new AgenteEngine({
   store: new AgenteStore(defaultAgenteFilePath(), (message) =>
     // eslint-disable-next-line no-console
     console.warn("[agente:warn]", message),
   ),
   responder: agenteModel.respond,
+  canShowTip: () => agenteTrivia.getState().phase === "idle",
 });
 agenteModel.on("log", (entry) => {
   // eslint-disable-next-line no-console
@@ -224,7 +225,7 @@ agente.on("log", (entry) => {
   console.log(`[agente:${entry.level}]`, entry.message);
 });
 // Trivia del agente: sale sola cuando el chat está tranquilo; quien acierta gana prioridad y suma al Top Trivia.
-const agenteTrivia = new TriviaEngine({
+const agenteTrivia: TriviaEngine = new TriviaEngine({
   generator: (config, recent) => agenteModel.generateTrivia(config, recent),
   getConfig: () => agente.getConfig(),
   busy: () => agente.isBusy(),

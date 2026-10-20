@@ -105,6 +105,20 @@ describe("AgenteController", () => {
     srv.close();
   });
 
+  it("tip-now muestra el aviso y avisa si no hay ninguno", async () => {
+    const c = await connect(server);
+    sockets.push(c.ws);
+    await c.next(isState);
+    c.send({ kind: "tip-now" });
+    const m = await c.next((x) => isState(x) && x.payload.state.tip !== undefined);
+    expect(m.payload.state.tip.text).toContain("!ia");
+    c.send({ kind: "save", config: AgentConfigSchema.parse({ eligibility: { follow: false, share: false, fanClub: false, gift: false } }) });
+    await c.next((x) => isState(x) && x.payload.config.eligibility.follow === false);
+    engine.reset();
+    c.send({ kind: "tip-now" });
+    await c.next(isError);
+  });
+
   it("save cambia la configuración y una inválida da error", async () => {
     const c = await connect(server);
     sockets.push(c.ws);

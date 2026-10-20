@@ -1180,6 +1180,8 @@ const AGENTE_CSS = `
   .ag .q { font: 600 15px/1.3 "Segoe UI", sans-serif; opacity: .8; margin-bottom: 8px; overflow-wrap: anywhere; }
   .ag .a { font: 700 18px/1.35 "Segoe UI", sans-serif; overflow-wrap: anywhere; min-height: 24px; }
   .ag .a .cur { display: inline-block; width: 8px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--gold); animation: agBlink 1s steps(2) infinite; }
+  .ag .tip { margin-top: 8px; box-sizing: border-box; padding: 10px 14px; border-radius: 16px; background: var(--bg, rgba(14, 12, 28, .92)); border: 2px solid rgba(255, 255, 255, .18); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); font: 700 15px/1.4 "Segoe UI", sans-serif; overflow-wrap: anywhere; display: flex; gap: 10px; align-items: flex-start; animation: agIn .35s ease-out both; }
+  .ag .tip b { flex: none; font-size: 18px; line-height: 1.2; }
   .ag .tv { margin-top: 8px; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; background: var(--bg, rgba(14, 12, 28, .92)); border: 2px solid var(--gold); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
   .ag .tv .tvhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font: 900 12px/1 "Segoe UI", sans-serif; letter-spacing: 3px; color: var(--gold); text-transform: uppercase; }
   .ag .tv .tvhead span { font-size: 15px; letter-spacing: 0; color: var(--text, #fff); font-variant-numeric: tabular-nums; }
@@ -1201,6 +1203,7 @@ const AGENTE_CSS = `
 const AGENTE_BODY = `
   <div id="root" class="hidden"><div class="ag" id="ag">
     <div class="bar"><span class="dot"></span><b id="agname"></b><span class="sep">|</span><span id="agqueue"></span><span class="sep">|</span><span class="free" id="agfree"></span><span class="sep">|</span><span class="hint">Los regalos dan prioridad</span></div>
+    <div class="tip hidden" id="agtip"><b>&#128161;</b><span id="agtiptext"></span></div>
     <div class="tv hidden" id="tvcard">
       <div class="tvhead"><b>Trivia</b><span id="tvtime"></span></div>
       <div class="tvq" id="tvq"></div>
@@ -1348,10 +1351,21 @@ const AGENTE_JS = `
     if (!typeTimer && typedLen < c.answer.length) typeTimer = setInterval(typeStep, 35);
   }
 
+  var tipEl = document.getElementById("agtip"), tipText = document.getElementById("agtiptext");
+  // El aviso periódico (cómo participar) se ve solo si no hay respuesta ni trivia en pantalla.
+  function renderTip() {
+    var tip = state && state.tip, hide = !tip || DEMO || state.current || (tvState && tvState.phase !== "idle");
+    if (hide) { tipEl.classList.add("hidden"); return; }
+    tipText.textContent = tip.text;
+    tipEl.classList.remove("hidden");
+    speakText(tip.id, tip.text);
+  }
+
   function render() {
     renderBar();
     renderTrivia();
     renderCard();
+    renderTip();
     if (!shown) { shown = true; rootEl.classList.remove("hidden"); }
   }
 
