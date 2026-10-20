@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { audioTestPage } from "./audio-test-page.js";
 import { OVERLAY_DEFAULT_PORT, overlayPage, type OverlayKind } from "@streamtok/shared";
 
 /**
@@ -72,6 +73,11 @@ export class OverlayHttpServer {
     }
 
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (/^\/overlay\/prueba-audio\/?$/.test(pathname)) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(method === "HEAD" ? undefined : audioTestPage());
+      return;
+    }
     const target = parsePath(pathname);
     if (!target) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });

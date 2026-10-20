@@ -30,6 +30,17 @@ describe("OverlayHttpServer", () => {
     }
   });
 
+  it("sirve la página de prueba de audio en /overlay/prueba-audio", async () => {
+    const base = await start();
+    const res = await fetch(`${base}/overlay/prueba-audio`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("speechSynthesis");
+    expect(html).toContain("new Audio(");
+    expect((await fetch(`${base}/overlay/prueba-audio/`)).status).toBe(200);
+  });
+
   it("incluye todos los diseños de cada tipo", async () => {
     const base = await start();
     for (const kind of ["timer", "wins"] as const) {
