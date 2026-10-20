@@ -3,6 +3,7 @@ import { WebSocket } from "ws";
 import { AgentConfigSchema } from "@streamtok/shared";
 import { AgenteEngine } from "../src/agente.js";
 import { AgenteController } from "../src/agente-controller.js";
+import { TriviaEngine } from "../src/agente-trivia.js";
 import { ModelService, type FetchLike } from "../src/agente-model.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
 
@@ -81,6 +82,26 @@ describe("AgenteController", () => {
     expect(r.payload).toMatchObject({ provider: "deepseek", ok: true });
     c.send({ kind: "remove-key", provider: "deepseek" });
     await c.next((x) => isState(x) && x.payload.keys.deepseek === false);
+    srv.close();
+  });
+
+  it("trivia: se lanza de ejemplo, no filtra la respuesta correcta y se cancela", async () => {
+    const srv = new StreamTokWsServer(0);
+    const eng = new AgenteEngine({ store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} } });
+    const tri = new TriviaEngine({ generator: async () => null, getConfig: () => eng.getConfig() });
+    new AgenteController(srv, eng, undefined, tri);
+    const c = await connect(srv);
+    sockets.push(c.ws);
+    const first = await c.next(isState);
+    expect(first.payload.trivia.phase).toBe("idle");
+    c.send({ kind: "trivia-start", sample: true });
+    const open = await c.next((x) => isState(x) && x.payload.trivia.phase === "open");
+    expect(open.payload.trivia.options).toHaveLength(4);
+    expect(JSON.stringify(open.payload.trivia)).not.toContain("correct");
+    c.send({ kind: "trivia-start", sample: true });
+    await c.next(isError);
+    c.send({ kind: "trivia-cancel" });
+    await c.next((x) => isState(x) && x.payload.trivia.phase === "idle");
     srv.close();
   });
 

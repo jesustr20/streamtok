@@ -20,9 +20,9 @@ function engineWith(configs: TopConfig[], now?: () => Date) {
 }
 
 describe("TopsEngine", () => {
-  it("de fábrica trae Gifters, Gifters del día, Likes, Comentarios y Compartidos", () => {
+  it("de fábrica trae Gifters, Gifters del día, Likes, Comentarios, Compartidos y Trivia", () => {
     const engine = new TopsEngine({ store: memoryStore(), presets: TOP_PRESETS });
-    expect(engine.getConfigs().map((c) => c.id)).toEqual(["gifters", "gifters-dia", "likes", "comentarios", "compartidos"]);
+    expect(engine.getConfigs().map((c) => c.id)).toEqual(["gifters", "gifters-dia", "likes", "comentarios", "compartidos", "trivia"]);
   });
 
   it("suma monedas por persona y ordena de mayor a menor, con el tope de puestos", () => {
@@ -124,7 +124,7 @@ describe("TopsEngine", () => {
     await a.flush();
     expect(JSON.parse(await readFile(file, "utf8")).runtime.gifters.people[0].score).toBe(9);
     const b = new TopsEngine({ store: new TopsStore(file), presets: TOP_PRESETS });
-    expect(b.getConfigs()).toHaveLength(5);
+    expect(b.getConfigs()).toHaveLength(6);
     expect(b.getState("gifters")!.entries[0]).toMatchObject({ name: "Ana", score: 9 });
   });
 
@@ -135,7 +135,7 @@ describe("TopsEngine", () => {
     await writeFile(file, "{ no es json", "utf8");
     const warns: string[] = [];
     const engine = new TopsEngine({ store: new TopsStore(file, (m) => warns.push(m)), presets: TOP_PRESETS });
-    expect(engine.getConfigs()).toHaveLength(5);
+    expect(engine.getConfigs()).toHaveLength(6);
     expect(warns).toHaveLength(1);
   });
 

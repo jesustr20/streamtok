@@ -60,7 +60,7 @@ describe("TopsController", () => {
     const c = await connect(server);
     sockets.push(c.ws);
     const m = await c.next(isState);
-    expect(m.payload.configs.map((x: any) => x.id)).toEqual(["gifters", "gifters-dia", "likes", "comentarios", "compartidos"]);
+    expect(m.payload.configs.map((x: any) => x.id)).toEqual(["gifters", "gifters-dia", "likes", "comentarios", "compartidos", "trivia"]);
     expect(m.payload.states[0].entries).toEqual([]);
   });
 

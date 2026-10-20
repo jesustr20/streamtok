@@ -60,6 +60,7 @@ export const TOP_NAV: { id: string; label: string }[] = [
   { id: "likes", label: "Top Likes" },
   { id: "comentarios", label: "Top Comentarios" },
   { id: "compartidos", label: "Top Compartidos" },
+  { id: "trivia", label: "Top Trivia" },
 ];
 
 /** Sub-items de Batallas y duelos; el id es el del duelo. */

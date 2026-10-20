@@ -1180,6 +1180,19 @@ const AGENTE_CSS = `
   .ag .q { font: 600 15px/1.3 "Segoe UI", sans-serif; opacity: .8; margin-bottom: 8px; overflow-wrap: anywhere; }
   .ag .a { font: 700 18px/1.35 "Segoe UI", sans-serif; overflow-wrap: anywhere; min-height: 24px; }
   .ag .a .cur { display: inline-block; width: 8px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--gold); animation: agBlink 1s steps(2) infinite; }
+  .ag .tv { margin-top: 8px; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; background: var(--bg, rgba(14, 12, 28, .92)); border: 2px solid var(--gold); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+  .ag .tv .tvhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font: 900 12px/1 "Segoe UI", sans-serif; letter-spacing: 3px; color: var(--gold); text-transform: uppercase; }
+  .ag .tv .tvhead span { font-size: 15px; letter-spacing: 0; color: var(--text, #fff); font-variant-numeric: tabular-nums; }
+  .ag .tv .tvq { font: 800 17px/1.3 "Segoe UI", sans-serif; margin-bottom: 10px; overflow-wrap: anywhere; }
+  .ag .tv .tvopt { display: flex; align-items: center; gap: 10px; box-sizing: border-box; padding: 6px 10px; margin-bottom: 6px; border-radius: 12px; background: rgba(255, 255, 255, .08); font: 700 15px/1.2 "Segoe UI", sans-serif; }
+  .ag .tv .tvopt b { flex: none; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--gold); color: #1b1620; font-weight: 900; font-size: 13px; }
+  .ag .tv .tvopt.ok { background: #1f9d55; }
+  .ag .tv .tvopt.ok b { background: #fff; color: #1f9d55; }
+  .ag .tv .tvopt.dim { opacity: .35; }
+  .ag .tv .tvbar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .15); overflow: hidden; margin-top: 8px; }
+  .ag .tv .tvbar i { display: block; height: 100%; width: 100%; background: var(--gold); transition: width .3s linear; }
+  .ag .tv .tvfoot { margin-top: 8px; font: 800 14px/1.3 "Segoe UI", sans-serif; text-align: center; }
+  .ag .tv .tvfoot.win { color: #ffc233; }
   @keyframes agBlink { 50% { opacity: 0; } }
   @keyframes agIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
   .ag .card.in { animation: agIn .35s ease-out both; }
@@ -1188,6 +1201,13 @@ const AGENTE_CSS = `
 const AGENTE_BODY = `
   <div id="root" class="hidden"><div class="ag" id="ag">
     <div class="bar"><span class="dot"></span><b id="agname"></b><span class="sep">|</span><span id="agqueue"></span><span class="sep">|</span><span class="free" id="agfree"></span><span class="sep">|</span><span class="hint">Los regalos dan prioridad</span></div>
+    <div class="tv hidden" id="tvcard">
+      <div class="tvhead"><b>Trivia</b><span id="tvtime"></span></div>
+      <div class="tvq" id="tvq"></div>
+      <div id="tvopts"></div>
+      <div class="tvbar" id="tvbarbox"><i id="tvfill"></i></div>
+      <div class="tvfoot" id="tvfoot"></div>
+    </div>
     <div class="card hidden" id="agcard">
       <div class="who"><span class="av"><img class="hidden" referrerpolicy="no-referrer" alt=""><i></i></span><span class="nm" id="agwho"></span><span class="coins hidden" id="agcoins"></span></div>
       <div class="q" id="agq"></div>
@@ -1210,6 +1230,8 @@ const AGENTE_JS = `
   var rootEl = document.getElementById("root"), cardEl = document.getElementById("agcard");
   var nameEl = document.getElementById("agname"), queueEl = document.getElementById("agqueue"), freeEl = document.getElementById("agfree");
   var whoEl = document.getElementById("agwho"), coinsEl = document.getElementById("agcoins"), qEl = document.getElementById("agq"), aEl = document.getElementById("aga");
+  var tvEl = document.getElementById("tvcard"), tvTime = document.getElementById("tvtime"), tvQ = document.getElementById("tvq");
+  var tvOpts = document.getElementById("tvopts"), tvFill = document.getElementById("tvfill"), tvBar = document.getElementById("tvbarbox"), tvFoot = document.getElementById("tvfoot");
   var avEl = cardEl.querySelector(".av"), imgEl = avEl.querySelector("img"), iniEl = avEl.querySelector("i");
   var DEMO_STATE = { queueSize: 3, queue: [], nextFreeAt: 0, answered: 0, updatedAt: 0, current: { id: "demo", name: "Valentina", question: "\\u00bfCu\\u00e1ntos planetas tiene el sistema solar?", coins: 0, answer: "Ocho: Mercurio, Venus, Tierra, Marte, Júpiter, Saturno, Urano y Neptuno.", startedAt: 0, showMs: 600000 } };
 
@@ -1244,12 +1266,15 @@ const AGENTE_JS = `
   // Lee la respuesta en voz alta con una voz del sistema, una sola vez por pregunta. En la vista previa de demo no habla.
   var spokenId = "";
   function speak(c) {
+    if (!c.answer) return;
+    speakText(c.id, (config.voice.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer);
+  }
+  function speakText(key, text) {
     var v = config && config.voice;
-    if (!v || !v.enabled || DEMO || !window.speechSynthesis || !c.answer || spokenId === c.id) return;
-    spokenId = c.id;
+    if (!v || !v.enabled || DEMO || !window.speechSynthesis || spokenId === key) return;
+    spokenId = key;
     try {
       window.speechSynthesis.cancel();
-      var text = (v.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer;
       var u = new SpeechSynthesisUtterance(text);
       var pick = pickVoice(window.speechSynthesis.getVoices(), v.gender, v.voiceName);
       if (pick) { u.voice = pick; u.lang = pick.lang; } else u.lang = "es-ES";
@@ -1265,6 +1290,46 @@ const AGENTE_JS = `
     aEl.textContent = c.answer.slice(0, typedLen);
     if (typedLen < c.answer.length) { var cur = document.createElement("span"); cur.className = "cur"; aEl.appendChild(cur); }
     else { clearInterval(typeTimer); typeTimer = null; }
+  }
+
+  var LETTERS = ["A", "B", "C", "D"], tvKey = "", tvState = null;
+
+  function renderTrivia() {
+    var t = tvState;
+    if (!t || t.phase === "idle" || DEMO) { tvEl.classList.add("hidden"); tvKey = ""; return; }
+    tvEl.classList.remove("hidden");
+    var key = t.phase + t.startedAt, total = ((config.trivia && config.trivia.answerSec) || 30) * 1000;
+    if (t.phase === "generating") {
+      tvQ.textContent = "Preparando una pregunta...";
+      tvOpts.innerHTML = ""; tvBar.classList.add("hidden"); tvFoot.textContent = ""; tvTime.textContent = "";
+      return;
+    }
+    if (tvKey !== key) {
+      tvKey = key;
+      tvQ.textContent = t.question;
+      var html = "", i;
+      for (i = 0; i < t.options.length; i++) html += '<div class="tvopt" data-i="' + i + '"><b>' + LETTERS[i] + "</b><span></span></div>";
+      tvOpts.innerHTML = html;
+      for (i = 0; i < t.options.length; i++) tvOpts.children[i].lastChild.textContent = t.options[i];
+      if (t.phase === "open") speakText("tv" + t.startedAt, "Trivia. " + t.question + " " + t.options.map(function (o, n) { return LETTERS[n] + ": " + o + "."; }).join(" "));
+      if (t.phase === "reveal") {
+        var ok = t.options[t.correct];
+        speakText("tvr" + t.startedAt, t.winner ? "La respuesta correcta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." : "Nadie acert\u00f3. La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + ".");
+      }
+    }
+    if (t.phase === "open") {
+      var left = Math.max(0, t.deadline - now());
+      tvTime.textContent = Math.ceil(left / 1000) + " s";
+      tvBar.classList.remove("hidden");
+      tvFill.style.width = Math.min(100, (left / total) * 100) + "%";
+      tvFoot.className = "tvfoot";
+      tvFoot.textContent = "Escribe " + LETTERS.slice(0, t.options.length).join(", ") + " en el chat";
+    } else {
+      tvTime.textContent = ""; tvBar.classList.add("hidden");
+      for (var j = 0; j < tvOpts.children.length; j++) tvOpts.children[j].className = "tvopt " + (j === t.correct ? "ok" : "dim");
+      tvFoot.className = "tvfoot" + (t.winner ? " win" : "");
+      tvFoot.textContent = t.winner ? "\u{1F3C6} \u00a1Acert\u00f3 " + t.winner.name + "!" : "Nadie acert\u00f3";
+    }
   }
 
   function renderCard() {
@@ -1285,6 +1350,7 @@ const AGENTE_JS = `
 
   function render() {
     renderBar();
+    renderTrivia();
     renderCard();
     if (!shown) { shown = true; rootEl.classList.remove("hidden"); }
   }
@@ -1303,6 +1369,7 @@ const AGENTE_JS = `
         if (m.channel !== "agente" || !m.payload || m.payload.kind !== "state") return;
         config = m.payload.config;
         state = DEMO ? DEMO_STATE : m.payload.state;
+        tvState = DEMO ? null : m.payload.trivia;
         offset = m.payload.serverNow - Date.now();
         applyStyle();
         render();
@@ -1313,7 +1380,7 @@ const AGENTE_JS = `
     ws.onerror = function () { try { ws.close(); } catch (e) {} };
   }
 
-  setInterval(renderBar, 500);
+  setInterval(function () { renderBar(); if (tvState && tvState.phase === "open") renderTrivia(); }, 250);
   try { if (window.speechSynthesis) window.speechSynthesis.getVoices(); } catch (e) {}
   document.body.setAttribute("data-design", designOverride || "panel");
   connect();

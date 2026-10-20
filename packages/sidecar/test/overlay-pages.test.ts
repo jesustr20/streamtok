@@ -250,3 +250,12 @@ describe("overlay agente", () => {
     expect(html).toContain("Los regalos dan prioridad");
   });
 });
+
+describe("overlay agente: trivia", () => {
+  it("trae la tarjeta de trivia y lee el estado de trivia del mensaje (no el de la cola)", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain('id="tvcard"');
+    expect(html).toContain("tvState = DEMO ? null : m.payload.trivia;");
+    expect(html).toContain("Escribe ");
+  });
+});

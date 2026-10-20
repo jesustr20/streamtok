@@ -3,6 +3,7 @@ import { AGENT_PROVIDERS, providerInfo, type AgentConfig, type AgentKeyStatus, t
 import type { Responder } from "./agente.js";
 import { NO_MODEL, OUT_OF_BUDGET, REFUSAL, cleanAnswer, looksLikeInjection, sanitizeQuestion, systemPrompt, userPrompt } from "./agente-guard.js";
 import type { KeysStorePort } from "./agente-keys.js";
+import { parseTrivia, type TriviaQuestion } from "./agente-trivia.js";
 
 /** Cuánto esperamos al modelo antes de rendirnos. */
 const TIMEOUT_MS = 20_000;
@@ -172,6 +173,43 @@ export class ModelService extends EventEmitter {
     });
     return cleanAnswer(text);
   };
+
+  /**
+   * Pide al modelo una pregunta de trivia (JSON con pregunta, opciones y correcta). Cuenta para el tope
+   * de llamadas. Devuelve null si no hay clave, se llegó al tope o la respuesta no cuadra.
+   */
+  async generateTrivia(config: AgentConfig, recent: string[]): Promise<TriviaQuestion | null> {
+    const key = this.keys[config.provider];
+    if (!key) {
+      this.emit("log", { level: "warn", message: "La trivia necesita una clave de modelo guardada." });
+      return null;
+    }
+    if (this.calls >= config.maxModelCalls) return null;
+    this.calls++;
+    this.emit("state");
+    const t = config.trivia;
+    const topics = t.topics.split(",").map((x) => sanitizeQuestion(x)).filter(Boolean);
+    const topic = topics.length > 0 ? topics[Math.floor(Math.random() * topics.length)] : "cultura general";
+    const avoid = recent.slice(-8).map((q) => `- ${sanitizeQuestion(q)}`).join("\n");
+    const text = await callModel(this.fetchImpl, {
+      provider: config.provider,
+      key,
+      model: modelFor(config),
+      system: [
+        "Eres un creador de preguntas de trivia para el chat de un LIVE de TikTok.",
+        "Responde SOLO con un JSON, sin texto antes ni después, con esta forma exacta:",
+        `{"pregunta": "...", "opciones": [${Array.from({ length: t.options }, () => '"..."').join(", ")}], "correcta": 0}`,
+        '"correcta" es la posición (empezando en 0) de la opción correcta.',
+        "Reglas: en español; la pregunta de máximo 110 caracteres y cada opción de máximo 30; un solo dato verificable y sin ambigüedad; una sola opción correcta y las demás claramente falsas; nada ofensivo, sexual, violento ni de política partidista; sin enlaces.",
+        "Si no estás completamente seguro de la respuesta, elige otra pregunta.",
+      ].join("\n"),
+      user: `Tema: ${topic}. Dificultad: ${t.difficulty}. Opciones: ${t.options}.${avoid ? `\nNo repitas estas preguntas:\n${avoid}` : ""}`,
+      maxTokens: 250,
+    });
+    const q = parseTrivia(text, t.options);
+    if (!q) this.emit("log", { level: "warn", message: "El modelo devolvió una pregunta de trivia que no cumple el formato; se descarta." });
+    return q;
+  }
 
   /** «Probar conexión»: una llamada mínima (no cuenta para el tope). */
   async testConnection(provider: AgentProviderId, config: AgentConfig): Promise<{ ok: boolean; message: string; ms: number }> {

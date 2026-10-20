@@ -135,6 +135,57 @@ export const PICK_VOICE_JS = String.raw`
   }
 `;
 
+// ---------------------------------------------------------------------------
+// Trivia (fase b): preguntas con opciones cuando el chat está tranquilo
+// ---------------------------------------------------------------------------
+
+export const AgentTriviaConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** la trivia sale sola cuando nadie comenta ni regala durante tantos segundos */
+  idleSec: z.number().int().min(15).max(1800).default(90),
+  /** tiempo para responder */
+  answerSec: z.number().int().min(10).max(120).default(30),
+  /** opciones por pregunta */
+  options: z.union([z.literal(3), z.literal(4)]).default(4),
+  difficulty: z.enum(["facil", "media", "dificil"]).default("media"),
+  /** temas, separados por comas; el agente elige uno al azar */
+  topics: z.string().max(200).default("cultura general, ciencia, geografía, historia, cine y música"),
+  /** tope de trivias por hora (cada una gasta una llamada al modelo) */
+  maxPerHour: z.number().int().min(1).max(60).default(12),
+  /** monedas de prioridad del premio: quien acierta pasa primero en su próxima pregunta al agente */
+  prizeCoins: z.number().int().min(1).max(1000).default(5),
+});
+export type AgentTriviaConfig = z.infer<typeof AgentTriviaConfigSchema>;
+
+export const TRIVIA_DIFFICULTY_NAMES: Record<AgentTriviaConfig["difficulty"], string> = {
+  facil: "Fácil",
+  media: "Media",
+  dificil: "Difícil",
+};
+
+export const AgentTriviaStateSchema = z.object({
+  /** `generating`: el modelo prepara la pregunta · `open`: se puede responder · `reveal`: se enseña la respuesta */
+  phase: z.enum(["idle", "generating", "open", "reveal"]),
+  question: z.string().optional(),
+  /** vacío hasta que la pregunta se abre */
+  options: z.array(z.string()).default([]),
+  /** cuándo se cierra (epoch ms); 0 si no hay pregunta abierta */
+  deadline: z.number(),
+  /** cuánta gente respondió */
+  answers: z.number().int().nonnegative(),
+  /** índice de la opción correcta: SOLO se manda al enseñar la respuesta (el overlay lo puede leer cualquiera) */
+  correct: z.number().int().nonnegative().optional(),
+  winner: z.object({ name: z.string(), avatarUrl: z.string().min(1).optional() }).optional(),
+  startedAt: z.number(),
+});
+export type AgentTriviaState = z.infer<typeof AgentTriviaStateSchema>;
+
+/** ¿El comentario es una respuesta de trivia ("a", "B", "c)", "D.")? Devuelve el índice (0 = A), o undefined. */
+export function parseTriviaAnswer(text: string | undefined): number | undefined {
+  const m = /^\s*([a-dA-D])\s*[.)]?\s*$/.exec(text ?? "");
+  return m ? m[1].toLowerCase().charCodeAt(0) - 97 : undefined;
+}
+
 export const AgentConfigSchema = z.object({
   enabled: z.boolean().default(true),
   /** nombre con el que se presenta el agente */
@@ -161,6 +212,7 @@ export const AgentConfigSchema = z.object({
   /** cómo quieres que hable (tono, humor...); se suma a las reglas fijas */
   personality: z.string().max(300).default(""),
   voice: AgentVoiceSchema.default({}),
+  trivia: AgentTriviaConfigSchema.default({}),
   style: OverlayStyleSchema.default({ designId: "panel" }),
 });
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
@@ -222,6 +274,7 @@ export type AgentFile = z.infer<typeof AgentFileSchema>;
  *  - `save`       UI → sidecar: cambia la configuración
  *  - `ask`        UI → sidecar: pregunta de prueba (con `coins` > 0 es "de regalo"); no pasa por el chat
  *  - `reset`      UI → sidecar: vacía la cola y la respuesta en pantalla
+ *  - `trivia-start` / `trivia-cancel`  UI → sidecar: lanza o cancela una trivia ahora
  *  - `set-key` / `remove-key`  UI → sidecar: guarda o borra la clave de un proveedor (solo en tu equipo)
  *  - `test-connection`         UI → sidecar: hace una llamada mínima al modelo; responde con `test-result`
  *  - `error`      sidecar → UI
@@ -235,6 +288,7 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
     keys: z.record(AgentProviderIdSchema, z.boolean()),
     /** llamadas al modelo en este LIVE */
     modelCalls: z.number().int().nonnegative(),
+    trivia: AgentTriviaStateSchema,
     serverNow: z.number(),
   }),
   z.object({ kind: z.literal("save"), config: AgentConfigSchema }),
@@ -245,6 +299,9 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
     coins: z.number().int().min(0).max(1_000_000).default(0),
   }),
   z.object({ kind: z.literal("reset") }),
+  // `sample`: usa una pregunta de ejemplo en vez de pedirla al modelo (para probar sin clave ni gasto)
+  z.object({ kind: z.literal("trivia-start"), sample: z.boolean().default(false) }),
+  z.object({ kind: z.literal("trivia-cancel") }),
   // la clave viaja una sola vez de la app al sidecar, que la guarda en tu equipo; nunca se devuelve
   z.object({ kind: z.literal("set-key"), provider: AgentProviderIdSchema, key: z.string().trim().min(8).max(300) }),
   z.object({ kind: z.literal("remove-key"), provider: AgentProviderIdSchema }),

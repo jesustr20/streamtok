@@ -29,6 +29,7 @@ const INTRO: Record<string, string> = {
   likes: "Quienes más likes han dado en este LIVE.",
   comentarios: "Quienes más han escrito en el chat en este LIVE.",
   compartidos: "Quienes más veces han compartido tu LIVE.",
+  trivia: "Quienes más han acertado en la trivia del agente (Agente IA). Sigue contando entre LIVEs y se reinicia a medianoche.",
 };
 
 /** Módulo "Tops y MVP": una pantalla por ranking, ya creado y con su vista previa. */
@@ -146,6 +147,7 @@ const TEST_AMOUNTS: Record<TopMetric, number[]> = {
   likes: [5, 12, 25, 40],
   comments: [1, 1, 2],
   shares: [1, 1, 2],
+  trivia: [1, 1, 2],
 };
 const TEST_MAX = 30;
 const pick = <T,>(list: T[]): T => list[Math.floor(Math.random() * list.length)];

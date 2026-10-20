@@ -1,8 +1,8 @@
-import type { AgentConfig, AgentKeyStatus, AgentMessage, AgentProviderId, AgentState } from "@streamtok/shared";
+import type { AgentConfig, AgentKeyStatus, AgentTriviaState, AgentMessage, AgentProviderId, AgentState } from "@streamtok/shared";
 import { useCallback, useEffect, useState } from "react";
 import type { SidecarClient } from "./ws-client";
 
-type Cached = { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; modelCalls: number; serverNow: number };
+type Cached = { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; modelCalls: number; trivia: AgentTriviaState; serverNow: number };
 export type TestResult = { ok: boolean; message: string; ms: number };
 // Último estado recibido: al volver a la vista aparece al instante.
 let last: Cached | null = null;
@@ -19,7 +19,7 @@ export function useAgente(client: SidecarClient | null) {
       if (evt.channel !== "agente") return;
       const msg = evt.payload as AgentMessage;
       if (msg.kind === "state") {
-        last = { config: msg.config, state: msg.state, keys: { deepseek: false, openai: false, gemini: false, claude: false, ...msg.keys }, modelCalls: msg.modelCalls, serverNow: msg.serverNow };
+        last = { config: msg.config, state: msg.state, keys: { deepseek: false, openai: false, gemini: false, claude: false, ...msg.keys }, modelCalls: msg.modelCalls, trivia: msg.trivia, serverNow: msg.serverNow };
         setData(last);
         setError(null);
       } else if (msg.kind === "test-result") {
@@ -39,6 +39,8 @@ export function useAgente(client: SidecarClient | null) {
     [client],
   );
 
+  const startTrivia = useCallback((sample: boolean) => client?.send("agente", { kind: "trivia-start", sample }), [client]);
+  const cancelTrivia = useCallback(() => client?.send("agente", { kind: "trivia-cancel" }), [client]);
   const setKey = useCallback(
     (provider: AgentProviderId, key: string) => {
       setTests((t) => ({ ...t, [provider]: undefined }));
@@ -66,6 +68,7 @@ export function useAgente(client: SidecarClient | null) {
     state: data?.state ?? null,
     keys: data?.keys ?? null,
     modelCalls: data?.modelCalls ?? 0,
+    trivia: data?.trivia ?? null,
     serverNow: data?.serverNow ?? 0,
     tests,
     error,
@@ -75,5 +78,7 @@ export function useAgente(client: SidecarClient | null) {
     setKey,
     removeKey,
     testConnection,
+    startTrivia,
+    cancelTrivia,
   };
 }
