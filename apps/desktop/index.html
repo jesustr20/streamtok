@@ -25,6 +25,27 @@
       input::placeholder {
         color: #5B5D66;
       }
+      /* Barras de desplazamiento al estilo de la app (oscuras, finas y redondeadas) */
+      ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2A2C33;
+        border-radius: 8px;
+        border: 3px solid transparent;
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #E23A57;
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-corner {
+        background: transparent;
+      }
     </style>
   </head>
   <body>
