@@ -85,6 +85,24 @@ describe("AgenteController", () => {
     srv.close();
   });
 
+  it("list-models: sin clave avisa; con clave manda los modelos del proveedor", async () => {
+    const fetchImpl: FetchLike = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ data: [{ id: "modelo-a" }, { id: "modelo-b" }] }) });
+    const model = new ModelService({ keys: { load: () => ({ keys: {} }), save: async () => {} }, fetchImpl });
+    const srv = new StreamTokWsServer(0);
+    const eng = new AgenteEngine({ store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} } });
+    new AgenteController(srv, eng, model);
+    const c = await connect(srv);
+    sockets.push(c.ws);
+    const isModels = (x: Msg) => x.channel === "agente" && x.payload.kind === "models";
+    c.send({ kind: "list-models", provider: "deepseek" });
+    expect((await c.next(isModels)).payload).toMatchObject({ provider: "deepseek", ok: false, models: [] });
+    c.send({ kind: "set-key", provider: "deepseek", key: "sk-secreta-123456" });
+    await c.next((x) => isState(x) && x.payload.keys.deepseek === true);
+    c.send({ kind: "list-models", provider: "deepseek" });
+    expect((await c.next(isModels)).payload).toMatchObject({ provider: "deepseek", ok: true, models: ["modelo-a", "modelo-b"] });
+    srv.close();
+  });
+
   it("trivia: se lanza de ejemplo, no filtra la respuesta correcta y se cancela", async () => {
     const srv = new StreamTokWsServer(0);
     const eng = new AgenteEngine({ store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} } });

@@ -1198,6 +1198,10 @@ const AGENTE_CSS = `
   @keyframes agBlink { 50% { opacity: 0; } }
   @keyframes agIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
   .ag .card.in { animation: agIn .35s ease-out both; }
+  /* Partes sueltas: /overlay/agente/cola solo la barra; /overlay/agente/respuesta todo menos la barra. */
+  .ag[data-part="cola"] .tip, .ag[data-part="cola"] .tv, .ag[data-part="cola"] .card { display: none !important; }
+  .ag[data-part="respuesta"] .bar { display: none; }
+  .ag[data-part="respuesta"] .tip, .ag[data-part="respuesta"] .tv, .ag[data-part="respuesta"] .card { margin-top: 0; }
 `;
 
 const AGENTE_BODY = `
@@ -1228,6 +1232,9 @@ const AGENTE_JS = `
   var q = new URLSearchParams(location.search);
   var designOverride = q.get("design") || DESIGN_OVERRIDE || null;
   var DEMO = DEMO_MODE || q.get("demo") === "1";
+  // "cola" = solo la barra; "respuesta" = pregunta, trivia y avisos sin la barra; vac\u00edo = todo junto.
+  var PART = AGENT_PART === "cola" || AGENT_PART === "respuesta" ? AGENT_PART : "";
+  if (PART) document.getElementById("ag").setAttribute("data-part", PART);
   var config = null, state = null, retry = 0, ws = null, offset = 0, shown = false;
   var typedId = "", typedLen = 0, typeTimer = null;
   var rootEl = document.getElementById("root"), cardEl = document.getElementById("agcard");
@@ -1274,7 +1281,7 @@ const AGENTE_JS = `
   }
   function speakText(key, text) {
     var v = config && config.voice;
-    if (!v || !v.enabled || DEMO || !window.speechSynthesis || spokenId === key) return;
+    if (!v || !v.enabled || DEMO || PART === "cola" || !window.speechSynthesis || spokenId === key) return;
     spokenId = key;
     try {
       window.speechSynthesis.cancel();
@@ -1441,6 +1448,7 @@ ${body}
   var ALERT_ID = ${jsString(opts.id ?? "")};
   var DUEL_ID = ${jsString(opts.id ?? "")};
   var TOP_ID = ${jsString(opts.id ?? "")};
+  var AGENT_PART = ${jsString(opts.id ?? "")};
   var DEMO_MODE = ${opts.demo ? "true" : "false"};
   // Funciones de dibujo de este overlay (definen render()).
   ${kindJs}

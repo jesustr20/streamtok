@@ -37,6 +37,13 @@ describe("OverlayHttpServer", () => {
     expect(html).toContain('var TOP_ID = "gifters";');
   });
 
+  it("sirve /overlay/agente/cola y /overlay/agente/respuesta con su parte", async () => {
+    const base = await start();
+    expect(await (await fetch(`${base}/overlay/agente/cola`)).text()).toContain('var AGENT_PART = "cola";');
+    expect(await (await fetch(`${base}/overlay/agente/respuesta`)).text()).toContain('var AGENT_PART = "respuesta";');
+    expect(await (await fetch(`${base}/overlay/agente`)).text()).toContain('var AGENT_PART = "";');
+  });
+
   it("sirve la página de prueba de audio en /overlay/prueba-audio", async () => {
     const base = await start();
     const res = await fetch(`${base}/overlay/prueba-audio`);

@@ -111,7 +111,12 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
 
       <Queue config={config} state={state} api={api} />
 
-      <UrlCard kind="agente" title="Overlay" stable reserve={{ w: 480, h: 440 }} onCustomize={() => setOpen((v) => !v)} customizeLabel={open ? "Ocultar diseño" : "Personalizar diseño"} />
+      <UrlCard kind="agente" title="Overlay (todo junto)" stable reserve={{ w: 480, h: 440 }} onCustomize={() => setOpen((v) => !v)} customizeLabel={open ? "Ocultar diseño" : "Personalizar diseño"} />
+      <div style={{ fontSize: 12.5, color: "#9A9CA5", lineHeight: 1.5 }}>
+        ¿Quieres colocarlos por separado en el LIVE? Usa estos dos enlaces como fuentes distintas: la barra de cola por un lado y las respuestas (con la trivia y los avisos) por otro. La voz solo suena desde las respuestas. Usa el mismo diseño de arriba.
+      </div>
+      <UrlCard kind="agente" id="cola" title="Solo la barra de cola" />
+      <UrlCard kind="agente" id="respuesta" title="Solo las respuestas" />
       {open && <DesignCard kind="agente" style={config.style} onChange={(style) => patch({ style })} />}
     </>
   );
@@ -403,9 +408,7 @@ function Modelo({ config, keys, api, patch }: { config: AgentConfig; keys: Agent
           </Field>
         </div>
         <div style={{ width: 240 }}>
-          <Field label="Nombre del modelo" hint={`vacío = ${info.defaultModel}`}>
-            <CommitInput value={config.model} max={80} onCommit={(v) => patch({ model: v })} />
-          </Field>
+          <ModelPicker config={config} hasKey={keys[config.provider]} api={api} patch={patch} />
         </div>
         <div style={{ flex: 1, minWidth: 240 }}>
           <Field label="Cómo habla (opcional)" hint="tono o humor; las reglas de seguridad no se pueden cambiar">
@@ -426,6 +429,72 @@ function Modelo({ config, keys, api, patch }: { config: AgentConfig; keys: Agent
         </div>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Modelo del proveedor elegido: la lista sale de la API del propio proveedor (con tu clave, sin gastar saldo),
+ * así no hay que saberse el nombre. «Otro…» deja escribirlo a mano por si sale uno nuevo.
+ */
+function ModelPicker({ config, hasKey, api, patch }: { config: AgentConfig; hasKey: boolean; api: Api; patch: (p: Partial<AgentConfig>) => void }) {
+  const info = providerInfo(config.provider);
+  const entry = hasKey ? api.models[config.provider] : undefined;
+  const requested = useRef<string>("");
+  useEffect(() => {
+    // al elegir proveedor (o guardar su clave) se pide la lista una vez
+    const key = `${config.provider}:${hasKey}`;
+    if (hasKey && !entry && requested.current !== key) {
+      requested.current = key;
+      api.listModels(config.provider);
+    }
+    if (!hasKey) requested.current = "";
+  }, [config.provider, hasKey, entry, api]);
+
+  const list = entry?.status === "ok" ? entry.models : [];
+  const [other, setOther] = useState(false);
+  const inList = config.model === "" || list.includes(config.model);
+  const manual = other || (entry?.status === "ok" && !inList) || entry?.status === "error";
+  const loading = entry?.status === "loading";
+  const hint = !hasKey
+    ? "guarda una clave para ver sus modelos"
+    : loading
+      ? "pidiendo la lista al proveedor…"
+      : entry?.status === "error"
+        ? `no se pudo traer la lista: ${entry.message}`
+        : config.model === ""
+          ? `sin elegir: se usa ${info.defaultModel}`
+          : `${list.length} modelos de ${info.name}`;
+  return (
+    <Field label="Modelo" hint={hint}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          <select
+            value={manual ? "__other" : config.model}
+            disabled={!hasKey || loading}
+            onChange={(e) => {
+              if (e.target.value === "__other") setOther(true);
+              else {
+                setOther(false);
+                patch({ model: e.target.value });
+              }
+            }}
+            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+          >
+            <option value="">Predeterminado ({info.defaultModel})</option>
+            {list.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+            <option value="__other">Otro… (escribirlo)</option>
+          </select>
+          <Btn onClick={() => api.listModels(config.provider)} disabled={!hasKey || loading}>
+            ↻
+          </Btn>
+        </div>
+        {manual && <CommitInput value={config.model} max={80} onCommit={(v) => patch({ model: v })} />}
+      </div>
+    </Field>
   );
 }
 
@@ -532,6 +601,11 @@ function Queue({ config, state, api }: { config: AgentConfig; state: AgentState;
           <span style={{ color: "#9A9CA5" }}>El agente está libre.</span>
         )}
       </div>
+      {state.lastError && (
+        <div style={{ fontSize: 12.5, color: "#E5484D", lineHeight: 1.5 }}>
+          ✖ La última pregunta no se pudo responder y se retiró (el público no ve este error): {state.lastError.message}
+        </div>
+      )}
       {state.queueSize === 0 ? (
         <div style={{ fontSize: 13, color: "#9A9CA5" }}>La cola está vacía. Pulsa «Iniciar test» para ver cómo queda en el overlay.</div>
       ) : (

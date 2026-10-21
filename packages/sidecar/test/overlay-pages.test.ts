@@ -267,3 +267,18 @@ describe("overlay agente: avisos", () => {
     expect(html).toContain("speakText(tip.id, tip.text);");
   });
 });
+
+describe("overlay agente: partes sueltas", () => {
+  it("el id de la ruta elige la parte (cola / respuesta) y vacío es todo junto", () => {
+    expect(overlayPage("agente", 7331, { id: "cola" })).toContain('var AGENT_PART = "cola";');
+    expect(overlayPage("agente", 7331, { id: "respuesta" })).toContain('var AGENT_PART = "respuesta";');
+    expect(overlayPage("agente", 7331)).toContain('var AGENT_PART = "";');
+  });
+
+  it("solo la parte de respuestas habla (la de cola no, para no duplicar la voz)", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain('PART === "cola"');
+    expect(html).toContain('.ag[data-part="respuesta"] .bar { display: none; }');
+    expect(html).toContain('.ag[data-part="cola"] .card');
+  });
+});

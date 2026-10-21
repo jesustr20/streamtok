@@ -215,7 +215,7 @@ describe("AgenteEngine: prioridad y turnos", () => {
     expect(cur.showMs).toBeGreaterThan(0);
   });
 
-  it("si el modelo falla, responde un aviso y sigue", async () => {
+  it("si el modelo falla, no se enseña nada al público: la pregunta se retira y el motivo queda en el estado", async () => {
     const { engine } = setup({}, async () => {
       throw new Error("sin saldo");
     });
@@ -224,7 +224,8 @@ describe("AgenteEngine: prioridad y turnos", () => {
     engine.ask("A", "a");
     engine.tick();
     await settle();
-    expect(engine.getState().current?.answer).toMatch(/No pude responder/);
+    expect(engine.getState().current).toBeUndefined();
+    expect(engine.getState().lastError?.message).toBe("sin saldo");
     expect(logs[0]).toMatch(/sin saldo/);
   });
 

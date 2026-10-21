@@ -84,7 +84,7 @@ export class OverlayHttpServer {
       res.end("No encontrado");
       return;
     }
-    const html = overlayPage(target.kind, this.wsPort, target.kind === "meta" || target.kind === "nivel" || target.kind === "duelo" || target.kind === "top" ? { id: target.id } : {});
+    const html = overlayPage(target.kind, this.wsPort, target.kind === "meta" || target.kind === "nivel" || target.kind === "duelo" || target.kind === "top" || target.kind === "agente" ? { id: target.id } : {});
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(method === "HEAD" ? undefined : html);
   }

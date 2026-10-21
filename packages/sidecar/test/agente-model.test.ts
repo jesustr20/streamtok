@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AgentConfigSchema, type AgentConfig } from "@streamtok/shared";
-import { NO_MODEL, OUT_OF_BUDGET, REFUSAL } from "../src/agente-guard.js";
+import { REFUSAL } from "../src/agente-guard.js";
 import { KeysStore } from "../src/agente-keys.js";
-import { ModelService, callModel, type FetchLike } from "../src/agente-model.js";
+import { ModelService, callModel, chatModelIds, fetchModelList, type FetchLike } from "../src/agente-model.js";
 
 interface Seen {
   url: string;
@@ -16,7 +16,7 @@ interface Seen {
 function fakeFetch(reply: (seen: Seen) => { status?: number; json?: unknown; text?: string }) {
   const calls: Seen[] = [];
   const fetchImpl: FetchLike = async (url, init) => {
-    const seen = { url, headers: init.headers, body: JSON.parse(init.body) };
+    const seen = { url, headers: init.headers, body: init.body ? JSON.parse(init.body) : undefined };
     calls.push(seen);
     const r = reply(seen);
     const status = r.status ?? 200;
@@ -84,10 +84,10 @@ describe("callModel", () => {
 describe("ModelService.respond", () => {
   const ctx = (c: Partial<AgentConfig> = {}) => ({ name: "Ana", config: cfg(c) });
 
-  it("sin clave responde que no hay modelo y no llama a nadie", async () => {
+  it("sin clave falla con un motivo claro (no se contesta al público) y no llama a nadie", async () => {
     const f = fakeFetch(() => openaiReply("x"));
     const svc = new ModelService({ keys: memKeys(), fetchImpl: f.fetchImpl });
-    expect(await svc.respond("¿hola?", ctx())).toBe(NO_MODEL);
+    await expect(svc.respond("¿hola?", ctx())).rejects.toThrow(/Falta la clave de DeepSeek/);
     expect(f.calls).toHaveLength(0);
   });
 
@@ -96,7 +96,7 @@ describe("ModelService.respond", () => {
     const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
     expect(await svc.respond("¿Cuántos planetas hay?", ctx())).toBe("Ocho planetas.");
     expect(svc.modelCalls).toBe(1);
-    expect(f.calls[0].body.model).toBe("deepseek-chat");
+    expect(f.calls[0].body.model).toBe("deepseek-v4-pro");
     expect(f.calls[0].body.messages[1].content).toBe("<pregunta>¿Cuántos planetas hay?</pregunta>");
   });
 
@@ -130,8 +130,8 @@ describe("ModelService.respond", () => {
     const c = ctx({ maxModelCalls: 2 });
     await svc.respond("uno", c);
     await svc.respond("dos", c);
-    expect(await svc.respond("tres", c)).toBe(OUT_OF_BUDGET);
-    expect(await svc.respond("cuatro", c)).toBe(OUT_OF_BUDGET);
+    await expect(svc.respond("tres", c)).rejects.toThrow(/Tope de 2 llamadas/);
+    await expect(svc.respond("cuatro", c)).rejects.toThrow(/Tope de 2 llamadas/);
     expect(f.calls).toHaveLength(2);
     expect(logs).toHaveLength(1);
     svc.resetSession();
@@ -200,5 +200,61 @@ describe("KeysStore", () => {
     const file = join(dir, "k.json");
     await (await import("node:fs/promises")).writeFile(file, JSON.stringify({ keys: { deepseek: "abc", otro: "x", openai: 5 } }), "utf8");
     expect(new KeysStore(file).load()).toEqual({ keys: { deepseek: "abc" } });
+  });
+});
+
+describe("lista de modelos del proveedor", () => {
+  it("chatModelIds quita prefijo, repetidos y modelos que no son de chat, y ordena por fecha si la hay", () => {
+    const ids = chatModelIds({
+      data: [
+        { id: "viejo", created: 1 },
+        { id: "models/nuevo", created: 9 },
+        { id: "text-embedding-3", created: 8 },
+        { id: "whisper-1", created: 7 },
+        { id: "nuevo", created: 9 },
+        { id: "gpt-image-1", created: 6 },
+        { id: "medio", created: 5 },
+      ],
+    });
+    expect(ids).toEqual(["nuevo", "medio", "viejo"]);
+  });
+
+  it("sin fechas conserva el orden recibido; formatos raros dan lista vacía", () => {
+    expect(chatModelIds({ data: [{ id: "b" }, { id: "a" }] })).toEqual(["b", "a"]);
+    expect(chatModelIds({ models: [{ name: "models/gemini-x" }] })).toEqual(["gemini-x"]);
+    expect(chatModelIds(null)).toEqual([]);
+    expect(chatModelIds({ data: "x" })).toEqual([]);
+  });
+
+  it("pide GET /models a DeepSeek/OpenAI/Gemini con Bearer y a Claude con x-api-key", async () => {
+    const f = fakeFetch(() => ({ json: { data: [{ id: "m1" }] } }));
+    expect(await fetchModelList(f.fetchImpl, "deepseek", "k-123456789")).toEqual(["m1"]);
+    expect(f.calls[0].url).toBe("https://api.deepseek.com/models");
+    expect(f.calls[0].headers.authorization).toBe("Bearer k-123456789");
+    await fetchModelList(f.fetchImpl, "gemini", "k-123456789");
+    expect(f.calls[1].url).toBe("https://generativelanguage.googleapis.com/v1beta/openai/models");
+    await fetchModelList(f.fetchImpl, "claude", "k-123456789");
+    expect(f.calls[2].url).toBe("https://api.anthropic.com/v1/models?limit=100");
+    expect(f.calls[2].headers["x-api-key"]).toBe("k-123456789");
+    expect(f.calls[2].headers.authorization).toBeUndefined();
+  });
+
+  it("ModelService.listModels: sin clave avisa; con clave devuelve la lista; si la API falla trae el motivo sin la clave", async () => {
+    const f = fakeFetch(() => ({ json: { data: [{ id: "m1" }, { id: "m2" }] } }));
+    const sin = new ModelService({ keys: memKeys(), fetchImpl: f.fetchImpl });
+    expect(await sin.listModels("openai")).toMatchObject({ ok: false, models: [] });
+    expect(f.calls).toHaveLength(0);
+    const con = new ModelService({ keys: memKeys({ openai: "k-123456789" }), fetchImpl: f.fetchImpl });
+    expect(await con.listModels("openai")).toMatchObject({ ok: true, models: ["m1", "m2"] });
+    const mal = new ModelService({ keys: memKeys({ openai: "k-123456789" }), fetchImpl: async () => ({ ok: false, status: 401, text: async () => "{}" }) });
+    const r = await mal.listModels("openai");
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/rechazó la clave/);
+    expect(r.message).not.toContain("k-123456789");
+  });
+
+  it("un 400 que habla del modelo sugiere elegir otro", async () => {
+    const f = fakeFetch(() => ({ status: 400, json: { error: { message: "The supported API model names are a, b, but you passed DeepSeek." } } }));
+    await expect(callModel(f.fetchImpl, { provider: "deepseek", key: "k-123456789", model: "DeepSeek", system: "S", user: "U", maxTokens: 5 })).rejects.toThrow(/Elige otro modelo/);
   });
 });

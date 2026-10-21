@@ -80,6 +80,11 @@ export class AgenteController extends EventEmitter {
     this.server.sendTo(socket, "agente", { kind: "test-result", provider, ...r });
   }
 
+  private async listModels(provider: AgentProviderId, socket: WebSocket) {
+    const r = this.model ? await this.model.listModels(provider) : { ok: false, models: [], message: "El modelo no está disponible." };
+    this.server.sendTo(socket, "agente", { kind: "models", provider, ...r });
+  }
+
   private handle(payload: unknown, socket: WebSocket) {
     const parsed = AgentMessageSchema.safeParse(payload);
     if (!parsed.success) {
@@ -120,6 +125,9 @@ export class AgenteController extends EventEmitter {
         return;
       case "test-connection":
         void this.testConnection(msg.provider, socket);
+        return;
+      case "list-models":
+        void this.listModels(msg.provider, socket);
         return;
       default:
         return;

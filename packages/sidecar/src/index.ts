@@ -257,7 +257,7 @@ overlayHttp
   .listen()
   .then((port) => {
     // eslint-disable-next-line no-console
-    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins, /overlay/meta/<id>, /overlay/nivel/<id>, /overlay/duelo/<id>, /overlay/top/<id> y /overlay/prueba-audio`);
+    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins, /overlay/meta/<id>, /overlay/nivel/<id>, /overlay/duelo/<id>, /overlay/top/<id>, /overlay/agente (o /overlay/agente/cola y /overlay/agente/respuesta por separado) y /overlay/prueba-audio`);
   })
   .catch((err) => {
     // No tumba el sidecar: sin el servidor de overlays todo lo demás sigue funcionando.

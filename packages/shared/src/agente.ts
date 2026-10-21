@@ -43,7 +43,7 @@ export interface AgentProviderInfo {
 }
 
 export const AGENT_PROVIDERS: AgentProviderInfo[] = [
-  { id: "deepseek", name: "DeepSeek", api: "openai", baseUrl: "https://api.deepseek.com", defaultModel: "deepseek-chat", keyUrl: "platform.deepseek.com" },
+  { id: "deepseek", name: "DeepSeek", api: "openai", baseUrl: "https://api.deepseek.com", defaultModel: "deepseek-v4-pro", keyUrl: "platform.deepseek.com" },
   { id: "openai", name: "OpenAI", api: "openai", baseUrl: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini", keyUrl: "platform.openai.com" },
   { id: "gemini", name: "Gemini", api: "openai", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", defaultModel: "gemini-2.0-flash", keyUrl: "aistudio.google.com" },
   { id: "claude", name: "Claude", api: "anthropic", baseUrl: "https://api.anthropic.com", defaultModel: "claude-haiku-4-5-20251001", keyUrl: "console.anthropic.com" },
@@ -213,10 +213,13 @@ export function buildTips(c: Pick<AgentConfig, "name" | "command" | "eligibility
   if (who.length > 0) {
     const last = who.length > 1 ? ` o ${who[who.length - 1]}` : "";
     const first = who.length > 1 ? who.slice(0, -1).join(", ") : who[0];
-    out.push(`Soy ${c.name}. Escribe ${c.command} y tu pregunta en el chat. Puedes preguntar si ${first}${last}.`);
+    out.push(`Haz tu pregunta: escribe ${c.command} y tu pregunta en el chat. Puedes preguntar si ${first}${last}.`);
   }
-  if (c.eligibility.gift) out.push(`Un regalo te da prioridad: cuantas más monedas, antes respondo tu pregunta. Sin regalo, respondo una cada ${c.freeEverySec} segundos.`);
-  if (c.trivia.enabled) out.push("Cuando el chat está tranquilo lanzo una trivia: responde con A, B, C o D y gana prioridad para tu próxima pregunta.");
+  if (c.eligibility.gift) out.push(`Un regalo te da prioridad: cuantas más monedas, antes sale tu pregunta. Sin regalo, sale una cada ${c.freeEverySec} segundos.`);
+  if (c.trivia.enabled) {
+    const letters = ["A", "B", "C", "D"].slice(0, c.trivia.options);
+    out.push(`Trivia: responde en el chat con ${letters.slice(0, -1).join(", ")} o ${letters[letters.length - 1]}. El primero que acierte gana prioridad para su próxima pregunta.`);
+  }
   return [...out, ...c.tips.custom];
 }
 
@@ -295,6 +298,8 @@ export const AgentStateSchema = z.object({
   answered: z.number().int().nonnegative(),
   /** aviso periódico en pantalla (cómo participar) */
   tip: z.object({ id: z.string(), text: z.string() }).optional(),
+  /** último fallo del modelo (sin clave, modelo inexistente, sin saldo…): solo lo muestra la app, nunca el overlay */
+  lastError: z.object({ message: z.string(), at: z.number() }).optional(),
   updatedAt: z.number(),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
@@ -315,6 +320,7 @@ export type AgentFile = z.infer<typeof AgentFileSchema>;
  *  - `tip-now`    UI → sidecar: muestra el siguiente aviso periódico ya
  *  - `set-key` / `remove-key`  UI → sidecar: guarda o borra la clave de un proveedor (solo en tu equipo)
  *  - `test-connection`         UI → sidecar: hace una llamada mínima al modelo; responde con `test-result`
+ *  - `list-models`             UI → sidecar: pide a la API del proveedor su lista de modelos; responde con `models`
  *  - `error`      sidecar → UI
  */
 export const AgentMessageSchema = z.discriminatedUnion("kind", [
@@ -347,6 +353,9 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("remove-key"), provider: AgentProviderIdSchema }),
   z.object({ kind: z.literal("test-connection"), provider: AgentProviderIdSchema }),
   z.object({ kind: z.literal("test-result"), provider: AgentProviderIdSchema, ok: z.boolean(), message: z.string(), ms: z.number() }),
+  z.object({ kind: z.literal("list-models"), provider: AgentProviderIdSchema }),
+  // `models`: ids de modelos de chat tal como los da el proveedor (sin lista fija en la app); `ok: false` trae el motivo
+  z.object({ kind: z.literal("models"), provider: AgentProviderIdSchema, ok: z.boolean(), models: z.array(z.string()), message: z.string() }),
   z.object({ kind: z.literal("error"), message: z.string() }),
 ]);
 export type AgentMessage = z.infer<typeof AgentMessageSchema>;

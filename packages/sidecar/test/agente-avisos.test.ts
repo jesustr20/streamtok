@@ -18,7 +18,7 @@ const cfg = (c: Record<string, unknown> = {}) => AgentConfigSchema.parse(c);
 describe("buildTips", () => {
   it("explica cómo preguntar y quién puede, según la configuración", () => {
     const tips = buildTips(cfg({ name: "Luna", command: "!luna" }));
-    expect(tips[0]).toBe("Soy Luna. Escribe !luna y tu pregunta en el chat. Puedes preguntar si sigues el canal, compartes el LIVE, eres del Fan Club o mandas un regalo.");
+    expect(tips[0]).toBe("Haz tu pregunta: escribe !luna y tu pregunta en el chat. Puedes preguntar si sigues el canal, compartes el LIVE, eres del Fan Club o mandas un regalo.");
   });
   it("con un solo requisito no lleva «o»", () => {
     const tips = buildTips(cfg({ eligibility: { follow: true, share: false, fanClub: false, gift: false } }));
@@ -27,8 +27,15 @@ describe("buildTips", () => {
   });
   it("el aviso de prioridad menciona la espera y el de trivia solo sale si está activada", () => {
     expect(buildTips(cfg({ freeEverySec: 60 }))[1]).toContain("una cada 60 segundos");
-    expect(buildTips(cfg()).some((t) => t.includes("trivia"))).toBe(false);
-    expect(buildTips(cfg({ trivia: { enabled: true } })).some((t) => t.includes("trivia"))).toBe(true);
+    expect(buildTips(cfg()).some((t) => /trivia/i.test(t))).toBe(false);
+    expect(buildTips(cfg({ trivia: { enabled: true } })).some((t) => /trivia/i.test(t))).toBe(true);
+  });
+  it("los avisos de fábrica no dicen que es una IA ni hablan de «chat tranquilo», y las letras siguen las opciones", () => {
+    const all = buildTips(cfg({ name: "Luna", command: "!pregunta", trivia: { enabled: true, options: 3 } })).join(" ");
+    expect(all).not.toMatch(/\bsoy\b|tranquilo|Luna/i);
+    expect(all).not.toMatch(/\bIA\b/);
+    expect(all).toContain("con A, B o C");
+    expect(buildTips(cfg({ trivia: { enabled: true, options: 4 } })).join(" ")).toContain("con A, B, C o D");
   });
   it("sin requisitos no hay aviso de «cómo preguntar» y los tuyos van al final", () => {
     const tips = buildTips(cfg({ eligibility: { follow: false, share: false, fanClub: false, gift: false }, tips: { custom: ["Sígueme en YG"] } }));
@@ -48,7 +55,7 @@ describe("AgenteEngine: avisos periódicos", () => {
     advance(61_000);
     engine.tick();
     const first = engine.getState().tip!;
-    expect(first.text).toContain("Escribe !ia");
+    expect(first.text).toContain("escribe !ia");
     advance(30_000); // se va después de leerse
     engine.tick();
     expect(engine.getState().tip).toBeUndefined();

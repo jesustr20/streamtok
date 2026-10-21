@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { AGENT_PROVIDERS, providerInfo, type AgentConfig, type AgentKeyStatus, type AgentProviderId } from "@streamtok/shared";
 import type { Responder } from "./agente.js";
-import { NO_MODEL, OUT_OF_BUDGET, REFUSAL, cleanAnswer, looksLikeInjection, sanitizeQuestion, systemPrompt, userPrompt } from "./agente-guard.js";
+import { REFUSAL, cleanAnswer, looksLikeInjection, sanitizeQuestion, systemPrompt, userPrompt } from "./agente-guard.js";
 import type { KeysStorePort } from "./agente-keys.js";
 import { parseTrivia, type TriviaQuestion } from "./agente-trivia.js";
 
@@ -9,8 +9,10 @@ import { parseTrivia, type TriviaQuestion } from "./agente-trivia.js";
 const TIMEOUT_MS = 20_000;
 /** Tokens de salida: 140 caracteres caben de sobra y así una respuesta nunca sale cara. */
 const MAX_TOKENS = 120;
+/** Espera máxima para pedir la lista de modelos. */
+const LIST_TIMEOUT_MS = 10_000;
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
   ok: boolean;
   status: number;
   text(): Promise<string>;
@@ -37,7 +39,65 @@ function httpMessage(provider: AgentProviderId, status: number, body: string): s
   } catch {
     /* sin detalle */
   }
-  return `${name} respondió con error ${status}${detail ? `: ${detail.slice(0, 120)}` : ""}.`;
+  // 400/404 que hablan del modelo: el nombre no existe para este proveedor (o ya no se ofrece)
+  const modelHint = (status === 400 || status === 404) && /model/i.test(detail) ? " Elige otro modelo en Agente IA → Modelo de IA." : "";
+  return `${name} respondió con error ${status}${detail ? `: ${detail.slice(0, 120).replace(/[.\s]+$/, "")}` : ""}.${modelHint}`;
+}
+
+/** Ids que no sirven para conversar (imagen, audio, embeddings…). Se descartan por la palabra, no por un nombre de modelo concreto. */
+const NOT_CHAT = /(embed|whisper|tts|dall-?e|image|imagen|audio|moderation|realtime|transcribe|speech|veo|aqa|guard|rerank|diffusion)/i;
+const MAX_LISTED = 60;
+
+/**
+ * De la respuesta de `GET /models` (formato OpenAI o Anthropic) saca los ids de modelos de chat:
+ * sin el prefijo `models/` de Gemini, sin repetidos, sin los de imagen/audio, lo más nuevo primero
+ * cuando el proveedor da la fecha (`created`) y en el orden recibido si no.
+ */
+export function chatModelIds(json: unknown): string[] {
+  const data = (json as { data?: unknown; models?: unknown } | null)?.data ?? (json as { models?: unknown } | null)?.models;
+  if (!Array.isArray(data)) return [];
+  const items: { id: string; created: number }[] = [];
+  for (const raw of data) {
+    const r = raw as { id?: unknown; name?: unknown; created?: unknown } | string;
+    const id0 = typeof r === "string" ? r : typeof r?.id === "string" ? r.id : typeof r?.name === "string" ? r.name : "";
+    const id = id0.replace(/^models\//, "").trim();
+    if (!id || id.length > 80 || NOT_CHAT.test(id) || items.some((i) => i.id === id)) continue;
+    items.push({ id, created: typeof r === "object" && typeof r?.created === "number" ? r.created : 0 });
+  }
+  if (items.length > 1 && items.every((i) => i.created > 0)) items.sort((a, b) => b.created - a.created);
+  return items.slice(0, MAX_LISTED).map((i) => i.id);
+}
+
+/** La lista de modelos que ofrece el proveedor con la clave del streamer (no gasta saldo). */
+export async function fetchModelList(fetchImpl: FetchLike, provider: AgentProviderId, key: string): Promise<string[]> {
+  const info = providerInfo(provider);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LIST_TIMEOUT_MS);
+  try {
+    const anthropic = info.api === "anthropic";
+    const url = anthropic ? `${info.baseUrl}/v1/models?limit=100` : `${info.baseUrl}/models`;
+    const headers: Record<string, string> = anthropic ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : { authorization: `Bearer ${key}` };
+    let res;
+    try {
+      res = await fetchImpl(url, { method: "GET", headers, signal: ctrl.signal });
+    } catch (err) {
+      if (ctrl.signal.aborted) throw new Error(`${info.name} tardó más de ${LIST_TIMEOUT_MS / 1000} s en dar su lista de modelos.`);
+      throw new Error(`No se pudo conectar con ${info.name}: ${scrub((err as Error).message, key)}`);
+    }
+    const raw = await res.text();
+    if (!res.ok) throw new Error(scrub(httpMessage(provider, res.status, raw), key));
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      throw new Error(`${info.name} devolvió algo que no se entiende.`);
+    }
+    const ids = chatModelIds(json);
+    if (ids.length === 0) throw new Error(`${info.name} no devolvió ningún modelo de chat.`);
+    return ids;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Una llamada al modelo. Habla la API de OpenAI (DeepSeek, OpenAI, Gemini) o la de Claude. */
@@ -153,13 +213,14 @@ export class ModelService extends EventEmitter {
     const question = sanitizeQuestion(rawQuestion);
     if (!question || looksLikeInjection(question)) return REFUSAL;
     const key = this.keys[config.provider];
-    if (!key) return NO_MODEL;
+    // Los fallos de configuración NO se contestan al público: el motor los apunta en el panel de la app.
+    if (!key) throw new Error(`Falta la clave de ${providerInfo(config.provider).name}: guárdala en Agente IA → Modelo de IA.`);
     if (this.calls >= config.maxModelCalls) {
       if (!this.budgetWarned) {
         this.budgetWarned = true;
         this.emit("log", { level: "warn", message: `Se llegó al tope de ${config.maxModelCalls} llamadas al modelo en este LIVE; el agente deja de responder hasta el próximo.` });
       }
-      return OUT_OF_BUDGET;
+      throw new Error(`Tope de ${config.maxModelCalls} llamadas al modelo en este LIVE alcanzado (súbelo en Agente IA si quieres seguir).`);
     }
     this.calls++;
     this.emit("state");
@@ -209,6 +270,19 @@ export class ModelService extends EventEmitter {
     const q = parseTrivia(text, t.options);
     if (!q) this.emit("log", { level: "warn", message: "El modelo devolvió una pregunta de trivia que no cumple el formato; se descarta." });
     return q;
+  }
+
+  /** Lista de modelos del proveedor (con su clave). Se guarda la última por proveedor para no repetir la consulta. */
+  async listModels(provider: AgentProviderId): Promise<{ ok: boolean; models: string[]; message: string }> {
+    const key = this.keys[provider];
+    const name = providerInfo(provider).name;
+    if (!key) return { ok: false, models: [], message: `Falta la clave de ${name}.` };
+    try {
+      const models = await fetchModelList(this.fetchImpl, provider, key);
+      return { ok: true, models, message: `${models.length} modelos de ${name}.` };
+    } catch (err) {
+      return { ok: false, models: [], message: (err as Error).message };
+    }
   }
 
   /** «Probar conexión»: una llamada mínima (no cuenta para el tope). */
