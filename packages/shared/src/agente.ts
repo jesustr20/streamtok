@@ -334,7 +334,11 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
     modelCalls: z.number().int().nonnegative(),
     trivia: AgentTriviaStateSchema,
     serverNow: z.number(),
+    /** copias del overlay que leen la voz y están conectadas ahora (LIVE Studio puede abrir dos de la misma fuente) */
+    voiceOverlays: z.number().int().nonnegative().optional(),
   }),
+  // el overlay del stream se presenta al conectar (la vista previa de la app no); `speaks` = esta copia lee en voz alta
+  z.object({ kind: z.literal("overlay-hello"), speaks: z.boolean() }),
   z.object({ kind: z.literal("save"), config: AgentConfigSchema }),
   z.object({
     kind: z.literal("ask"),

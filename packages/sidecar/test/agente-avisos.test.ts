@@ -106,3 +106,46 @@ describe("AgenteEngine: avisos periódicos", () => {
     expect(none.engine.showTip()).toBe(false);
   });
 });
+
+describe("AgenteEngine: pausa durante la trivia", () => {
+  it("con la pausa activa no atiende la cola; al terminar la trivia la retoma (regalos primero)", () => {
+    let paused = true;
+    let t = 1_000_000;
+    const engine = new AgenteEngine({
+      store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} },
+      now: () => t,
+      random: () => 0,
+      responder: async (q) => `R:${q}`,
+      paused: () => paused,
+    });
+    engine.ask("A", "gratis");
+    engine.ask("B", "con regalo", 5);
+    engine.tick();
+    expect(engine.getState().current).toBeUndefined();
+    expect(engine.getState().queueSize).toBe(2);
+    t += 120_000; // aunque pase el tiempo, sigue esperando
+    engine.tick();
+    expect(engine.getState().current).toBeUndefined();
+    paused = false;
+    engine.tick();
+    expect(engine.getState().current?.question).toBe("con regalo");
+    expect(engine.getState().queueSize).toBe(1);
+  });
+
+  it("la pausa tampoco deja salir avisos", () => {
+    let paused = true;
+    let t = 1_000_000;
+    const engine = new AgenteEngine({
+      store: { load: () => ({ config: AgentConfigSchema.parse({ tips: { everySec: 30 } }) }), save: async () => {} },
+      now: () => t,
+      random: () => 0,
+      paused: () => paused,
+    });
+    t += 40_000;
+    engine.tick();
+    expect(engine.getState().tip).toBeUndefined();
+    paused = false;
+    engine.tick();
+    expect(engine.getState().tip).toBeDefined();
+  });
+});

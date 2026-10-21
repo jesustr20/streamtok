@@ -113,6 +113,8 @@ export interface AgenteEngineOptions {
   responder?: Responder;
   /** ¿puede salir un aviso periódico? (la trivia abierta lo bloquea) */
   canShowTip?: () => boolean;
+  /** ¿está en pausa? (mientras hay una trivia en curso no se atienden preguntas: esperan en la cola) */
+  paused?: () => boolean;
   /** reloj en ms (para pruebas) */
   now?: () => number;
   /** azar en [0,1) (para pruebas) */
@@ -285,6 +287,7 @@ export class AgenteEngine extends EventEmitter {
       this.emit("state");
     }
     if (this.current || !this.config.enabled) return;
+    if (this.opts.paused?.()) return; // trivia en curso: la cola espera y se retoma al terminar
     if (!this.tip && this.config.tips.enabled && t >= this.nextTipAt && this.queue.length === 0 && (this.opts.canShowTip?.() ?? true)) {
       this.showTip();
       return;

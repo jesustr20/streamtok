@@ -277,6 +277,7 @@ export function Preview({
     () => overlayPage(kind, SIDECAR_WS_PORT, {
         ...(designId ? { design: designId } : {}),
         ...(id ? { id } : {}),
+        mute: true, // la vista previa no habla: la voz sale solo del overlay del stream
         ...(kind === "nivel" || ((kind === "duelo" || kind === "top" || kind === "agente") && !live) ? { demo: true } : {}),
       }),
     [kind, id, designId, live],

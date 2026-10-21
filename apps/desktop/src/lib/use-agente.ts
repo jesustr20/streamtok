@@ -2,7 +2,7 @@ import type { AgentConfig, AgentKeyStatus, AgentTriviaState, AgentMessage, Agent
 import { useCallback, useEffect, useState } from "react";
 import type { SidecarClient } from "./ws-client";
 
-type Cached = { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; modelCalls: number; trivia: AgentTriviaState; serverNow: number };
+type Cached = { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; modelCalls: number; trivia: AgentTriviaState; serverNow: number; voiceOverlays: number };
 export type TestResult = { ok: boolean; message: string; ms: number };
 /** Modelos que da el proveedor: cargando, lista, o el motivo del fallo. */
 export type ModelList = { status: "loading" } | { status: "ok"; models: string[]; message: string } | { status: "error"; message: string };
@@ -27,7 +27,7 @@ export function useAgente(client: SidecarClient | null) {
       if (evt.channel !== "agente") return;
       const msg = evt.payload as AgentMessage;
       if (msg.kind === "state") {
-        last = { config: msg.config, state: msg.state, keys: { deepseek: false, openai: false, gemini: false, claude: false, ...msg.keys }, modelCalls: msg.modelCalls, trivia: msg.trivia, serverNow: msg.serverNow };
+        last = { config: msg.config, state: msg.state, keys: { deepseek: false, openai: false, gemini: false, claude: false, ...msg.keys }, modelCalls: msg.modelCalls, trivia: msg.trivia, serverNow: msg.serverNow, voiceOverlays: msg.voiceOverlays ?? 0 };
         setData(last);
         setError(null);
       } else if (msg.kind === "test-result") {
@@ -92,6 +92,7 @@ export function useAgente(client: SidecarClient | null) {
     modelCalls: data?.modelCalls ?? 0,
     trivia: data?.trivia ?? null,
     serverNow: data?.serverNow ?? 0,
+    voiceOverlays: data?.voiceOverlays ?? 0,
     tests,
     models,
     listModels,

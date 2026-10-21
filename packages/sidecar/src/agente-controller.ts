@@ -20,6 +20,8 @@ export class AgenteController extends EventEmitter {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pending = false;
   private ticker: ReturnType<typeof setInterval>;
+  /** copias del overlay que leen en voz alta (para diagnosticar voces dobles) */
+  private voiceOverlays = new Set<WebSocket>();
 
   constructor(
     private server: StreamTokWsServer,
@@ -29,6 +31,9 @@ export class AgenteController extends EventEmitter {
   ) {
     super();
     this.server.on("client-connected", (socket) => this.sendStateTo(socket));
+    this.server.on("client-disconnected", (socket) => {
+      if (this.voiceOverlays.delete(socket)) this.scheduleBroadcast();
+    });
     this.server.onChannel("agente", (payload, socket) => this.handle(payload, socket));
     this.agente.on("state", () => this.scheduleBroadcast());
     this.model?.on("state", () => this.scheduleBroadcast());
@@ -50,6 +55,7 @@ export class AgenteController extends EventEmitter {
       modelCalls: this.model?.modelCalls ?? 0,
       trivia: this.trivia?.getState() ?? { phase: "idle" as const, options: [], deadline: 0, answers: 0, startedAt: 0 },
       serverNow: Date.now(),
+      voiceOverlays: this.voiceOverlays.size,
     };
   }
 
@@ -125,6 +131,13 @@ export class AgenteController extends EventEmitter {
         return;
       case "test-connection":
         void this.testConnection(msg.provider, socket);
+        return;
+      case "overlay-hello":
+        if (msg.speaks) {
+          this.voiceOverlays.add(socket);
+          this.emit("log", { level: "info", message: `Overlay del agente con voz conectado (ahora ${this.voiceOverlays.size}).` });
+          this.scheduleBroadcast();
+        }
         return;
       case "list-models":
         void this.listModels(msg.provider, socket);
