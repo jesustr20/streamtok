@@ -20,6 +20,9 @@ const NAV_TOP: NavItem[] = [
   { id: "live", label: "Live", enabled: false },
 ];
 
+/** Vistas que viven dentro del grupo «Overlays» (si la vista actual es una de ellas, el grupo arranca abierto). */
+const OVERLAY_VIEWS = new Set<string>(["overlays", "temporizador", "wins", "metas", "alertas", "duelos", "tops", "agente"]);
+
 /** Categorías de overlays (ver streamtok-overlays-cobertura.md). */
 const OVERLAY_ITEMS: NavItem[] = [
   { id: "temporizador", label: "Temporizador", enabled: true },
@@ -121,11 +124,12 @@ export function Sidebar({
   const displayName = username ? `@${username}` : "Sin cuenta";
   // Si la foto falla (URL vencida), se recuerda cuál falló para volver a la inicial.
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
-  const [overlaysOpen, setOverlaysOpen] = useState(true);
-  const [metasOpen, setMetasOpen] = useState(true);
-  const [alertasOpen, setAlertasOpen] = useState(true);
-  const [duelosOpen, setDuelosOpen] = useState(true);
-  const [topsOpen, setTopsOpen] = useState(true);
+  // Al abrir la app todo el menú está contraído; se despliega solo lo que abres (y lo que contiene la vista actual).
+  const [overlaysOpen, setOverlaysOpen] = useState(OVERLAY_VIEWS.has(view));
+  const [metasOpen, setMetasOpen] = useState(view === "metas");
+  const [alertasOpen, setAlertasOpen] = useState(view === "alertas");
+  const [duelosOpen, setDuelosOpen] = useState(view === "duelos");
+  const [topsOpen, setTopsOpen] = useState(view === "tops");
   const showPhoto = !!avatarUrl && failedAvatar !== avatarUrl;
 
   return (
