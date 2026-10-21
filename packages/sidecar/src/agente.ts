@@ -130,6 +130,7 @@ export class AgenteEngine extends EventEmitter {
   private tipIndex = 0;
   private tipSeq = 0;
   private answered = 0;
+  private lastError: { message: string; at: number } | undefined;
   private seq = 0;
   private followers = new Set<string>();
   private sharers = new Set<string>();
@@ -174,6 +175,7 @@ export class AgenteEngine extends EventEmitter {
       queue: ordered.slice(0, 5).map(toItem),
       ...(this.current ? { current: toCurrent(this.current) } : {}),
       ...(this.tip ? { tip: this.tip } : {}),
+      ...(this.lastError ? { lastError: this.lastError } : {}),
       nextFreeAt: this.nextFreeAt,
       answered: this.answered,
       updatedAt: this.now(),
@@ -206,6 +208,7 @@ export class AgenteEngine extends EventEmitter {
     this.lastAsk.clear();
     this.coinStreaks.clear();
     this.answered = 0;
+    this.lastError = undefined;
     this.reset();
   }
 
@@ -332,10 +335,17 @@ export class AgenteEngine extends EventEmitter {
     try {
       text = await this.responder(cur.question, { name: cur.name, config: this.config });
     } catch (err) {
-      this.emit("log", { level: "error", message: `El agente no pudo responder: ${(err as Error).message}` });
-      text = "No pude responder ahora, intenta de nuevo en un rato.";
+      const message = (err as Error).message;
+      this.emit("log", { level: "error", message: `El agente no pudo responder: ${message}` });
+      if (this.current !== cur) return;
+      // Al público no se le enseña un error técnico: la pregunta se retira y el motivo queda en el panel de la app.
+      this.current = undefined;
+      this.lastError = { message, at: this.now() };
+      this.emit("state");
+      return;
     }
     if (this.current !== cur) return; // se reinició mientras pensaba
+    this.lastError = undefined;
     cur.answer = clamp(text.trim(), MAX_ANSWER_CHARS) || "…";
     cur.showMs = showMsFor(cur.answer);
     cur.answerAt = this.now();

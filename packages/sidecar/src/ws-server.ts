@@ -23,6 +23,8 @@ export class StreamTokWsServer extends EventEmitter {
 
   constructor(private port: number) {
     super();
+    // Cada módulo (metas, duelos, tops, agente…) escucha `client-connected` para mandar su estado: son más de 10 a propósito.
+    this.setMaxListeners(50);
     this.wss = new WebSocketServer({ port });
     this.wss.on("connection", (socket) => this.handleConnection(socket));
     this.wss.on("listening", () => this.emit("listening", this.actualPort));

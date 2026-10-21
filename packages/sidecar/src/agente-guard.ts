@@ -8,8 +8,6 @@ import type { AgentConfig } from "@streamtok/shared";
 
 /** Lo que dice el agente cuando no debe o no puede responder. */
 export const REFUSAL = "Eso no lo puedo responder.";
-export const NO_MODEL = "Todavía no tengo un modelo configurado.";
-export const OUT_OF_BUDGET = "Por hoy ya no puedo responder más preguntas.";
 
 /** Quita caracteres de control y de marcado (para que la pregunta no cierre la etiqueta del prompt), y junta los espacios. */
 export function sanitizeQuestion(text: string): string {
