@@ -103,6 +103,25 @@ describe("AgenteController", () => {
     srv.close();
   });
 
+  it("cuenta las copias del overlay que leen en voz alta y deja de contarlas al cerrarse", async () => {
+    const srv = new StreamTokWsServer(0);
+    const eng = new AgenteEngine({ store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} } });
+    new AgenteController(srv, eng);
+    const app = await connect(srv);
+    const a = await connect(srv);
+    const b = await connect(srv);
+    const c = await connect(srv);
+    sockets.push(app.ws, a.ws, b.ws, c.ws);
+    expect((await app.next(isState)).payload.voiceOverlays).toBe(0);
+    a.send({ kind: "overlay-hello", speaks: true });
+    b.send({ kind: "overlay-hello", speaks: true });
+    c.send({ kind: "overlay-hello", speaks: false }); // la barra de cola no habla: no cuenta
+    await app.next((x) => isState(x) && x.payload.voiceOverlays === 2);
+    b.ws.close();
+    await app.next((x) => isState(x) && x.payload.voiceOverlays === 1);
+    srv.close();
+  });
+
   it("trivia: se lanza de ejemplo, no filtra la respuesta correcta y se cancela", async () => {
     const srv = new StreamTokWsServer(0);
     const eng = new AgenteEngine({ store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} } });

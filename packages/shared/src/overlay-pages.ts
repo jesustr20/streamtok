@@ -1383,6 +1383,7 @@ const AGENTE_JS = `
     ws.onopen = function () {
       retry = 0;
       ws.send(JSON.stringify({ channel: "agente", payload: { kind: "get-state" } }));
+      if (!MUTE_MODE && !DEMO) ws.send(JSON.stringify({ channel: "agente", payload: { kind: "overlay-hello", speaks: PART !== "cola" } }));
     };
     ws.onmessage = function (ev) {
       try {

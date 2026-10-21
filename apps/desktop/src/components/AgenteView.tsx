@@ -103,7 +103,7 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
 
       <Modelo config={config} keys={keys} api={api} patch={patch} />
 
-      <Voz config={config} patch={patch} />
+      <Voz config={config} patch={patch} voiceOverlays={api.voiceOverlays} />
 
       <Trivia config={config} api={api} patch={patch} hasKey={keys[config.provider]} />
 
@@ -136,7 +136,7 @@ function useSystemVoices(): SpeechSynthesisVoice[] {
 }
 
 /** Voz del agente: lee la respuesta en voz alta desde el overlay con una voz del sistema. */
-function Voz({ config, patch }: { config: AgentConfig; patch: (p: Partial<AgentConfig>) => void }) {
+function Voz({ config, patch, voiceOverlays }: { config: AgentConfig; patch: (p: Partial<AgentConfig>) => void; voiceOverlays: number }) {
   const voices = useSystemVoices();
   const spanish = voices.filter((v) => /^es/i.test(v.lang));
   const v = config.voice;
@@ -160,6 +160,10 @@ function Voz({ config, patch }: { config: AgentConfig; patch: (p: Partial<AgentC
     <Card title="Voz">
       <div style={{ fontSize: 12.5, color: "#9A9CA5", lineHeight: 1.5 }}>
         El overlay lee cada respuesta en voz alta con una voz instalada en tu equipo. TikTok LIVE Studio la reproduce sola; en OBS activa «Controlar audio mediante OBS» en la fuente de navegador.
+      </div>
+      <div style={{ fontSize: 12.5, lineHeight: 1.5, color: voiceOverlays > 1 ? "#F5A524" : "#9A9CA5" }}>
+        Copias del overlay con voz conectadas ahora: <b>{voiceOverlays}</b>
+        {voiceOverlays > 1 ? " — cada copia lee en voz alta, por eso se oye repetido. Deja solo una fuente del agente con respuestas en tu escena." : voiceOverlays === 1 ? " — correcto: se oirá una vez." : " — ninguna: abre el overlay en LIVE Studio u OBS."}
       </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ width: 120 }}>
