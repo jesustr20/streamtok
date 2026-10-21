@@ -560,9 +560,32 @@ const TEST_QUESTIONS = [
   "¿Cuánto dura un año en Marte?",
   "¿Qué es un agujero negro?",
   "¿Cuál es el animal más rápido del mundo?",
+  "¿Cuántos huesos tiene el cuerpo humano?",
+  "¿Cuál es el río más largo del mundo?",
+  "¿Qué es la fotosíntesis?",
+  "¿En qué año llegó el hombre a la Luna?",
+  "¿Cuál es el océano más grande?",
+  "¿Por qué hay mareas?",
+  "¿Cuántos corazones tiene un pulpo?",
+  "¿Qué es un eclipse solar?",
+  "¿Cuál es el país más grande del mundo?",
+  "¿Cómo se forma un arcoíris?",
 ];
 const TEST_MAX = 12;
 const pick = <T,>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
+
+/** Preguntas de prueba sin repetir: se reparten barajadas y no vuelven hasta agotar la lista. */
+let questionDeck: string[] = [];
+function nextTestQuestion(): string {
+  if (questionDeck.length === 0) {
+    questionDeck = [...TEST_QUESTIONS];
+    for (let i = questionDeck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [questionDeck[i], questionDeck[j]] = [questionDeck[j], questionDeck[i]];
+    }
+  }
+  return questionDeck.pop() as string;
+}
 
 /** La cola en vivo, con los botones de prueba (las preguntas de prueba no pasan por el chat ni piden requisitos). */
 function Queue({ config, state, api }: { config: AgentConfig; state: AgentState; api: Api }) {
@@ -572,11 +595,11 @@ function Queue({ config, state, api }: { config: AgentConfig; state: AgentState;
 
   const { running, count, start, stop } = useTestRunner((n) => {
     // una de cada cuatro viene respaldada por un regalo
-    api.ask(pick(TEST_NAMES), pick(TEST_QUESTIONS), Math.random() < 0.25 ? pick([1, 5, 30, 100]) : 0);
+    api.ask(pick(TEST_NAMES), nextTestQuestion(), Math.random() < 0.25 ? pick([1, 5, 30, 100]) : 0);
     return n + 1 >= TEST_MAX ? null : 1500 + Math.random() * 3000;
   });
-  const testOne = () => api.ask(pick(TEST_NAMES), pick(TEST_QUESTIONS), 0);
-  const testGift = () => api.ask(pick(TEST_NAMES), pick(TEST_QUESTIONS), pick([5, 30, 100]));
+  const testOne = () => api.ask(pick(TEST_NAMES), nextTestQuestion(), 0);
+  const testGift = () => api.ask(pick(TEST_NAMES), nextTestQuestion(), pick([5, 30, 100]));
   const askReset = () => {
     if (!confirm) {
       setConfirm(true);

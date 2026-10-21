@@ -215,6 +215,8 @@ const agente: AgenteEngine = new AgenteEngine({
   ),
   responder: agenteModel.respond,
   canShowTip: () => agenteTrivia.getState().phase === "idle",
+  // durante la trivia (preparándose, abierta o enseñando la respuesta) el agente no atiende la cola
+  paused: () => agenteTrivia.getState().phase !== "idle",
 });
 agenteModel.on("log", (entry) => {
   // eslint-disable-next-line no-console

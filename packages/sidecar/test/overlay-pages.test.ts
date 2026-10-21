@@ -282,3 +282,11 @@ describe("overlay agente: partes sueltas", () => {
     expect(html).toContain('.ag[data-part="cola"] .card');
   });
 });
+
+describe("overlay agente: voz", () => {
+  it("la vista previa de la app va sin voz (mute) y el overlay del stream habla", () => {
+    expect(overlayPage("agente", 7331, { mute: true })).toContain("var MUTE_MODE = true;");
+    expect(overlayPage("agente", 7331)).toContain("var MUTE_MODE = false;");
+    expect(overlayPage("agente", 7331)).toContain("DEMO || MUTE_MODE ||");
+  });
+});

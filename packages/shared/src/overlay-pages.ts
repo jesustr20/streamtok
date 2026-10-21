@@ -1281,7 +1281,7 @@ const AGENTE_JS = `
   }
   function speakText(key, text) {
     var v = config && config.voice;
-    if (!v || !v.enabled || DEMO || PART === "cola" || !window.speechSynthesis || spokenId === key) return;
+    if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || !window.speechSynthesis || spokenId === key) return;
     spokenId = key;
     try {
       window.speechSynthesis.cancel();
@@ -1419,6 +1419,8 @@ export interface OverlayPageOptions {
   id?: string;
   /** Vista previa de la app: `nivel`, `duelo` y `top` enseñan datos de ejemplo sin esperar al LIVE. */
   demo?: boolean;
+  /** Sin voz: la vista previa dentro de la app enseña lo mismo que el stream pero no habla (si no, se oiría doble). */
+  mute?: boolean;
 }
 
 export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPageOptions = {}): string {
@@ -1450,6 +1452,7 @@ ${body}
   var TOP_ID = ${jsString(opts.id ?? "")};
   var AGENT_PART = ${jsString(opts.id ?? "")};
   var DEMO_MODE = ${opts.demo ? "true" : "false"};
+  var MUTE_MODE = ${opts.mute ? "true" : "false"};
   // Funciones de dibujo de este overlay (definen render()).
   ${kindJs}
   // Conexión, estado y estilo comunes.
