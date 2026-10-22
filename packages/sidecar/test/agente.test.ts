@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AgentConfigSchema, parseAgentCommand, type AgentConfig, type LiveEvent } from "@streamtok/shared";
-import { AgenteEngine, MAX_ANSWER_CHARS, showMsFor, type Responder } from "../src/agente.js";
+import { AgenteEngine, MAX_ANSWER_CHARS, clampAnswer, showMsFor, type Responder } from "../src/agente.js";
 
 const memStore = (config: Partial<AgentConfig> = {}) => {
   const saved: unknown[] = [];
@@ -202,13 +202,13 @@ describe("AgenteEngine: prioridad y turnos", () => {
     expect(engine.getState().current?.question).toBe("b");
   });
 
-  it("mientras piensa muestra la pregunta sin respuesta y recorta la respuesta a 150", async () => {
+  it("mientras piensa muestra la pregunta sin respuesta y recorta la respuesta al tope", async () => {
     let release: (s: string) => void = () => {};
     const { engine } = setup({}, () => new Promise<string>((r) => (release = r)));
     engine.ask("A", "a");
     engine.tick();
     expect(engine.getState().current).toMatchObject({ question: "a", answer: "", showMs: 0 });
-    release("y".repeat(400));
+    release("y".repeat(900));
     await settle();
     const cur = engine.getState().current!;
     expect(cur.answer.length).toBeLessThanOrEqual(MAX_ANSWER_CHARS);
@@ -261,9 +261,28 @@ describe("AgenteEngine: prioridad y turnos", () => {
 });
 
 describe("showMsFor", () => {
-  it("entre 6 y 20 segundos", () => {
+  it("entre 6 y 45 segundos", () => {
     expect(showMsFor("hola")).toBe(6000);
     expect(showMsFor("x".repeat(150))).toBe(13500);
-    expect(showMsFor("x".repeat(1000))).toBe(20000);
+    expect(showMsFor("x".repeat(1000))).toBe(45000);
+  });
+});
+
+describe("clampAnswer", () => {
+  it("una respuesta de varias frases (más de 150 letras) sale entera", () => {
+    const a = "Los pulpos tienen tres corazones. Dos bombean sangre a las branquias y uno al resto del cuerpo. Además, su sangre es azul porque usa cobre en vez de hierro para transportar el oxígeno, y por eso les va mejor en aguas frías.";
+    expect(a.length).toBeGreaterThan(200);
+    expect(clampAnswer(a)).toBe(a);
+  });
+  it("si se pasa del tope corta en el final de una frase, sin dejarla a medias", () => {
+    const frase = "Esta es una frase de relleno bastante larga. ";
+    const r = clampAnswer(frase.repeat(30));
+    expect(r.length).toBeLessThanOrEqual(MAX_ANSWER_CHARS);
+    expect(r.endsWith(".")).toBe(true);
+  });
+  it("sin puntos corta con «…»", () => {
+    const r = clampAnswer("y".repeat(900));
+    expect(r.length).toBe(MAX_ANSWER_CHARS);
+    expect(r.endsWith("…")).toBe(true);
   });
 });

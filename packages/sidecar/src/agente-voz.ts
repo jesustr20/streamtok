@@ -201,6 +201,28 @@ export class VoiceService extends EventEmitter {
     }
   }
 
+  /** Modelos de voz (los que traen «tts» en el nombre) que ofrece Gemini con la clave guardada. */
+  async listModels(): Promise<{ ok: boolean; models: string[]; message: string }> {
+    const key = this.opts.getKey();
+    if (!key) return { ok: false, models: [], message: "Falta la clave de Gemini: guárdala en Agente IA → Modelo de IA." };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await this.fetchImpl(`${BASE}/models?pageSize=200`, { method: "GET", headers: { "x-goog-api-key": key }, signal: ctrl.signal });
+      const raw = await res.text();
+      if (!res.ok) return { ok: false, models: [], message: scrub(httpMessage(res.status, raw), key) };
+      const list = ((safeJson(raw) as { models?: { name?: unknown }[] } | null)?.models ?? [])
+        .map((m) => (typeof m.name === "string" ? m.name.replace(/^models\//, "") : ""))
+        .filter((n) => /tts/i.test(n));
+      const models = [...new Set(list)].sort();
+      return models.length ? { ok: true, models, message: "" } : { ok: false, models: [], message: "Gemini no lista modelos de voz para esta clave." };
+    } catch (err) {
+      return { ok: false, models: [], message: `No se pudo conectar con Gemini: ${scrub((err as Error).message, key)}` };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async post(url: string, key: string, body: unknown): Promise<{ status: number; ok: boolean; raw: string }> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);

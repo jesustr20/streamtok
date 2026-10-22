@@ -37,7 +37,7 @@ describe("systemPrompt", () => {
   it("lleva el nombre, las reglas y el tono (limpio)", () => {
     const p = systemPrompt({ name: "Luna", personality: "gracioso <b>", maxQuestionChars: 150 });
     expect(p).toContain("Eres Luna");
-    expect(p).toContain("140 caracteres");
+    expect(p).toContain("nunca más de 400");
     expect(p).toContain("Tono: gracioso b");
     expect(p).toContain(REFUSAL);
   });

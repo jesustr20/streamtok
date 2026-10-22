@@ -279,9 +279,7 @@ function NubeVoz({ config, set, api, hasGeminiKey }: { config: AgentConfig; set:
           </Field>
         </div>
         <div style={{ width: 210 }}>
-          <Field label="Modelo de voz" hint="cámbialo si Google lo renueva">
-            <CommitInput value={v.geminiModel} onCommit={(geminiModel) => set({ geminiModel: geminiModel || "gemini-3.8-flash-tts" })} max={60} />
-          </Field>
+          <VoiceModelPicker model={v.geminiModel} hasKey={hasGeminiKey} api={api} onPick={(geminiModel) => set({ geminiModel: geminiModel || "gemini-3.8-flash-tts" })} />
         </div>
         <div style={{ width: 190 }}>
           <Field label="Tope de audios por LIVE" hint={`llevas ${api.ttsCalls}; al llegar, habla la voz del equipo`}>
@@ -520,6 +518,24 @@ function Avisos({ config, api, patch }: { config: AgentConfig; api: Api; patch: 
           </Field>
         </div>
       </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600 }}>Avisos a cada persona</div>
+        <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.5 }}>
+          Cuando alguien entra a la fila, sube a Prioridad con un regalo o sigue el canal, sale un aviso con su nombre. No gastan saldo del modelo.
+        </div>
+        {(
+          [
+            ["personal", "Avisar por su nombre (en la fila, subió a Prioridad, eres Prioridad)"],
+            ["thanksFollows", "Dar las gracias a los seguidores nuevos (agrupados)"],
+            ["speakThanks", "Leer en voz alta estos avisos (si no hay otra cosa hablando)"],
+          ] as const
+        ).map(([k, label]) => (
+          <label key={k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={t[k]} onChange={(e) => set({ [k]: e.target.checked })} />
+            {label}
+          </label>
+        ))}
+      </div>
       {factory.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ fontSize: 12, fontWeight: 600 }}>Avisos de fábrica ahora</div>
@@ -583,6 +599,9 @@ function Modelo({ config, keys, api, patch }: { config: AgentConfig; keys: Agent
           </Field>
         </div>
       </div>
+      <Field label="Contexto del LIVE (opcional)" hint="de qué va tu canal o a qué juegas; el agente lo usa para entender mejor, no son órdenes">
+        <CommitInput value={config.liveContext} max={500} onCommit={(v) => patch({ liveContext: v })} />
+      </Field>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
         <div style={{ width: 200 }}>
           <Field label="Tope de respuestas por LIVE" hint={`llevas ${api.modelCalls} en este LIVE`}>
@@ -596,6 +615,62 @@ function Modelo({ config, keys, api, patch }: { config: AgentConfig; keys: Agent
         </div>
       </div>
     </Card>
+  );
+}
+
+/** Modelo de voz de Gemini: lista traída de la API con la clave guardada; «Otro…» deja escribirlo. */
+function VoiceModelPicker({ model, hasKey, api, onPick }: { model: string; hasKey: boolean; api: Api; onPick: (m: string) => void }) {
+  const entry = hasKey ? api.voiceModels : undefined;
+  const requested = useRef(false);
+  useEffect(() => {
+    if (hasKey && !entry && !requested.current) {
+      requested.current = true;
+      api.listVoiceModels();
+    }
+    if (!hasKey) requested.current = false;
+  }, [hasKey, entry, api]);
+  const list = entry?.status === "ok" ? entry.models : [];
+  const [other, setOther] = useState(false);
+  const loading = entry?.status === "loading";
+  const manual = other || entry?.status === "error" || (entry?.status === "ok" && !list.includes(model));
+  const hint = !hasKey
+    ? "guarda la clave de Gemini para ver los modelos"
+    : loading
+      ? "pidiendo la lista a Gemini…"
+      : entry?.status === "error"
+        ? `no se pudo traer la lista: ${entry.message}`
+        : `${list.length} modelos de voz`;
+  return (
+    <Field label="Modelo de voz" hint={hint}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          <select
+            aria-label="Modelo de voz"
+            value={manual ? "__other" : model}
+            disabled={!hasKey || loading}
+            onChange={(e) => {
+              if (e.target.value === "__other") setOther(true);
+              else {
+                setOther(false);
+                onPick(e.target.value);
+              }
+            }}
+            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+          >
+            {list.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+            <option value="__other">Otro… (escribirlo)</option>
+          </select>
+          <Btn onClick={() => api.listVoiceModels()} disabled={!hasKey || loading}>
+            ↻
+          </Btn>
+        </div>
+        {manual && <CommitInput value={model} max={60} onCommit={onPick} />}
+      </div>
+    </Field>
   );
 }
 

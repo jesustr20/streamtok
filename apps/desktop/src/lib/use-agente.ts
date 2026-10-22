@@ -12,6 +12,7 @@ type Models = Partial<Record<AgentProviderId, ModelList>>;
 // Último estado recibido: al volver a la vista aparece al instante.
 let last: Cached | null = null;
 let lastModels: Models = {};
+let lastVoiceModels: ModelList | undefined;
 // Respuestas `tts-audio` que esperan los botones de "Probar voces"
 const ttsWaiters = new Map<string, (r: TtsReply) => void>();
 let ttsSeq = 0;
@@ -22,6 +23,10 @@ export function useAgente(client: SidecarClient | null) {
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Partial<Record<AgentProviderId, TestResult | "pending">>>({});
   const [models, setModelsState] = useState<Models>(lastModels);
+  const [voiceModels, setVoiceModelsState] = useState<ModelList | undefined>(lastVoiceModels);
+  const setVoiceModels = useCallback((v: ModelList) => {
+    setVoiceModelsState((lastVoiceModels = v));
+  }, []);
   const setModels = useCallback((fn: (m: Models) => Models) => {
     setModelsState((m) => (lastModels = fn(m)));
   }, []);
@@ -39,6 +44,8 @@ export function useAgente(client: SidecarClient | null) {
         setTests((t) => ({ ...t, [msg.provider]: { ok: msg.ok, message: msg.message, ms: msg.ms } }));
       } else if (msg.kind === "models") {
         setModels((m) => ({ ...m, [msg.provider]: msg.ok ? { status: "ok", models: msg.models, message: msg.message } : { status: "error", message: msg.message } }));
+      } else if (msg.kind === "voice-models") {
+        setVoiceModels(msg.ok ? { status: "ok", models: msg.models, message: msg.message } : { status: "error", message: msg.message });
       } else if (msg.kind === "tts-audio") {
         const done = ttsWaiters.get(msg.id);
         if (done) {
@@ -98,6 +105,12 @@ export function useAgente(client: SidecarClient | null) {
     [client, setModels],
   );
 
+  /** Pide a Gemini sus modelos de voz (no gasta audios). */
+  const listVoiceModels = useCallback(() => {
+    setVoiceModels({ status: "loading" });
+    client?.send("agente", { kind: "list-voice-models" });
+  }, [client, setVoiceModels]);
+
   /** Pide el audio de una frase a la voz de la nube (gasta un audio del tope del LIVE; las frases repetidas salen de la memoria). */
   const tts = useCallback(
     (text: string, opts: { mood?: TtsMood | "auto"; voice?: string; style?: string; model?: string } = {}) =>
@@ -132,6 +145,8 @@ export function useAgente(client: SidecarClient | null) {
     tests,
     models,
     listModels,
+    voiceModels,
+    listVoiceModels,
     error,
     save,
     reset,

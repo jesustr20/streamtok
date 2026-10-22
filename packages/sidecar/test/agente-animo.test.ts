@@ -125,6 +125,9 @@ describe("LiveMoodEngine", () => {
     const h = engine();
     h.e.boost();
     expect(h.e.getState()).toMatchObject({ spike: true, mood: "excited" });
+    expect(h.e.getState().energy).toBeGreaterThan(75); // la barra también salta
+    h.advance(120_000);
+    expect(h.e.getState().energy).toBeLessThan(40); // y baja sola
     h.e.reset();
     expect(h.e.getState()).toEqual({ energy: 0, level: "calm", mood: "calm", spike: false });
   });
