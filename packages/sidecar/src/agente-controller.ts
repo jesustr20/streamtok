@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 import { AgentConfigSchema, AgentMessageSchema, type AgentProviderId } from "@streamtok/shared";
 import type { AgenteEngine } from "./agente.js";
 import type { ModelService } from "./agente-model.js";
+import type { LiveMoodEngine } from "./agente-animo.js";
 import type { VoiceService } from "./agente-voz.js";
 import type { TriviaEngine } from "./agente-trivia.js";
 import { formatZodError } from "./mapping-rules.js";
@@ -30,6 +31,7 @@ export class AgenteController extends EventEmitter {
     private model?: ModelService,
     private trivia?: TriviaEngine,
     private voice?: VoiceService,
+    private animo?: LiveMoodEngine,
   ) {
     super();
     this.server.on("client-connected", (socket) => this.sendStateTo(socket));
@@ -41,9 +43,11 @@ export class AgenteController extends EventEmitter {
     this.model?.on("state", () => this.scheduleBroadcast());
     this.trivia?.on("state", () => this.scheduleBroadcast());
     this.voice?.on("state", () => this.scheduleBroadcast());
+    this.animo?.on("state", () => this.scheduleBroadcast());
     this.ticker = setInterval(() => {
       this.agente.tick();
       this.trivia?.tick();
+      this.animo?.tick();
     }, TICK_EVERY_MS);
     this.ticker.unref?.();
   }
@@ -60,6 +64,7 @@ export class AgenteController extends EventEmitter {
       serverNow: Date.now(),
       voiceOverlays: this.voiceOverlays.size,
       ttsCalls: this.voice?.ttsCalls ?? 0,
+      animo: this.animo?.getState(),
     };
   }
 
@@ -96,11 +101,11 @@ export class AgenteController extends EventEmitter {
   }
 
   /** Audio de una frase con la voz de la nube; solo se responde a quien lo pidió. */
-  private async tts(msg: { id: string; text: string; mood: "calm" | "happy" | "excited" | "mystery"; voice?: string; style?: string; model?: string }, socket: WebSocket) {
+  private async tts(msg: { id: string; text: string; mood: "auto" | "calm" | "happy" | "excited" | "mystery"; voice?: string; style?: string; model?: string }, socket: WebSocket) {
     const cfg = this.agente.getConfig().voice;
     const r = this.voice
       ? await this.voice.synthesize(
-          { text: msg.text, mood: msg.mood, voice: msg.voice ?? cfg.geminiVoice, style: msg.style ?? cfg.style, model: msg.model ?? cfg.geminiModel },
+          { text: msg.text, mood: msg.mood === "auto" ? (this.animo?.mood() ?? "calm") : msg.mood, voice: msg.voice ?? cfg.geminiVoice, style: msg.style ?? cfg.style, model: msg.model ?? cfg.geminiModel },
           cfg.maxCloudCalls,
         )
       : ({ ok: false, message: "La voz de la nube no está disponible." } as const);
@@ -166,6 +171,9 @@ export class AgenteController extends EventEmitter {
         return;
       case "tts":
         void this.tts(msg, socket);
+        return;
+      case "animo-test":
+        this.animo?.boost();
         return;
       default:
         return;

@@ -24,6 +24,7 @@ import { AgenteEngine, AgenteStore, defaultAgenteFilePath } from "./agente.js";
 import { AgenteController } from "./agente-controller.js";
 import { KeysStore, defaultKeysFilePath } from "./agente-keys.js";
 import { ModelService } from "./agente-model.js";
+import { LiveMoodEngine } from "./agente-animo.js";
 import { VoiceService } from "./agente-voz.js";
 import { TriviaEngine } from "./agente-trivia.js";
 import { TopsEngine, TopsStore, defaultTopsFilePath } from "./tops.js";
@@ -208,7 +209,10 @@ const agenteModel = new ModelService({
     // eslint-disable-next-line no-console
     console.warn("[agente:warn]", message),
   ),
+  liveContext: () => agenteAnimo.contextLine(),
 });
+// Ánimo del LIVE: mide cuánto movimiento hay (monedas, comentarios, likes...) y decide el tono de voz y de texto del agente.
+const agenteAnimo: LiveMoodEngine = new LiveMoodEngine({ getConfig: () => agente.getConfig().animo });
 const agente: AgenteEngine = new AgenteEngine({
   store: new AgenteStore(defaultAgenteFilePath(), (message) =>
     // eslint-disable-next-line no-console
@@ -247,7 +251,7 @@ agenteVoz.on("log", (entry) => {
   // eslint-disable-next-line no-console
   console.log(`[agente:${entry.level}]`, entry.message);
 });
-new AgenteController(server, agente, agenteModel, agenteTrivia, agenteVoz);
+new AgenteController(server, agente, agenteModel, agenteTrivia, agenteVoz, agenteAnimo);
 
 // Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
 const room = new RoomStateEngine();
@@ -295,6 +299,7 @@ server.onChannel("live-event", (payload) => {
   duelos.handleLiveEvent(evt);
   tops.handleLiveEvent(evt);
   agente.handleLiveEvent(evt);
+  agenteAnimo.handleLiveEvent(evt);
   agenteTrivia.handleLiveEvent(evt);
   engine.handleEvent(evt).catch((err) => {
     // eslint-disable-next-line no-console
@@ -330,6 +335,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     duelos.handleLiveEvent(evt);
     tops.handleLiveEvent(evt);
     agente.handleLiveEvent(evt);
+    agenteAnimo.handleLiveEvent(evt);
     agenteTrivia.handleLiveEvent(evt);
     engine.handleEvent(evt).catch((err) => {
       // eslint-disable-next-line no-console
@@ -352,6 +358,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     agente.resetSession();
     agenteModel.resetSession();
     agenteVoz.resetSession();
+    agenteAnimo.reset();
     agenteTrivia.resetSession();
     room.reset();
   },
