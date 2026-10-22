@@ -1279,10 +1279,9 @@ const AGENTE_JS = `
     if (!c.answer) return;
     speakText(c.id, (config.voice.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer);
   }
-  function speakText(key, text) {
-    var v = config && config.voice;
-    if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || !window.speechSynthesis || spokenId === key) return;
-    spokenId = key;
+  // Voz del equipo (speechSynthesis): la de siempre y el respaldo de la voz de la nube.
+  function speakSystem(text, v) {
+    if (!window.speechSynthesis) return;
     try {
       window.speechSynthesis.cancel();
       var u = new SpeechSynthesisUtterance(text);
@@ -1291,6 +1290,75 @@ const AGENTE_JS = `
       u.rate = v.rate; u.volume = v.volume;
       window.speechSynthesis.speak(u);
     } catch (e) {}
+  }
+
+  // Voz de la nube: el sidecar genera el audio (Gemini) y aqui solo se reproduce, frase a frase.
+  var ttsGen = 0, ttsN = 0, ttsWait = {}, curAudio = null, cloudFails = 0, cloudOffUntil = 0;
+
+  function stopSpeech() {
+    ttsGen++;
+    if (curAudio) { try { curAudio.pause(); } catch (e) {} curAudio = null; }
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+  }
+
+  // Parte el texto en trozos de ~200 letras cortando en el final de una frase.
+  function splitSpeech(t) {
+    var sentences = t.match(/[^.!?;:\\n]+[.!?;:]*\\s*/g) || [t], out = [], cur = "", i;
+    for (i = 0; i < sentences.length; i++) {
+      if (cur && (cur + sentences[i]).length > 200) { out.push(cur.trim()); cur = ""; }
+      cur += sentences[i];
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out.slice(0, 4);
+  }
+
+  function requestTts(text, mood) {
+    return new Promise(function (resolve) {
+      var id = "t" + (++ttsN);
+      var timer = setTimeout(function () { delete ttsWait[id]; resolve(null); }, 30000);
+      ttsWait[id] = function (m) { clearTimeout(timer); resolve(m); };
+      try { ws.send(JSON.stringify({ channel: "agente", payload: { kind: "tts", id: id, text: text, mood: mood } })); }
+      catch (e) { clearTimeout(timer); delete ttsWait[id]; resolve(null); }
+    });
+  }
+
+  function speakCloud(text, mood, v) {
+    stopSpeech();
+    var gen = ttsGen, chunks = splitSpeech(text), reqs = [], i = 0, k;
+    // se piden todos a la vez (asi el segundo ya esta listo cuando acaba el primero) y suenan en orden
+    for (k = 0; k < chunks.length; k++) reqs.push(requestTts(chunks[k], mood));
+    function fallback(from) {
+      cloudFails++;
+      if (cloudFails >= 3) cloudOffUntil = now() + 120000;
+      speakSystem(chunks.slice(from).join(" "), v);
+    }
+    function next() {
+      if (gen !== ttsGen || i >= reqs.length) return;
+      var idx = i++;
+      reqs[idx].then(function (m) {
+        if (gen !== ttsGen) return;
+        if (!m || !m.ok) { fallback(idx); return; }
+        cloudFails = 0;
+        var a = new Audio("data:" + m.mime + ";base64," + m.data);
+        a.volume = v.volume; a.playbackRate = v.rate;
+        curAudio = a;
+        a.onended = next;
+        a.onerror = function () { if (gen === ttsGen) fallback(idx); };
+        var pr = a.play();
+        if (pr && pr.catch) pr.catch(function () { if (gen === ttsGen) fallback(idx); });
+      });
+    }
+    next();
+  }
+
+  function speakText(key, text, mood) {
+    var v = config && config.voice;
+    if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || spokenId === key) return;
+    if (v.provider === "gemini" && ws && ws.readyState === 1 && now() >= cloudOffUntil) { spokenId = key; speakCloud(text, mood || "calm", v); return; }
+    if (!window.speechSynthesis) return;
+    spokenId = key;
+    stopSpeech();
+    speakSystem(text, v);
   }
 
   function typeStep() {
@@ -1321,10 +1389,10 @@ const AGENTE_JS = `
       for (i = 0; i < t.options.length; i++) html += '<div class="tvopt" data-i="' + i + '"><b>' + LETTERS[i] + "</b><span></span></div>";
       tvOpts.innerHTML = html;
       for (i = 0; i < t.options.length; i++) tvOpts.children[i].lastChild.textContent = t.options[i];
-      if (t.phase === "open") speakText("tv" + t.startedAt, "Trivia. " + t.question + " " + t.options.map(function (o, n) { return LETTERS[n] + ": " + o + "."; }).join(" "));
+      if (t.phase === "open") speakText("tv" + t.startedAt, "Trivia. " + t.question + " " + t.options.map(function (o, n) { return LETTERS[n] + ": " + o + "."; }).join(" "), "happy");
       if (t.phase === "reveal") {
         var ok = t.options[t.correct];
-        speakText("tvr" + t.startedAt, t.winner ? "La respuesta correcta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." : "Nadie acert\u00f3. La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + ".");
+        speakText("tvr" + t.startedAt, t.winner ? "La respuesta correcta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." : "Nadie acert\u00f3. La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + ".", t.winner ? "happy" : "calm");
       }
     }
     if (t.phase === "open") {
@@ -1388,6 +1456,11 @@ const AGENTE_JS = `
     ws.onmessage = function (ev) {
       try {
         var m = JSON.parse(ev.data);
+        if (m.channel === "agente" && m.payload && m.payload.kind === "tts-audio") {
+          var waiter = ttsWait[m.payload.id];
+          if (waiter) { delete ttsWait[m.payload.id]; waiter(m.payload); }
+          return;
+        }
         if (m.channel !== "agente" || !m.payload || m.payload.kind !== "state") return;
         config = m.payload.config;
         state = DEMO ? DEMO_STATE : m.payload.state;

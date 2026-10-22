@@ -24,6 +24,7 @@ import { AgenteEngine, AgenteStore, defaultAgenteFilePath } from "./agente.js";
 import { AgenteController } from "./agente-controller.js";
 import { KeysStore, defaultKeysFilePath } from "./agente-keys.js";
 import { ModelService } from "./agente-model.js";
+import { VoiceService } from "./agente-voz.js";
 import { TriviaEngine } from "./agente-trivia.js";
 import { TopsEngine, TopsStore, defaultTopsFilePath } from "./tops.js";
 import { TopsController } from "./tops-controller.js";
@@ -240,7 +241,13 @@ agenteTrivia.on("log", (entry) => {
   // eslint-disable-next-line no-console
   console.log(`[agente:${entry.level}]`, entry.message);
 });
-new AgenteController(server, agente, agenteModel, agenteTrivia);
+// Voz humana en la nube (Gemini TTS) con la misma clave de Gemini del modelo; si falla o no hay clave, el overlay usa la voz del equipo.
+const agenteVoz = new VoiceService({ getKey: () => agenteModel.keyFor("gemini") });
+agenteVoz.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[agente:${entry.level}]`, entry.message);
+});
+new AgenteController(server, agente, agenteModel, agenteTrivia, agenteVoz);
 
 // Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
 const room = new RoomStateEngine();
@@ -344,6 +351,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     tops.resetSession();
     agente.resetSession();
     agenteModel.resetSession();
+    agenteVoz.resetSession();
     agenteTrivia.resetSession();
     room.reset();
   },

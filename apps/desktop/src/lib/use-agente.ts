@@ -1,8 +1,10 @@
-import type { AgentConfig, AgentKeyStatus, AgentTriviaState, AgentMessage, AgentProviderId, AgentState } from "@streamtok/shared";
+import type { AgentConfig, AgentKeyStatus, AgentTriviaState, AgentMessage, AgentProviderId, AgentState, TtsMood } from "@streamtok/shared";
 import { useCallback, useEffect, useState } from "react";
 import type { SidecarClient } from "./ws-client";
 
-type Cached = { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; modelCalls: number; trivia: AgentTriviaState; serverNow: number; voiceOverlays: number };
+type Cached = { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; modelCalls: number; trivia: AgentTriviaState; serverNow: number; voiceOverlays: number; ttsCalls: number };
+/** Audio de una frase con la voz de la nube (WAV en base64) o el motivo del fallo. */
+export type TtsReply = { ok: boolean; message: string; mime: string; data: string };
 export type TestResult = { ok: boolean; message: string; ms: number };
 /** Modelos que da el proveedor: cargando, lista, o el motivo del fallo. */
 export type ModelList = { status: "loading" } | { status: "ok"; models: string[]; message: string } | { status: "error"; message: string };
@@ -10,6 +12,9 @@ type Models = Partial<Record<AgentProviderId, ModelList>>;
 // Último estado recibido: al volver a la vista aparece al instante.
 let last: Cached | null = null;
 let lastModels: Models = {};
+// Respuestas `tts-audio` que esperan los botones de "Probar voces"
+const ttsWaiters = new Map<string, (r: TtsReply) => void>();
+let ttsSeq = 0;
 
 /** Agente IA (canal WS `agente`, ADR 0016). */
 export function useAgente(client: SidecarClient | null) {
@@ -27,13 +32,19 @@ export function useAgente(client: SidecarClient | null) {
       if (evt.channel !== "agente") return;
       const msg = evt.payload as AgentMessage;
       if (msg.kind === "state") {
-        last = { config: msg.config, state: msg.state, keys: { deepseek: false, openai: false, gemini: false, claude: false, ...msg.keys }, modelCalls: msg.modelCalls, trivia: msg.trivia, serverNow: msg.serverNow, voiceOverlays: msg.voiceOverlays ?? 0 };
+        last = { config: msg.config, state: msg.state, keys: { deepseek: false, openai: false, gemini: false, claude: false, ...msg.keys }, modelCalls: msg.modelCalls, trivia: msg.trivia, serverNow: msg.serverNow, voiceOverlays: msg.voiceOverlays ?? 0, ttsCalls: msg.ttsCalls ?? 0 };
         setData(last);
         setError(null);
       } else if (msg.kind === "test-result") {
         setTests((t) => ({ ...t, [msg.provider]: { ok: msg.ok, message: msg.message, ms: msg.ms } }));
       } else if (msg.kind === "models") {
         setModels((m) => ({ ...m, [msg.provider]: msg.ok ? { status: "ok", models: msg.models, message: msg.message } : { status: "error", message: msg.message } }));
+      } else if (msg.kind === "tts-audio") {
+        const done = ttsWaiters.get(msg.id);
+        if (done) {
+          ttsWaiters.delete(msg.id);
+          done({ ok: msg.ok, message: msg.message, mime: msg.mime, data: msg.data });
+        }
       } else if (msg.kind === "error") {
         setError(msg.message);
       }
@@ -85,6 +96,25 @@ export function useAgente(client: SidecarClient | null) {
     [client, setModels],
   );
 
+  /** Pide el audio de una frase a la voz de la nube (gasta un audio del tope del LIVE; las frases repetidas salen de la memoria). */
+  const tts = useCallback(
+    (text: string, opts: { mood?: TtsMood; voice?: string; style?: string; model?: string } = {}) =>
+      new Promise<TtsReply>((resolve) => {
+        if (!client) return resolve({ ok: false, message: "Sin conexión con el sidecar.", mime: "", data: "" });
+        const id = `ui${++ttsSeq}`;
+        const timer = setTimeout(() => {
+          ttsWaiters.delete(id);
+          resolve({ ok: false, message: "Gemini tardó demasiado en responder.", mime: "", data: "" });
+        }, 35_000);
+        ttsWaiters.set(id, (r) => {
+          clearTimeout(timer);
+          resolve(r);
+        });
+        client.send("agente", { kind: "tts", id, text, mood: opts.mood ?? "calm", voice: opts.voice, style: opts.style, model: opts.model });
+      }),
+    [client],
+  );
+
   return {
     config: data?.config ?? null,
     state: data?.state ?? null,
@@ -93,6 +123,8 @@ export function useAgente(client: SidecarClient | null) {
     trivia: data?.trivia ?? null,
     serverNow: data?.serverNow ?? 0,
     voiceOverlays: data?.voiceOverlays ?? 0,
+    ttsCalls: data?.ttsCalls ?? 0,
+    tts,
     tests,
     models,
     listModels,
