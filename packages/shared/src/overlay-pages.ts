@@ -1,4 +1,5 @@
 import { PICK_VOICE_JS } from "./agente.js";
+import { personajePage } from "./overlay-personaje.js";
 import type { OverlayKind } from "./overlays.js";
 
 /**
@@ -1546,6 +1547,8 @@ export interface OverlayPageOptions {
 }
 
 export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPageOptions = {}): string {
+  // el personaje 3D del agente es una página aparte (lleva three.js y no usa el diseño ni la voz del resto)
+  if (kind === "agente" && opts.id === "personaje") return personajePage(wsPort, { demo: opts.demo, mute: opts.mute });
   const meta = kind === "meta";
   const nivel = kind === "nivel";
   const duelo = kind === "duelo";

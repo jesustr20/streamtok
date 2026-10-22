@@ -12,6 +12,7 @@ export * from "./mapping-rule.js";
 export * from "./metas.js";
 export * from "./mod-protocol.js";
 export * from "./overlay-pages.js";
+export * from "./overlay-personaje.js";
 export * from "./overlays.js";
 export * from "./profile.js";
 export * from "./room.js";

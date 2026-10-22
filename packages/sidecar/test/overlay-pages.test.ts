@@ -1,4 +1,4 @@
-import { FORMAT_TIMER_JS, GOAL_REMAINING_JS, goalRemainingText, RATE_TEXT_JS, TimerConfigSchema, formatTimerMs, overlayPage, OVERLAY_DESIGNS, timerRateText } from "@streamtok/shared";
+import { AgentConfigSchema, FORMAT_TIMER_JS, GOAL_REMAINING_JS, goalRemainingText, RATE_TEXT_JS, TimerConfigSchema, formatTimerMs, overlayPage, OVERLAY_DESIGNS, timerRateText } from "@streamtok/shared";
 import { describe, expect, it } from "vitest";
 
 describe("overlayPage (compartida entre el servidor y la vista previa de la app)", () => {
@@ -288,5 +288,42 @@ describe("overlay agente: voz", () => {
     expect(overlayPage("agente", 7331, { mute: true })).toContain("var MUTE_MODE = true;");
     expect(overlayPage("agente", 7331)).toContain("var MUTE_MODE = false;");
     expect(overlayPage("agente", 7331)).toContain("DEMO || MUTE_MODE ||");
+  });
+});
+
+describe("overlay agente: personaje 3D", () => {
+  const scriptOf = (html: string): string => {
+    const all = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
+    return all[all.length - 1] ?? "";
+  };
+
+  it("el script de la página es JavaScript válido (la vista previa y el stream usan el mismo)", () => {
+    const html = overlayPage("agente", 7331, { id: "personaje" });
+    const js = scriptOf(html);
+    expect(js.length).toBeGreaterThan(5000);
+    expect(() => new Function(js)).not.toThrow();
+  });
+
+  it("lleva el puerto del sidecar y el modo demo solo cuando se pide", () => {
+    expect(overlayPage("agente", 7331, { id: "personaje" })).toContain("var WS_PORT = 7331;");
+    expect(overlayPage("agente", 7331, { id: "personaje" })).toContain("var DEMO_MODE = false;");
+    expect(overlayPage("agente", 7331, { id: "personaje", demo: true })).toContain("var DEMO_MODE = true;");
+  });
+
+  it("la vista previa (mute) usa un recuadro fijo; el overlay real llena la fuente", () => {
+    expect(overlayPage("agente", 7331, { id: "personaje", mute: true })).toContain('<div id="root" data-fixed="1">');
+    expect(overlayPage("agente", 7331, { id: "personaje" })).toContain('<div id="root">');
+  });
+
+  it("no cambia las otras partes del agente", () => {
+    expect(overlayPage("agente", 7331, { id: "cola" })).not.toContain("three.min.js");
+    expect(overlayPage("agente", 7331)).not.toContain("three.min.js");
+  });
+
+  it("la config trae el personaje con sus valores de fábrica y rechaza colores mal escritos", () => {
+    const c = AgentConfigSchema.parse({});
+    expect(c.character).toEqual({ scarfColor: "#ffc94d", hairColor: "#3a3f9e", background: "transparent", floor: true });
+    expect(AgentConfigSchema.safeParse({ character: { scarfColor: "amarillo" } }).success).toBe(false);
+    expect(AgentConfigSchema.safeParse({ character: { background: "chroma" } }).success).toBe(true);
   });
 });
