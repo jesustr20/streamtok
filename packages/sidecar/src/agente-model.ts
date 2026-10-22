@@ -182,6 +182,11 @@ export class ModelService extends EventEmitter {
     return out;
   }
 
+  /** Solo para uso dentro del sidecar (la voz de la nube usa la clave de Gemini); nunca se manda fuera. */
+  keyFor(provider: AgentProviderId): string | undefined {
+    return this.keys[provider];
+  }
+
   get modelCalls(): number {
     return this.calls;
   }

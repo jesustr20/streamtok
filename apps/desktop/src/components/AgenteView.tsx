@@ -1,4 +1,4 @@
-import { AGENT_PROVIDERS, TRIVIA_DIFFICULTY_NAMES, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
+import { AGENT_PROVIDERS, GEMINI_VOICES, TRIVIA_DIFFICULTY_NAMES, TTS_MOODS, type TtsMood, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { useTestRunner } from "../lib/use-test-runner";
@@ -103,7 +103,7 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
 
       <Modelo config={config} keys={keys} api={api} patch={patch} />
 
-      <Voz config={config} patch={patch} voiceOverlays={api.voiceOverlays} />
+      <Voz config={config} patch={patch} api={api} hasGeminiKey={keys.gemini} />
 
       <Trivia config={config} api={api} patch={patch} hasKey={keys[config.provider]} />
 
@@ -136,7 +136,8 @@ function useSystemVoices(): SpeechSynthesisVoice[] {
 }
 
 /** Voz del agente: lee la respuesta en voz alta desde el overlay con una voz del sistema. */
-function Voz({ config, patch, voiceOverlays }: { config: AgentConfig; patch: (p: Partial<AgentConfig>) => void; voiceOverlays: number }) {
+function Voz({ config, patch, api, hasGeminiKey }: { config: AgentConfig; patch: (p: Partial<AgentConfig>) => void; api: Api; hasGeminiKey: boolean }) {
+  const voiceOverlays = api.voiceOverlays;
   const voices = useSystemVoices();
   const spanish = voices.filter((v) => /^es/i.test(v.lang));
   const v = config.voice;
@@ -159,12 +160,21 @@ function Voz({ config, patch, voiceOverlays }: { config: AgentConfig; patch: (p:
   return (
     <Card title="Voz">
       <div style={{ fontSize: 12.5, color: "#9A9CA5", lineHeight: 1.5 }}>
-        El overlay lee cada respuesta en voz alta con una voz instalada en tu equipo. TikTok LIVE Studio la reproduce sola; en OBS activa «Controlar audio mediante OBS» en la fuente de navegador.
+        El overlay lee cada respuesta en voz alta, con una voz instalada en tu equipo o con una voz humana generada en la nube. TikTok LIVE Studio la reproduce sola; en OBS activa «Controlar audio mediante OBS» en la fuente de navegador.
       </div>
       <div style={{ fontSize: 12.5, lineHeight: 1.5, color: voiceOverlays > 1 ? "#F5A524" : "#9A9CA5" }}>
         Copias del overlay con voz conectadas ahora: <b>{voiceOverlays}</b>
         {voiceOverlays > 1 ? " — cada copia lee en voz alta, por eso se oye repetido. Deja solo una fuente del agente con respuestas en tu escena." : voiceOverlays === 1 ? " — correcto: se oirá una vez." : " — ninguna: abre el overlay en LIVE Studio u OBS."}
       </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Btn primary={v.provider === "system"} onClick={() => set({ provider: "system" })}>
+          Voz del equipo
+        </Btn>
+        <Btn primary={v.provider === "gemini"} onClick={() => set({ provider: "gemini" })}>
+          Voz humana (Gemini)
+        </Btn>
+      </div>
+      {v.provider === "gemini" && <NubeVoz config={config} set={set} api={api} hasGeminiKey={hasGeminiKey} />}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ width: 120 }}>
           <Field label="Voz activada" hint="apagada, solo se lee en pantalla">
@@ -174,7 +184,7 @@ function Voz({ config, patch, voiceOverlays }: { config: AgentConfig; patch: (p:
             </label>
           </Field>
         </div>
-        <div style={{ width: 150 }}>
+        <div style={{ width: 150, display: v.provider === "system" ? undefined : "none" }}>
           <Field label="Tipo de voz" hint="busca una voz así entre las instaladas">
             <select value={v.gender} onChange={(e) => set({ gender: e.target.value as AgentVoice["gender"], voiceName: "" })} style={{ ...inputStyle, width: "100%" }}>
               <option value="female">Mujer</option>
@@ -182,7 +192,7 @@ function Voz({ config, patch, voiceOverlays }: { config: AgentConfig; patch: (p:
             </select>
           </Field>
         </div>
-        <div style={{ flex: 1, minWidth: 260 }}>
+        <div style={{ flex: 1, minWidth: 260, display: v.provider === "system" ? undefined : "none" }}>
           <Field
             label="Voz concreta"
             hint={spanish.length === 0 ? "no se encontró ninguna voz en español: instálala en Windows (Configuración → Hora e idioma → Voz)" : chosen ? `ahora: ${chosen.name}` : "automática"}
@@ -213,11 +223,112 @@ function Voz({ config, patch, voiceOverlays }: { config: AgentConfig; patch: (p:
           <input type="checkbox" checked={v.readQuestion} onChange={(e) => set({ readQuestion: e.target.checked })} />
           Leer también la pregunta
         </label>
-        <Btn primary onClick={preview}>
-          ▶ Probar voz
-        </Btn>
+        {v.provider === "system" && (
+          <Btn primary onClick={preview}>
+            ▶ Probar voz
+          </Btn>
+        )}
       </div>
     </Card>
+  );
+}
+
+const MOOD_LABEL: Record<TtsMood, string> = { calm: "Tranquila", happy: "Alegre", excited: "Emocionada", mystery: "Misteriosa" };
+
+/** Voz humana de Gemini: elegir voz, estilo y compararlas con una frase propia antes de decidir. */
+function NubeVoz({ config, set, api, hasGeminiKey }: { config: AgentConfig; set: (p: Partial<AgentVoice>) => void; api: Api; hasGeminiKey: boolean }) {
+  const v = config.voice;
+  // La frase de ejemplo sigue al nombre y al comando que tengas ahora; solo deja de seguirlos si la escribes tú.
+  const [custom, setCustom] = useState<string | null>(null);
+  const phrase = custom ?? `Hola, soy ${config.name}. Gracias por seguirme. Escribe ${config.command} y tu pregunta, y con gusto te respondo.`;
+  const [mood, setMood] = useState<TtsMood>("calm");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const audio = useRef<HTMLAudioElement | null>(null);
+
+  const listen = async (voice: string) => {
+    audio.current?.pause();
+    setBusy(voice);
+    setMsg(null);
+    const r = await api.tts(phrase, { mood, voice, style: v.style, model: v.geminiModel });
+    setBusy(null);
+    if (!r.ok) {
+      setMsg({ ok: false, text: r.message });
+      return;
+    }
+    const a = new Audio(`data:${r.mime};base64,${r.data}`);
+    a.volume = v.volume;
+    audio.current = a;
+    a.play().catch(() => setMsg({ ok: false, text: "El navegador no dejó reproducir el audio. Pulsa otra vez." }));
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 12, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid #2A2C33" }}>
+      <div style={{ fontSize: 12.5, color: "#9A9CA5", lineHeight: 1.5 }}>
+        El sidecar genera el audio con Gemini y el overlay lo reproduce. Usa la misma clave de Gemini del modelo. Si falla o se llega al tope, habla la voz del equipo.
+      </div>
+      {!hasGeminiKey && (
+        <div style={{ fontSize: 12.5, color: "#F5A524" }}>Falta la clave de Gemini: guárdala en «Modelo de IA» (arriba) y vuelve aquí.</div>
+      )}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <Field label="Estilo" hint="cómo debe sonar (tono, calidez, acento)">
+            <CommitInput value={v.style} onCommit={(style) => set({ style })} max={200} />
+          </Field>
+        </div>
+        <div style={{ width: 210 }}>
+          <Field label="Modelo de voz" hint="cámbialo si Google lo renueva">
+            <CommitInput value={v.geminiModel} onCommit={(geminiModel) => set({ geminiModel: geminiModel || "gemini-3.8-flash-tts" })} max={60} />
+          </Field>
+        </div>
+        <div style={{ width: 190 }}>
+          <Field label="Tope de audios por LIVE" hint={`llevas ${api.ttsCalls}; al llegar, habla la voz del equipo`}>
+            <NumberField value={v.maxCloudCalls} min={1} integer onCommit={(maxCloudCalls) => set({ maxCloudCalls: Math.min(5000, Math.max(1, maxCloudCalls)) })} />
+          </Field>
+        </div>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600 }}>Probar voces</div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <Field label="Frase de prueba" hint="escribe algo que diría tu IA">
+            <input value={phrase} maxLength={300} onChange={(e) => setCustom(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+          </Field>
+        </div>
+        <div style={{ width: 170 }}>
+          <Field label="Ánimo" hint="para oír cómo cambia">
+            <select value={mood} onChange={(e) => setMood(e.target.value as TtsMood)} style={{ ...inputStyle, width: "100%" }}>
+              {TTS_MOODS.map((m) => (
+                <option key={m} value={m}>
+                  {MOOD_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </div>
+      {msg && <div style={{ fontSize: 12.5, color: msg.ok ? "#3DD68C" : "#E5484D" }}>{msg.text}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 8 }}>
+        {GEMINI_VOICES.map((g) => {
+          const on = v.geminiVoice === g.id;
+          return (
+            <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, border: `1px solid ${on ? "#E23A57" : "#2A2C33"}`, background: "rgba(255,255,255,0.02)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  {g.id} {on && <span style={{ color: "#E23A57", fontSize: 11 }}>· en uso</span>}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#9A9CA5" }}>
+                  {g.female ? "Mujer" : "Hombre"} · {g.trait}
+                </div>
+              </div>
+              <Btn onClick={() => listen(g.id)} disabled={busy !== null || !hasGeminiKey}>
+                {busy === g.id ? "…" : "▶"}
+              </Btn>
+              {!on && <Btn onClick={() => set({ geminiVoice: g.id })}>Usar</Btn>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

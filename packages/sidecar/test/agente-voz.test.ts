@@ -53,7 +53,14 @@ describe("pickVoice", () => {
 
 describe("voz del agente", () => {
   it("por defecto: activada, mujer, velocidad y volumen normales, sin leer la pregunta", () => {
-    expect(AgentConfigSchema.parse({}).voice).toEqual({ enabled: true, gender: "female", voiceName: "", rate: 1, volume: 1, readQuestion: false });
+    expect(AgentConfigSchema.parse({}).voice).toMatchObject({ enabled: true, gender: "female", voiceName: "", rate: 1, volume: 1, readQuestion: false });
+  });
+  it("por defecto sigue con la voz del equipo: la de la nube hay que elegirla (y trae voz, modelo, estilo y tope)", () => {
+    expect(AgentConfigSchema.parse({}).voice).toMatchObject({ provider: "system", geminiVoice: "Sulafat", geminiModel: "gemini-3.8-flash-tts", maxCloudCalls: 400 });
+    expect(AgentConfigSchema.parse({}).voice.style).toContain("cálida");
+    expect(AgentConfigSchema.safeParse({ voice: { provider: "otra" } }).success).toBe(false);
+    // una configuración guardada antes de esta versión (sin los campos nuevos) sigue siendo válida
+    expect(AgentConfigSchema.safeParse({ voice: { enabled: true, gender: "male", voiceName: "", rate: 1, volume: 1, readQuestion: false } }).success).toBe(true);
   });
   it("rechaza velocidades fuera de rango", () => {
     expect(AgentConfigSchema.safeParse({ voice: { rate: 5 } }).success).toBe(false);

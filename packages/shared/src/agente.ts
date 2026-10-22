@@ -71,8 +71,42 @@ export const AgentVoiceSchema = z.object({
   volume: z.number().min(0).max(1).default(1),
   /** lee también la pregunta antes de responder ("Valentina pregunta: ...") */
   readQuestion: z.boolean().default(false),
+  /** de dónde sale el audio: la voz del equipo (`system`) o una voz humana generada en la nube (`gemini`) */
+  provider: z.enum(["system", "gemini"]).default("system"),
+  /** voz de Gemini (ver `GEMINI_VOICES`) */
+  geminiVoice: z.string().max(40).default("Sulafat"),
+  /** modelo de voz de Gemini; se puede cambiar si Google lo renueva */
+  geminiModel: z.string().max(60).default("gemini-3.8-flash-tts"),
+  /** cómo debe sonar: tono, calidez, acento. Se suma al ánimo de cada frase */
+  style: z.string().max(200).default("cálida, serena y cercana, con acento latino neutro"),
+  /** tope de audios generados por LIVE (protege tu saldo); al llegar, vuelve a la voz del equipo */
+  maxCloudCalls: z.number().int().min(1).max(5000).default(400),
 });
 export type AgentVoice = z.infer<typeof AgentVoiceSchema>;
+
+/** Voces de Gemini (nombres de Google) con su carácter, para elegir al oído. Se muestran en "Probar voces". */
+export const GEMINI_VOICES: { id: string; trait: string; female: boolean }[] = [
+  { id: "Sulafat", trait: "cálida", female: true },
+  { id: "Achird", trait: "amistosa", female: false },
+  { id: "Vindemiatrix", trait: "suave", female: true },
+  { id: "Leda", trait: "juvenil", female: true },
+  { id: "Kore", trait: "firme", female: true },
+  { id: "Aoede", trait: "ligera", female: true },
+  { id: "Callirrhoe", trait: "relajada", female: true },
+  { id: "Despina", trait: "fluida", female: true },
+  { id: "Puck", trait: "alegre", female: false },
+  { id: "Zephyr", trait: "brillante", female: true },
+  { id: "Charon", trait: "informativa", female: false },
+  { id: "Fenrir", trait: "entusiasta", female: false },
+  { id: "Orus", trait: "firme", female: false },
+  { id: "Algieba", trait: "suave", female: false },
+  { id: "Gacrux", trait: "madura", female: true },
+  { id: "Iapetus", trait: "clara", female: false },
+];
+
+/** Ánimo de una frase: cambia el matiz con que se dice (el estilo base de la voz no se pierde). */
+export const TTS_MOODS = ["calm", "happy", "excited", "mystery"] as const;
+export type TtsMood = (typeof TTS_MOODS)[number];
 
 export interface VoiceLike {
   name: string;
@@ -321,6 +355,7 @@ export type AgentFile = z.infer<typeof AgentFileSchema>;
  *  - `set-key` / `remove-key`  UI → sidecar: guarda o borra la clave de un proveedor (solo en tu equipo)
  *  - `test-connection`         UI → sidecar: hace una llamada mínima al modelo; responde con `test-result`
  *  - `list-models`             UI → sidecar: pide a la API del proveedor su lista de modelos; responde con `models`
+ *  - `tts`        overlay/UI → sidecar: pide el audio de una frase a la voz de la nube; responde con `tts-audio`
  *  - `error`      sidecar → UI
  */
 export const AgentMessageSchema = z.discriminatedUnion("kind", [
@@ -336,6 +371,8 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
     serverNow: z.number(),
     /** copias del overlay que leen la voz y están conectadas ahora (LIVE Studio puede abrir dos de la misma fuente) */
     voiceOverlays: z.number().int().nonnegative().optional(),
+    /** audios de la nube generados en este LIVE (para el tope `maxCloudCalls`) */
+    ttsCalls: z.number().int().nonnegative().optional(),
   }),
   // el overlay del stream se presenta al conectar (la vista previa de la app no); `speaks` = esta copia lee en voz alta
   z.object({ kind: z.literal("overlay-hello"), speaks: z.boolean() }),
@@ -360,6 +397,18 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("list-models"), provider: AgentProviderIdSchema }),
   // `models`: ids de modelos de chat tal como los da el proveedor (sin lista fija en la app); `ok: false` trae el motivo
   z.object({ kind: z.literal("models"), provider: AgentProviderIdSchema, ok: z.boolean(), models: z.array(z.string()), message: z.string() }),
+  // pide el audio de una frase a la voz de la nube; `voice`/`style`/`model` solo se usan al probar (si faltan, manda la configuración guardada)
+  z.object({
+    kind: z.literal("tts"),
+    id: z.string().min(1).max(80),
+    text: z.string().min(1).max(600),
+    mood: z.enum(TTS_MOODS).default("calm"),
+    voice: z.string().max(40).optional(),
+    style: z.string().max(200).optional(),
+    model: z.string().max(60).optional(),
+  }),
+  // respuesta a `tts` (solo a quien la pidió): audio WAV en base64, o `ok: false` con el motivo
+  z.object({ kind: z.literal("tts-audio"), id: z.string(), ok: z.boolean(), message: z.string(), mime: z.string(), data: z.string() }),
   z.object({ kind: z.literal("error"), message: z.string() }),
 ]);
 export type AgentMessage = z.infer<typeof AgentMessageSchema>;

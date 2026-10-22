@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 import { AgentConfigSchema, AgentMessageSchema, type AgentProviderId } from "@streamtok/shared";
 import type { AgenteEngine } from "./agente.js";
 import type { ModelService } from "./agente-model.js";
+import type { VoiceService } from "./agente-voz.js";
 import type { TriviaEngine } from "./agente-trivia.js";
 import { formatZodError } from "./mapping-rules.js";
 import type { StreamTokWsServer } from "./ws-server.js";
@@ -28,6 +29,7 @@ export class AgenteController extends EventEmitter {
     private agente: AgenteEngine,
     private model?: ModelService,
     private trivia?: TriviaEngine,
+    private voice?: VoiceService,
   ) {
     super();
     this.server.on("client-connected", (socket) => this.sendStateTo(socket));
@@ -38,6 +40,7 @@ export class AgenteController extends EventEmitter {
     this.agente.on("state", () => this.scheduleBroadcast());
     this.model?.on("state", () => this.scheduleBroadcast());
     this.trivia?.on("state", () => this.scheduleBroadcast());
+    this.voice?.on("state", () => this.scheduleBroadcast());
     this.ticker = setInterval(() => {
       this.agente.tick();
       this.trivia?.tick();
@@ -56,6 +59,7 @@ export class AgenteController extends EventEmitter {
       trivia: this.trivia?.getState() ?? { phase: "idle" as const, options: [], deadline: 0, answers: 0, startedAt: 0 },
       serverNow: Date.now(),
       voiceOverlays: this.voiceOverlays.size,
+      ttsCalls: this.voice?.ttsCalls ?? 0,
     };
   }
 
@@ -89,6 +93,24 @@ export class AgenteController extends EventEmitter {
   private async listModels(provider: AgentProviderId, socket: WebSocket) {
     const r = this.model ? await this.model.listModels(provider) : { ok: false, models: [], message: "El modelo no está disponible." };
     this.server.sendTo(socket, "agente", { kind: "models", provider, ...r });
+  }
+
+  /** Audio de una frase con la voz de la nube; solo se responde a quien lo pidió. */
+  private async tts(msg: { id: string; text: string; mood: "calm" | "happy" | "excited" | "mystery"; voice?: string; style?: string; model?: string }, socket: WebSocket) {
+    const cfg = this.agente.getConfig().voice;
+    const r = this.voice
+      ? await this.voice.synthesize(
+          { text: msg.text, mood: msg.mood, voice: msg.voice ?? cfg.geminiVoice, style: msg.style ?? cfg.style, model: msg.model ?? cfg.geminiModel },
+          cfg.maxCloudCalls,
+        )
+      : ({ ok: false, message: "La voz de la nube no está disponible." } as const);
+    this.server.sendTo(
+      socket,
+      "agente",
+      r.ok
+        ? { kind: "tts-audio", id: msg.id, ok: true, message: "", mime: "audio/wav", data: r.wav.toString("base64") }
+        : { kind: "tts-audio", id: msg.id, ok: false, message: r.message, mime: "", data: "" },
+    );
   }
 
   private handle(payload: unknown, socket: WebSocket) {
@@ -141,6 +163,9 @@ export class AgenteController extends EventEmitter {
         return;
       case "list-models":
         void this.listModels(msg.provider, socket);
+        return;
+      case "tts":
+        void this.tts(msg, socket);
         return;
       default:
         return;
