@@ -259,6 +259,12 @@ export const AgentTipsConfigSchema = z.object({
   everySec: z.number().int().min(30).max(3600).default(300),
   /** tus propios avisos, que salen después de los de fábrica (uno por línea, máx. 140 caracteres) */
   custom: z.array(z.string().trim().min(1).max(140)).max(5).default([]),
+  /** avisos a cada persona: «tu pregunta está en la fila», «subió a Prioridad», gracias por el regalo */
+  personal: z.boolean().default(true),
+  /** un gracias agrupado (con sus nombres) a quienes siguen el canal */
+  thanksFollows: z.boolean().default(true),
+  /** esos gracias (regalo y seguidores) también se leen en voz alta */
+  speakThanks: z.boolean().default(true),
 });
 export type AgentTipsConfig = z.infer<typeof AgentTipsConfigSchema>;
 
@@ -311,6 +317,8 @@ export const AgentConfigSchema = z.object({
   model: z.string().max(80).default(""),
   /** cómo quieres que hable (tono, humor...); se suma a las reglas fijas */
   personality: z.string().max(300).default(""),
+  /** qué es tu canal (nombre, de qué trata, qué es la app...): el agente lo usa para responder sobre ti */
+  liveContext: z.string().max(500).default(""),
   voice: AgentVoiceSchema.default({}),
   animo: AgentAnimoSchema.default({}),
   trivia: AgentTriviaConfigSchema.default({}),
@@ -350,6 +358,17 @@ export const AgentCurrentSchema = z.object({
 });
 export type AgentCurrent = z.infer<typeof AgentCurrentSchema>;
 
+/** Aviso a una persona (sale unos segundos en la barra y, si `speak`, se lee en voz alta). */
+export const AgentNoticeSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  kind: z.enum(["queue", "gift", "thanks"]),
+  speak: z.boolean(),
+  /** ánimo de la voz al leerlo */
+  mood: z.enum(TTS_MOODS),
+});
+export type AgentNotice = z.infer<typeof AgentNoticeSchema>;
+
 export const AgentStateSchema = z.object({
   /** cuántas preguntas esperan */
   queueSize: z.number().int().nonnegative(),
@@ -362,6 +381,8 @@ export const AgentStateSchema = z.object({
   answered: z.number().int().nonnegative(),
   /** aviso periódico en pantalla (cómo participar) */
   tip: z.object({ id: z.string(), text: z.string() }).optional(),
+  /** avisos a cada persona que están a la vista ahora (máx. 3) */
+  notices: z.array(AgentNoticeSchema).optional(),
   /** último fallo del modelo (sin clave, modelo inexistente, sin saldo…): solo lo muestra la app, nunca el overlay */
   lastError: z.object({ message: z.string(), at: z.number() }).optional(),
   updatedAt: z.number(),
@@ -386,6 +407,7 @@ export type AgentFile = z.infer<typeof AgentFileSchema>;
  *  - `test-connection`         UI → sidecar: hace una llamada mínima al modelo; responde con `test-result`
  *  - `list-models`             UI → sidecar: pide a la API del proveedor su lista de modelos; responde con `models`
  *  - `animo-test` UI → sidecar: sube el ánimo del LIVE unos segundos (prueba)
+ *  - `list-voice-models`       UI → sidecar: pide a Gemini sus modelos de voz; responde con `voice-models`
  *  - `tts`        overlay/UI → sidecar: pide el audio de una frase a la voz de la nube; responde con `tts-audio`
  *  - `error`      sidecar → UI
  */
@@ -445,6 +467,9 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("animo-test") }),
   // respuesta a `tts` (solo a quien la pidió): audio WAV en base64, o `ok: false` con el motivo
   z.object({ kind: z.literal("tts-audio"), id: z.string(), ok: z.boolean(), message: z.string(), mime: z.string(), data: z.string() }),
+  // pide a Gemini sus modelos de voz (los que traen «tts» en el nombre); responde con `voice-models`
+  z.object({ kind: z.literal("list-voice-models") }),
+  z.object({ kind: z.literal("voice-models"), ok: z.boolean(), models: z.array(z.string()), message: z.string() }),
   z.object({ kind: z.literal("error"), message: z.string() }),
 ]);
 export type AgentMessage = z.infer<typeof AgentMessageSchema>;

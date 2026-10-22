@@ -10,6 +10,7 @@ import {
   parseAgentCommand,
   type AgentConfig,
   type AgentCurrent,
+  type AgentNotice,
   type AgentQueueItem,
   type AgentState,
   type LiveEvent,
@@ -83,8 +84,16 @@ export class AgenteStore implements AgenteStorePort {
 /** Quien da las respuestas. La pieza 2 pone aquí el modelo (DeepSeek, OpenAI, Claude...). */
 export type Responder = (question: string, ctx: { name: string; config: AgentConfig }) => Promise<string>;
 
-/** Lo que cabe en un comentario de TikTok. */
-export const MAX_ANSWER_CHARS = 150;
+/** Tope de seguridad de una respuesta (el modelo recibe la orden de ser breve; esto solo evita un texto enorme). */
+export const MAX_ANSWER_CHARS = 600;
+
+/** Recorta sin partir una frase: corta en el último punto cercano al tope; si no hay, pone «…». */
+export function clampAnswer(text: string, max = MAX_ANSWER_CHARS): string {
+  if (text.length <= max) return text;
+  const head = text.slice(0, max);
+  const end = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "), /[.!?]$/.test(head) ? head.length - 1 : -1);
+  return end > max * 0.5 ? head.slice(0, end + 1) : `${head.slice(0, max - 1).trimEnd()}…`;
+}
 
 export const placeholderResponder: Responder = async (question) =>
   `Aún estoy en pruebas y no tengo cerebro conectado. Tu pregunta: ${question}`;
@@ -93,9 +102,37 @@ const handleKey = (username: string) => username.trim().replace(/^@/, "").toLowe
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const clamp = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`);
 
-/** Cuánto se queda la respuesta en pantalla: lo que se tarda en leer, entre 6 y 20 s. */
+/** Cuánto se queda a la vista un aviso a una persona. */
+export const NOTICE_MS = 7_000;
+/** Cuántos avisos a la vez (los más viejos se van). */
+const MAX_NOTICES = 3;
+/** Los seguidores nuevos se juntan este rato para darles un solo gracias... */
+const FOLLOW_BATCH_MS = 6_000;
+/** ...y entre un gracias de seguidores y el siguiente pasa al menos esto. */
+const THANKS_GAP_MS = 15_000;
+/** Entre dos avisos leídos en voz alta pasa al menos esto (el resto se ven pero no se leen). */
+const SPEAK_GAP_MS = 8_000;
+/** Cada persona recibe como mucho un gracias por regalo cada tanto. */
+const GIFT_THANKS_GAP_MS = 60_000;
+/** Regalo (monedas de una vez) que se agradece con más emoción. */
+const BIG_GIFT_COINS = 150;
+
+/** «A», «A y B», «A, B y C», «A, B, C y 2 más». */
+export function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length <= 3) return `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+  return `${names.slice(0, 3).join(", ")} y ${names.length - 3} más`;
+}
+
+/** Nombre apto para decir en voz alta y mostrar: sin @, sin saltos y corto. */
+function niceName(name: string): string {
+  const t = name.replace(/^@/, "").replace(/\s+/g, " ").trim();
+  return t.length > 20 ? `${t.slice(0, 19).trimEnd()}…` : t;
+}
+
+/** Cuánto se queda la respuesta en pantalla: lo que se tarda en leerla en voz alta, entre 6 y 45 s. */
 export function showMsFor(answer: string): number {
-  return Math.min(20_000, Math.max(6_000, 3_000 + answer.length * 70));
+  return Math.min(45_000, Math.max(6_000, 3_000 + answer.length * 70));
 }
 
 interface Waiting extends AgentQueueItem {
@@ -131,6 +168,13 @@ export class AgenteEngine extends EventEmitter {
   private nextTipAt = 0;
   private tipIndex = 0;
   private tipSeq = 0;
+  private notices: (AgentNotice & { until: number })[] = [];
+  private noticeSeq = 0;
+  private pendingFollows: string[] = [];
+  private followsSince = 0;
+  private lastThanksAt = -Infinity;
+  private lastSpokenAt = -Infinity;
+  private lastGiftThanks = new Map<string, number>();
   private answered = 0;
   private lastError: { message: string; at: number } | undefined;
   private seq = 0;
@@ -177,6 +221,7 @@ export class AgenteEngine extends EventEmitter {
       queue: ordered.slice(0, 5).map(toItem),
       ...(this.current ? { current: toCurrent(this.current) } : {}),
       ...(this.tip ? { tip: this.tip } : {}),
+      ...(this.notices.length > 0 ? { notices: this.notices.map(({ until: _until, ...n }) => n) } : {}),
       ...(this.lastError ? { lastError: this.lastError } : {}),
       nextFreeAt: this.nextFreeAt,
       answered: this.answered,
@@ -209,6 +254,9 @@ export class AgenteEngine extends EventEmitter {
     this.nextTipAt = this.now() + this.config.tips.everySec * 1000;
     this.lastAsk.clear();
     this.coinStreaks.clear();
+    this.notices = [];
+    this.pendingFollows = [];
+    this.lastGiftThanks.clear();
     this.answered = 0;
     this.lastError = undefined;
     this.reset();
@@ -237,6 +285,7 @@ export class AgenteEngine extends EventEmitter {
     const handle = handleKey(evt.username);
     if (!handle) return;
     const name = evt.nickname?.trim() || evt.username.replace(/^@/, "");
+    if (evt.event === "follow" && !this.followers.has(handle)) this.noteFollow(name);
     if (evt.isFollower === true || evt.event === "follow") this.followers.add(handle);
     if (evt.event === "share") this.sharers.add(handle);
     if (isNum(evt.fanLevel) && evt.fanLevel > 0) this.fanClub.add(handle);
@@ -253,6 +302,7 @@ export class AgenteEngine extends EventEmitter {
         const cur = this.credits.get(handle);
         const live = cur && cur.until > this.now() ? cur.coins : 0;
         this.credits.set(handle, { coins: live + delta, until: this.now() + this.config.giftCreditMin * 60_000 });
+        this.thankGift(handle, name, live === 0, live + delta, delta);
       }
       return;
     }
@@ -286,6 +336,11 @@ export class AgenteEngine extends EventEmitter {
       this.tip = undefined;
       this.emit("state");
     }
+    if (this.notices.some((n) => t >= n.until)) {
+      this.notices = this.notices.filter((n) => t < n.until);
+      this.emit("state");
+    }
+    this.flushFollows(t);
     if (this.current || !this.config.enabled) return;
     if (this.opts.paused?.()) return; // trivia en curso: la cola espera y se retoma al terminar
     if (!this.tip && this.config.tips.enabled && t >= this.nextTipAt && this.queue.length === 0 && (this.opts.canShowTip?.() ?? true)) {
@@ -349,7 +404,7 @@ export class AgenteEngine extends EventEmitter {
     }
     if (this.current !== cur) return; // se reinició mientras pensaba
     this.lastError = undefined;
-    cur.answer = clamp(text.trim(), MAX_ANSWER_CHARS) || "…";
+    cur.answer = clampAnswer(text.trim()) || "…";
     cur.showMs = showMsFor(cur.answer);
     cur.answerAt = this.now();
     this.emit("state");
@@ -401,8 +456,77 @@ export class AgenteEngine extends EventEmitter {
       coins,
       at: this.now(),
     });
+    this.noticeQueued(handle, name, coins);
     this.emit("state");
     return true;
+  }
+
+  // ---- avisos a cada persona ----------------------------------------------
+
+  /** Pone un aviso a la vista unos segundos. `speak` pide leerlo en voz alta (si está permitido y no hay otro leído hace poco). */
+  private pushNotice(kind: AgentNotice["kind"], text: string, speak: boolean, mood: AgentNotice["mood"] = "happy"): void {
+    if (!this.config.tips.personal) return;
+    const t = this.now();
+    const spoken = speak && this.config.tips.speakThanks && t - this.lastSpokenAt >= SPEAK_GAP_MS;
+    if (spoken) this.lastSpokenAt = t;
+    this.notices.push({ id: `n${++this.noticeSeq}`, text, kind, speak: spoken, mood, until: t + NOTICE_MS });
+    while (this.notices.length > MAX_NOTICES) this.notices.shift();
+  }
+
+  /** ¿Esta pregunta se atenderá ya, sin esperar? (entonces no hace falta decir que está en la fila) */
+  private startsNow(coins: number): boolean {
+    if (this.current || !this.config.enabled || this.opts.paused?.()) return false;
+    return coins > 0 || (this.queue.length === 1 && this.now() >= this.nextFreeAt);
+  }
+
+  private noticeQueued(handle: string, name: string, coins: number): void {
+    if (this.startsNow(coins)) return;
+    const who = niceName(name);
+    const pos = this.ordered().findIndex((w) => w.handle === handle) + 1;
+    if (coins > 0) this.pushNotice("queue", `¡Gracias ${who}! Tu pregunta tiene prioridad · lugar #${pos}`, false);
+    else this.pushNotice("queue", `${who}, tu pregunta está en la fila (${this.queue.length} esperando)`, false);
+  }
+
+  /** Un regalo: si ya tenía una pregunta esperando, sube a prioridad; si no, se le avisa que ya puede preguntar con prioridad. */
+  private thankGift(handle: string, name: string, firstCredit: boolean, total: number, delta: number): void {
+    const t = this.now();
+    const who = niceName(name);
+    const mood = delta >= BIG_GIFT_COINS ? "excited" : "happy";
+    const waiting = this.queue.find((w) => w.handle === handle);
+    if (waiting && total > waiting.coins) {
+      waiting.coins = total;
+      this.credits.delete(handle);
+      this.lastGiftThanks.set(handle, t);
+      const pos = this.ordered().findIndex((w) => w.handle === handle) + 1;
+      this.pushNotice("gift", `¡Gracias ${who}! Tu pregunta subió a Prioridad · lugar #${pos}`, true, mood);
+      this.emit("state");
+      return;
+    }
+    if (!firstCredit || !this.config.eligibility.gift || !this.config.enabled) return;
+    if (t - (this.lastGiftThanks.get(handle) ?? -Infinity) < GIFT_THANKS_GAP_MS) return;
+    this.lastGiftThanks.set(handle, t);
+    this.pushNotice("gift", `¡Gracias ${who}! Eres Prioridad: escribe ${this.config.command} y tu pregunta (tienes ${this.config.giftCreditMin} min)`, true, mood);
+    this.emit("state");
+  }
+
+  private noteFollow(name: string): void {
+    if (!this.config.enabled || !this.config.tips.thanksFollows) return;
+    const who = niceName(name);
+    if (!who || this.pendingFollows.includes(who) || this.pendingFollows.length >= 20) return;
+    if (this.pendingFollows.length === 0) this.followsSince = this.now();
+    this.pendingFollows.push(who);
+  }
+
+  /** Cuando pasó el rato de juntar seguidores (y no se acaba de agradecer a otros), un solo gracias con sus nombres. */
+  private flushFollows(t: number): void {
+    if (this.pendingFollows.length === 0) return;
+    if (t - this.followsSince < FOLLOW_BATCH_MS || t - this.lastThanksAt < THANKS_GAP_MS) return;
+    const names = joinNames(this.pendingFollows);
+    this.pendingFollows = [];
+    this.lastThanksAt = t;
+    const how = this.config.eligibility.follow ? ` Ya puedes preguntar gratis: escribe ${this.config.command} y tu pregunta.` : "";
+    this.pushNotice("thanks", `¡Gracias por seguir el canal, ${names}!${how}`, true);
+    this.emit("state");
   }
 
   private persist(): void {

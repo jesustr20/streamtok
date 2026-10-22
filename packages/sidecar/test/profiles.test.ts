@@ -95,7 +95,7 @@ describe("ProfilesController", () => {
 
   afterEach(() => {
     server?.close();
-    if (dir) rmSync(dir, { recursive: true, force: true });
+    if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   function tmpDir(): { profilesPath: string; legacyPath: string } {

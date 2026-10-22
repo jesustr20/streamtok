@@ -102,9 +102,12 @@ export class LiveMoodEngine extends EventEmitter {
     this.refresh(t);
   }
 
-  /** Sube el ánimo unos segundos (botón de prueba, o más adelante una meta cumplida). */
+  /** Sube el ánimo y la energía de golpe (botón de prueba, o más adelante una meta cumplida). */
   boost(ms = SPIKE_MS): void {
     const t = this.now();
+    this.decay(t);
+    // además del subidón, la energía salta (como si de pronto el LIVE se moviera mucho) y luego baja sola
+    this.acc += (2 * SCALE) / this.sens();
     this.spikeUntil = Math.max(this.spikeUntil, t + ms);
     this.refresh(t, true);
   }

@@ -100,6 +100,11 @@ export class AgenteController extends EventEmitter {
     this.server.sendTo(socket, "agente", { kind: "models", provider, ...r });
   }
 
+  private async listVoiceModels(socket: WebSocket) {
+    const r = this.voice ? await this.voice.listModels() : { ok: false, models: [], message: "La voz de la nube no está disponible." };
+    this.server.sendTo(socket, "agente", { kind: "voice-models", ...r });
+  }
+
   /** Audio de una frase con la voz de la nube; solo se responde a quien lo pidió. */
   private async tts(msg: { id: string; text: string; mood: "auto" | "calm" | "happy" | "excited" | "mystery"; voice?: string; style?: string; model?: string }, socket: WebSocket) {
     const cfg = this.agente.getConfig().voice;
@@ -168,6 +173,9 @@ export class AgenteController extends EventEmitter {
         return;
       case "list-models":
         void this.listModels(msg.provider, socket);
+        return;
+      case "list-voice-models":
+        void this.listVoiceModels(socket);
         return;
       case "tts":
         void this.tts(msg, socket);

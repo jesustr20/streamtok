@@ -7,8 +7,8 @@ import { parseTrivia, type TriviaQuestion } from "./agente-trivia.js";
 
 /** Cuánto esperamos al modelo antes de rendirnos. */
 const TIMEOUT_MS = 20_000;
-/** Tokens de salida: 140 caracteres caben de sobra y así una respuesta nunca sale cara. */
-const MAX_TOKENS = 120;
+/** Tokens de salida: unas tres frases (≤400 caracteres) caben de sobra y así una respuesta nunca sale cara. */
+const MAX_TOKENS = 300;
 /** Espera máxima para pedir la lista de modelos. */
 const LIST_TIMEOUT_MS = 10_000;
 

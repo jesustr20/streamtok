@@ -1180,6 +1180,11 @@ const AGENTE_CSS = `
   .ag .q { font: 600 15px/1.3 "Segoe UI", sans-serif; opacity: .8; margin-bottom: 8px; overflow-wrap: anywhere; }
   .ag .a { font: 700 18px/1.35 "Segoe UI", sans-serif; overflow-wrap: anywhere; min-height: 24px; }
   .ag .a .cur { display: inline-block; width: 8px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--gold); animation: agBlink 1s steps(2) infinite; }
+  .ag .stat { margin-top: 6px; box-sizing: border-box; padding: 6px 12px; border-radius: 12px; background: var(--bg, rgba(14, 12, 28, .92)); border: 1px solid rgba(255, 255, 255, .18); display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 10px; font: 700 13px/1.3 "Segoe UI", sans-serif; }
+  .ag .stat .nxt { opacity: .7; }
+  .ag .ntcs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .ag .ntcs:empty { display: none; }
+  .ag .ntc { box-sizing: border-box; padding: 8px 12px; border-radius: 14px; background: var(--bg, rgba(14, 12, 28, .92)); border: 2px solid var(--gold); box-shadow: 0 6px 18px rgba(0, 0, 0, .45); font: 700 14px/1.35 "Segoe UI", sans-serif; overflow-wrap: anywhere; animation: agIn .35s ease-out both; }
   .ag .tip { margin-top: 8px; box-sizing: border-box; padding: 10px 14px; border-radius: 16px; background: var(--bg, rgba(14, 12, 28, .92)); border: 2px solid rgba(255, 255, 255, .18); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); font: 700 15px/1.4 "Segoe UI", sans-serif; overflow-wrap: anywhere; display: flex; gap: 10px; align-items: flex-start; animation: agIn .35s ease-out both; }
   .ag .tip b { flex: none; font-size: 18px; line-height: 1.2; }
   .ag .tv { margin-top: 8px; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; background: var(--bg, rgba(14, 12, 28, .92)); border: 2px solid var(--gold); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
@@ -1199,7 +1204,8 @@ const AGENTE_CSS = `
   @keyframes agIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
   .ag .card.in { animation: agIn .35s ease-out both; }
   /* Partes sueltas: /overlay/agente/cola solo la barra; /overlay/agente/respuesta todo menos la barra. */
-  .ag[data-part="cola"] .tip, .ag[data-part="cola"] .tv, .ag[data-part="cola"] .card { display: none !important; }
+  .ag[data-part="cola"] .tip, .ag[data-part="cola"] .tv, .ag[data-part="cola"] .card, .ag[data-part="cola"] .ntcs { display: none !important; }
+  .ag[data-part="respuesta"] .stat { display: none; }
   .ag[data-part="respuesta"] .bar { display: none; }
   .ag[data-part="respuesta"] .tip, .ag[data-part="respuesta"] .tv, .ag[data-part="respuesta"] .card { margin-top: 0; }
 `;
@@ -1207,6 +1213,8 @@ const AGENTE_CSS = `
 const AGENTE_BODY = `
   <div id="root" class="hidden"><div class="ag" id="ag">
     <div class="bar"><span class="dot"></span><b id="agname"></b><span class="sep">|</span><span id="agqueue"></span><span class="sep">|</span><span class="free" id="agfree"></span><span class="sep">|</span><span class="hint">Los regalos dan prioridad</span></div>
+    <div class="stat hidden" id="agstat"><span id="agstattext"></span><span class="nxt hidden" id="agnext"></span></div>
+    <div class="ntcs" id="agnotices"></div>
     <div class="tip hidden" id="agtip"><b>&#128161;</b><span id="agtiptext"></span></div>
     <div class="tv hidden" id="tvcard">
       <div class="tvhead"><b>Trivia</b><span id="tvtime"></span></div>
@@ -1265,6 +1273,40 @@ const AGENTE_JS = `
     else { freeEl.textContent = "Gratis en " + left + " s"; freeEl.className = "free"; }
   }
 
+  var statEl = document.getElementById("agstat"), statText = document.getElementById("agstattext"), nextEl = document.getElementById("agnext"), ntcEl = document.getElementById("agnotices");
+  // Línea de estado: qué está haciendo el agente ahora y quién sigue en la fila.
+  function renderStatus() {
+    if (!config || !state || DEMO) { statEl.classList.add("hidden"); return; }
+    var c = state.current, t = tvState && tvState.phase !== "idle", text, nx = state.queue && state.queue[0];
+    if (c) text = c.answer ? "Respondiendo a " + c.name : "Pensando la respuesta de " + c.name + "...";
+    else if (t) text = "Trivia en curso";
+    else if (state.queueSize > 0) text = "Preparando la siguiente pregunta";
+    else text = "Libre: escribe " + config.command + " y tu pregunta";
+    statText.textContent = text;
+    var showNext = nx && (c || t);
+    if (showNext) { nextEl.textContent = "Sigue: " + nx.name + (state.queueSize > 1 ? " (+" + (state.queueSize - 1) + ")" : ""); nextEl.classList.remove("hidden"); }
+    else nextEl.classList.add("hidden");
+    statEl.classList.remove("hidden");
+  }
+
+  // Avisos a cada persona (en la fila, subió a Prioridad, gracias): salen una vez, el servidor los quita solos.
+  var ntcSeen = {}, ntcIcon = { queue: "\u23F3", gift: "\u{1F381}", thanks: "\u{1F499}" };
+  function renderNotices() {
+    var list = (!DEMO && state && state.notices) || [], keep = {}, i, n, el;
+    for (i = 0; i < list.length; i++) {
+      n = list[i]; keep[n.id] = 1;
+      if (ntcSeen[n.id]) continue;
+      el = document.createElement("div");
+      el.className = "ntc"; el.setAttribute("data-id", n.id);
+      el.textContent = ntcIcon[n.kind] + " " + n.text;
+      ntcEl.appendChild(el);
+      ntcSeen[n.id] = el;
+      // Solo habla si no hay una respuesta, una trivia ni otra frase en curso (si no, se pisarían).
+      if (n.speak && !state.current && !(tvState && tvState.phase !== "idle")) speakText("nt" + n.id, n.text, n.mood);
+    }
+    for (var id in ntcSeen) if (!keep[id]) { if (ntcSeen[id].parentNode) ntcSeen[id].parentNode.removeChild(ntcSeen[id]); delete ntcSeen[id]; }
+  }
+
   function setAvatar(c) {
     iniEl.textContent = (c.name || "?").trim().charAt(0).toUpperCase();
     if (c.avatarUrl) { imgEl.onerror = function () { imgEl.classList.add("hidden"); }; imgEl.src = c.avatarUrl; imgEl.classList.remove("hidden"); }
@@ -1280,14 +1322,17 @@ const AGENTE_JS = `
     speakText(c.id, (config.voice.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer);
   }
   // Voz del equipo (speechSynthesis): la de siempre y el respaldo de la voz de la nube.
-  function speakSystem(text, v) {
+  // Ánimo del LIVE (calma, alegre, emocionada...) con la voz del equipo: no sabe actuar, pero sube o baja el ritmo y el tono.
+  var liveMood = "calm", MOOD_VOICE = { calm: [1, 1], happy: [1.06, 1.1], excited: [1.15, 1.25], mystery: [0.9, 0.85] };
+  function speakSystem(text, v, mood) {
     if (!window.speechSynthesis) return;
     try {
       window.speechSynthesis.cancel();
       var u = new SpeechSynthesisUtterance(text);
       var pick = pickVoice(window.speechSynthesis.getVoices(), v.gender, v.voiceName);
       if (pick) { u.voice = pick; u.lang = pick.lang; } else u.lang = "es-ES";
-      u.rate = v.rate; u.volume = v.volume;
+      var mv = MOOD_VOICE[!mood || mood === "auto" ? liveMood : mood] || MOOD_VOICE.calm;
+      u.rate = Math.min(2, v.rate * mv[0]); u.pitch = mv[1]; u.volume = v.volume;
       window.speechSynthesis.speak(u);
     } catch (e) {}
   }
@@ -1309,7 +1354,7 @@ const AGENTE_JS = `
       cur += sentences[i];
     }
     if (cur.trim()) out.push(cur.trim());
-    return out.slice(0, 4);
+    return out.slice(0, 6);
   }
 
   function requestTts(text, mood) {
@@ -1330,7 +1375,7 @@ const AGENTE_JS = `
     function fallback(from) {
       cloudFails++;
       if (cloudFails >= 3) cloudOffUntil = now() + 120000;
-      speakSystem(chunks.slice(from).join(" "), v);
+      speakSystem(chunks.slice(from).join(" "), v, mood);
     }
     function next() {
       if (gen !== ttsGen || i >= reqs.length) return;
@@ -1358,7 +1403,7 @@ const AGENTE_JS = `
     if (!window.speechSynthesis) return;
     spokenId = key;
     stopSpeech();
-    speakSystem(text, v);
+    speakSystem(text, v, mood);
   }
 
   function typeStep() {
@@ -1438,8 +1483,10 @@ const AGENTE_JS = `
 
   function render() {
     renderBar();
+    renderStatus();
     renderTrivia();
     renderCard();
+    renderNotices();
     renderTip();
     if (!shown) { shown = true; rootEl.classList.remove("hidden"); }
   }
@@ -1464,6 +1511,7 @@ const AGENTE_JS = `
         if (m.channel !== "agente" || !m.payload || m.payload.kind !== "state") return;
         config = m.payload.config;
         state = DEMO ? DEMO_STATE : m.payload.state;
+        liveMood = !DEMO && m.payload.animo && config.animo && config.animo.enabled ? m.payload.animo.mood : "calm";
         tvState = DEMO ? null : m.payload.trivia;
         offset = m.payload.serverNow - Date.now();
         applyStyle();
