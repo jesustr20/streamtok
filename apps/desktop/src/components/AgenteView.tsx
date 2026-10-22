@@ -238,7 +238,9 @@ const MOOD_LABEL: Record<TtsMood, string> = { calm: "Tranquila", happy: "Alegre"
 /** Voz humana de Gemini: elegir voz, estilo y compararlas con una frase propia antes de decidir. */
 function NubeVoz({ config, set, api, hasGeminiKey }: { config: AgentConfig; set: (p: Partial<AgentVoice>) => void; api: Api; hasGeminiKey: boolean }) {
   const v = config.voice;
-  const [phrase, setPhrase] = useState(`Hola, soy ${config.name}. Gracias por seguirme. Escribe ${config.command} y tu pregunta, y con gusto te respondo.`);
+  // La frase de ejemplo sigue al nombre y al comando que tengas ahora; solo deja de seguirlos si la escribes tú.
+  const [custom, setCustom] = useState<string | null>(null);
+  const phrase = custom ?? `Hola, soy ${config.name}. Gracias por seguirme. Escribe ${config.command} y tu pregunta, y con gusto te respondo.`;
   const [mood, setMood] = useState<TtsMood>("calm");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -289,7 +291,7 @@ function NubeVoz({ config, set, api, hasGeminiKey }: { config: AgentConfig; set:
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ flex: 1, minWidth: 260 }}>
           <Field label="Frase de prueba" hint="escribe algo que diría tu IA">
-            <input value={phrase} maxLength={300} onChange={(e) => setPhrase(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            <input value={phrase} maxLength={300} onChange={(e) => setCustom(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
           </Field>
         </div>
         <div style={{ width: 170 }}>
