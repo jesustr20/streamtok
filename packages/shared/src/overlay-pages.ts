@@ -1354,7 +1354,7 @@ const AGENTE_JS = `
   function speakText(key, text, mood) {
     var v = config && config.voice;
     if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || spokenId === key) return;
-    if (v.provider === "gemini" && ws && ws.readyState === 1 && now() >= cloudOffUntil) { spokenId = key; speakCloud(text, mood || "calm", v); return; }
+    if (v.provider === "gemini" && ws && ws.readyState === 1 && now() >= cloudOffUntil) { spokenId = key; speakCloud(text, mood || "auto", v); return; }
     if (!window.speechSynthesis) return;
     spokenId = key;
     stopSpeech();

@@ -108,6 +108,35 @@ export const GEMINI_VOICES: { id: string; trait: string; female: boolean }[] = [
 export const TTS_MOODS = ["calm", "happy", "excited", "mystery"] as const;
 export type TtsMood = (typeof TTS_MOODS)[number];
 
+// ---------------------------------------------------------------------------
+// Ánimo del LIVE: qué tan movido va el LIVE (monedas, comentarios, likes...) y cómo se nota en el agente
+// ---------------------------------------------------------------------------
+
+export const AgentAnimoSchema = z.object({
+  /** el ánimo del LIVE elige el tono de la voz (si la frase no pide uno concreto) */
+  enabled: z.boolean().default(true),
+  /** cuánto cuesta "animar" al agente: más alto = se anima con menos movimiento (0.5 a 2) */
+  sensitivity: z.number().min(0.5).max(2).default(1),
+  /** también le dice al modelo cómo va el LIVE, para que responda con ese tono */
+  textContext: z.boolean().default(true),
+});
+export type AgentAnimo = z.infer<typeof AgentAnimoSchema>;
+
+export const ANIMO_LEVELS = ["calm", "normal", "lively", "hype"] as const;
+export type AnimoLevel = (typeof ANIMO_LEVELS)[number];
+export const ANIMO_LEVEL_NAMES: Record<AnimoLevel, string> = { calm: "Tranquilo", normal: "Normal", lively: "Animado", hype: "A tope" };
+
+export const AnimoStateSchema = z.object({
+  /** energía del LIVE, 0 a 100 */
+  energy: z.number().min(0).max(100),
+  level: z.enum(ANIMO_LEVELS),
+  /** ánimo que tendrá la próxima frase hablada (un regalo grande lo sube un rato) */
+  mood: z.enum(TTS_MOODS),
+  /** hay un subidón en curso (regalo grande o prueba) */
+  spike: z.boolean(),
+});
+export type AnimoState = z.infer<typeof AnimoStateSchema>;
+
 export interface VoiceLike {
   name: string;
   lang: string;
@@ -283,6 +312,7 @@ export const AgentConfigSchema = z.object({
   /** cómo quieres que hable (tono, humor...); se suma a las reglas fijas */
   personality: z.string().max(300).default(""),
   voice: AgentVoiceSchema.default({}),
+  animo: AgentAnimoSchema.default({}),
   trivia: AgentTriviaConfigSchema.default({}),
   tips: AgentTipsConfigSchema.default({}),
   style: OverlayStyleSchema.default({ designId: "panel" }),
@@ -355,6 +385,7 @@ export type AgentFile = z.infer<typeof AgentFileSchema>;
  *  - `set-key` / `remove-key`  UI → sidecar: guarda o borra la clave de un proveedor (solo en tu equipo)
  *  - `test-connection`         UI → sidecar: hace una llamada mínima al modelo; responde con `test-result`
  *  - `list-models`             UI → sidecar: pide a la API del proveedor su lista de modelos; responde con `models`
+ *  - `animo-test` UI → sidecar: sube el ánimo del LIVE unos segundos (prueba)
  *  - `tts`        overlay/UI → sidecar: pide el audio de una frase a la voz de la nube; responde con `tts-audio`
  *  - `error`      sidecar → UI
  */
@@ -373,6 +404,8 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
     voiceOverlays: z.number().int().nonnegative().optional(),
     /** audios de la nube generados en este LIVE (para el tope `maxCloudCalls`) */
     ttsCalls: z.number().int().nonnegative().optional(),
+    /** cómo va el LIVE ahora (energía y ánimo) */
+    animo: AnimoStateSchema.optional(),
   }),
   // el overlay del stream se presenta al conectar (la vista previa de la app no); `speaks` = esta copia lee en voz alta
   z.object({ kind: z.literal("overlay-hello"), speaks: z.boolean() }),
@@ -402,11 +435,14 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
     kind: z.literal("tts"),
     id: z.string().min(1).max(80),
     text: z.string().min(1).max(600),
-    mood: z.enum(TTS_MOODS).default("calm"),
+    // `auto` = el que marque el ánimo del LIVE ahora (si está activado)
+    mood: z.enum(["auto", ...TTS_MOODS]).default("auto"),
     voice: z.string().max(40).optional(),
     style: z.string().max(200).optional(),
     model: z.string().max(60).optional(),
   }),
+  // prueba: sube el ánimo del LIVE un rato (para ver y oír cómo reacciona el agente sin esperar un regalo grande)
+  z.object({ kind: z.literal("animo-test") }),
   // respuesta a `tts` (solo a quien la pidió): audio WAV en base64, o `ok: false` con el motivo
   z.object({ kind: z.literal("tts-audio"), id: z.string(), ok: z.boolean(), message: z.string(), mime: z.string(), data: z.string() }),
   z.object({ kind: z.literal("error"), message: z.string() }),

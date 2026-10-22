@@ -155,6 +155,8 @@ function scrub(message: string, key: string): string {
 export interface ModelServiceOptions {
   keys: KeysStorePort;
   fetchImpl?: FetchLike;
+  /** línea sobre cómo va el LIVE (ánimo) que se suma a las reglas del modelo; el sidecar la arma, no los espectadores */
+  liveContext?: () => string | undefined;
 }
 
 /**
@@ -233,7 +235,7 @@ export class ModelService extends EventEmitter {
       provider: config.provider,
       key,
       model: modelFor(config),
-      system: systemPrompt(config),
+      system: systemPrompt(config, this.opts.liveContext?.()),
       user: userPrompt(question),
       maxTokens: MAX_TOKENS,
     });

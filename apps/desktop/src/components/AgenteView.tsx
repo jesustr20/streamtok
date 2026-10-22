@@ -1,4 +1,4 @@
-import { AGENT_PROVIDERS, GEMINI_VOICES, TRIVIA_DIFFICULTY_NAMES, TTS_MOODS, type TtsMood, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
+import { AGENT_PROVIDERS, ANIMO_LEVEL_NAMES, GEMINI_VOICES, TRIVIA_DIFFICULTY_NAMES, TTS_MOODS, type TtsMood, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentAnimo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { useTestRunner } from "../lib/use-test-runner";
@@ -104,6 +104,8 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
       <Modelo config={config} keys={keys} api={api} patch={patch} />
 
       <Voz config={config} patch={patch} api={api} hasGeminiKey={keys.gemini} />
+
+      <Animo config={config} patch={patch} api={api} />
 
       <Trivia config={config} api={api} patch={patch} hasKey={keys[config.provider]} />
 
@@ -241,7 +243,7 @@ function NubeVoz({ config, set, api, hasGeminiKey }: { config: AgentConfig; set:
   // La frase de ejemplo sigue al nombre y al comando que tengas ahora; solo deja de seguirlos si la escribes tú.
   const [custom, setCustom] = useState<string | null>(null);
   const phrase = custom ?? `Hola, soy ${config.name}. Gracias por seguirme. Escribe ${config.command} y tu pregunta, y con gusto te respondo.`;
-  const [mood, setMood] = useState<TtsMood>("calm");
+  const [mood, setMood] = useState<TtsMood | "auto">("auto");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -294,9 +296,10 @@ function NubeVoz({ config, set, api, hasGeminiKey }: { config: AgentConfig; set:
             <input value={phrase} maxLength={300} onChange={(e) => setCustom(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
           </Field>
         </div>
-        <div style={{ width: 170 }}>
-          <Field label="Ánimo" hint="para oír cómo cambia">
-            <select value={mood} onChange={(e) => setMood(e.target.value as TtsMood)} style={{ ...inputStyle, width: "100%" }}>
+        <div style={{ width: 230 }}>
+          <Field label="Ánimo" hint="en el LIVE lo decide el ánimo del LIVE; aquí puedes forzarlo">
+            <select value={mood} onChange={(e) => setMood(e.target.value as TtsMood | "auto")} style={{ ...inputStyle, width: "100%" }}>
+              <option value="auto">Según el LIVE{api.animo ? ` (${MOOD_LABEL[api.animo.mood]})` : ""}</option>
               {TTS_MOODS.map((m) => (
                 <option key={m} value={m}>
                   {MOOD_LABEL[m]}
@@ -329,6 +332,55 @@ function NubeVoz({ config, set, api, hasGeminiKey }: { config: AgentConfig; set:
         })}
       </div>
     </div>
+  );
+}
+
+const LEVEL_COLOR: Record<string, string> = { calm: "#5B8DEF", normal: "#3DD68C", lively: "#F5A524", hype: "#E23A57" };
+
+/** Ánimo del LIVE: cuánto movimiento hay (monedas, comentarios, likes...) y cómo lo nota el agente en la voz y el tono. */
+function Animo({ config, patch, api }: { config: AgentConfig; patch: (p: Partial<AgentConfig>) => void; api: Api }) {
+  const a = config.animo;
+  const set = (p: Partial<AgentAnimo>) => patch({ animo: { ...a, ...p } });
+  const st = api.animo;
+  const color = st ? LEVEL_COLOR[st.spike ? "hype" : st.level] : "#5B8DEF";
+  return (
+    <Card title="Ánimo del LIVE">
+      <div style={{ fontSize: 12.5, color: "#9A9CA5", lineHeight: 1.5 }}>
+        El agente mide cuánto movimiento hay en el LIVE (monedas, comentarios, likes, seguidores y compartidos de los últimos minutos). Con poco movimiento habla con calma; con mucho, más animado. Un regalo grande lo emociona al momento.
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 150 }}>
+          <div style={{ fontSize: 11, color: "#7C7E88" }}>Ahora</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color }}>{st ? (st.spike ? "¡Subidón!" : ANIMO_LEVEL_NAMES[st.level]) : "—"}</div>
+          <div style={{ fontSize: 11.5, color: "#9A9CA5" }}>{st ? `voz: ${MOOD_LABEL[st.mood].toLowerCase()}` : "conectando…"}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#7C7E88", marginBottom: 4 }}>
+            <span>Energía</span>
+            <span>{st ? st.energy : 0} / 100</span>
+          </div>
+          <div style={{ height: 10, borderRadius: 99, background: "#1C1D23", overflow: "hidden" }}>
+            <div style={{ width: `${st?.energy ?? 0}%`, height: "100%", background: color, transition: "width 0.6s, background 0.6s" }} />
+          </div>
+        </div>
+        <Btn onClick={api.animoTest}>▶ Probar subidón</Btn>
+      </div>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={a.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
+          Cambia el tono de la voz
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, opacity: a.enabled ? 1 : 0.5 }}>
+          <input type="checkbox" checked={a.textContext} disabled={!a.enabled} onChange={(e) => set({ textContext: e.target.checked })} />
+          Cambia también el tono del texto
+        </label>
+        <div style={{ width: 260, opacity: a.enabled ? 1 : 0.5 }}>
+          <Field label={`Sensibilidad (${a.sensitivity.toFixed(1)}×)`} hint="más alta = se anima con menos movimiento; si tu LIVE es grande y siempre sale «A tope», bájala">
+            <input type="range" min={0.5} max={2} step={0.1} value={a.sensitivity} disabled={!a.enabled} onChange={(e) => set({ sensitivity: Number(e.target.value) })} />
+          </Field>
+        </div>
+      </div>
+    </Card>
   );
 }
 
