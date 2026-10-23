@@ -360,6 +360,10 @@ export const AgentQueueItemSchema = z.object({
 });
 export type AgentQueueItem = z.infer<typeof AgentQueueItemSchema>;
 
+/** Gestos del cuerpo del personaje 3D que puede pedir la IA con su respuesta. */
+export const AGENT_GESTURES = ["none", "wave", "nod", "think", "jump", "laugh", "shrug", "shy"] as const;
+export type AgentGesture = (typeof AGENT_GESTURES)[number];
+
 export const AgentCurrentSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -371,6 +375,10 @@ export const AgentCurrentSchema = z.object({
   startedAt: z.number(),
   /** cuánto se queda la respuesta en pantalla (ms); 0 mientras piensa */
   showMs: z.number().int().nonnegative(),
+  /** cómo se siente la IA con esta respuesta (la elige el modelo): da el tono de la voz y la cara del personaje */
+  mood: z.enum(TTS_MOODS).optional(),
+  /** gesto del cuerpo que acompaña la respuesta (lo elige el modelo) */
+  gesture: z.enum(AGENT_GESTURES).optional(),
 });
 export type AgentCurrent = z.infer<typeof AgentCurrentSchema>;
 
