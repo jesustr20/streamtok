@@ -348,7 +348,14 @@ const tiktokConnection = new TiktokConnectionController(server, {
     else if (kind === "battleArmies") room.ingestBattleArmies(raw);
     else room.ingestBattleHosts(raw);
   },
-  onConnected: () => {
+  onConnected: (info) => {
+    if (info?.resumed) {
+      // reconexión tras un corte del mismo LIVE: se conserva todo (cola del agente, regalos acreditados, trivia, Tops, metas...)
+      // eslint-disable-next-line no-console
+      console.log("[tiktok:info] Reconectado tras un corte: la sesión del LIVE continúa (no se reinicia nada).");
+      room.reset();
+      return;
+    }
     engine.resetSession();
     overlayCounters.resetSession();
     goals.resetSession();
