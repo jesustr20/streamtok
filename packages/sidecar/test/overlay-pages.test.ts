@@ -321,6 +321,14 @@ describe("overlay agente: personaje 3D", () => {
     expect(html).toContain('q.get("debug") === "1"');
   });
 
+  it("una frase nueva espera a la que suena (fila de voz), en vez de cortarla", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain("speechQ.push(");
+    expect(html).toContain("function startSpeech(");
+    // ya no se corta la voz al llegar una frase nueva: solo se detiene al arrancar una desde cero
+    expect(html).not.toContain("spokenId");
+  });
+
   it("no cambia las otras partes del agente", () => {
     expect(overlayPage("agente", 7331, { id: "cola" })).not.toContain("three.min.js");
     expect(overlayPage("agente", 7331)).not.toContain("three.min.js");
