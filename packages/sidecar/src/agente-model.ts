@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { AGENT_PROVIDERS, providerInfo, type AgentConfig, type AgentKeyStatus, type AgentProviderId } from "@streamtok/shared";
 import type { Responder } from "./agente.js";
-import { REFUSAL, cleanAnswer, looksLikeInjection, sanitizeQuestion, systemPrompt, userPrompt } from "./agente-guard.js";
+import { REFUSAL, cleanAnswer, looksLikeInjection, parseExpression, sanitizeQuestion, systemPrompt, userPrompt } from "./agente-guard.js";
 import type { KeysStorePort } from "./agente-keys.js";
 import { parseTrivia, type TriviaQuestion } from "./agente-trivia.js";
 
@@ -239,7 +239,10 @@ export class ModelService extends EventEmitter {
       user: userPrompt(question),
       maxTokens: MAX_TOKENS,
     });
-    return cleanAnswer(text);
+    // la etiqueta [emoción, gesto] se separa antes de limpiar (la limpieza quita barras y otros signos); si no hay, texto solo
+    const expr = parseExpression(text);
+    const clean = cleanAnswer(expr.text);
+    return expr.mood || expr.gesture ? { ...expr, text: clean } : clean;
   };
 
   /**

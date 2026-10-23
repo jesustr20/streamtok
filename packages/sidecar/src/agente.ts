@@ -15,6 +15,7 @@ import {
   type AgentState,
   type LiveEvent,
 } from "@streamtok/shared";
+import { type AgentExpression, parseExpression } from "./agente-guard.js";
 import { appDataDir } from "./mapping-rules.js";
 
 /**
@@ -82,7 +83,7 @@ export class AgenteStore implements AgenteStorePort {
 }
 
 /** Quien da las respuestas. La pieza 2 pone aquí el modelo (DeepSeek, OpenAI, Claude...). */
-export type Responder = (question: string, ctx: { name: string; config: AgentConfig }) => Promise<string>;
+export type Responder = (question: string, ctx: { name: string; config: AgentConfig }) => Promise<string | AgentExpression>;
 
 /** Tope de seguridad de una respuesta (el modelo recibe la orden de ser breve; esto solo evita un texto enorme). */
 export const MAX_ANSWER_CHARS = 600;
@@ -389,9 +390,9 @@ export class AgenteEngine extends EventEmitter {
   // -------------------------------------------------------------------------
 
   private async answer(cur: AgentCurrent & { answerAt?: number }): Promise<void> {
-    let text: string;
+    let reply: string | AgentExpression;
     try {
-      text = await this.responder(cur.question, { name: cur.name, config: this.config });
+      reply = await this.responder(cur.question, { name: cur.name, config: this.config });
     } catch (err) {
       const message = (err as Error).message;
       this.emit("log", { level: "error", message: `El agente no pudo responder: ${message}` });
@@ -404,7 +405,11 @@ export class AgenteEngine extends EventEmitter {
     }
     if (this.current !== cur) return; // se reinició mientras pensaba
     this.lastError = undefined;
-    cur.answer = clampAnswer(text.trim()) || "…";
+    // el modelo puede abrir su respuesta con [emoción, gesto]: se separa del texto y se guarda aparte
+    const expr = typeof reply === "string" ? parseExpression(reply) : reply;
+    cur.answer = clampAnswer(expr.text.trim()) || "…";
+    if (expr.mood) cur.mood = expr.mood;
+    if (expr.gesture) cur.gesture = expr.gesture;
     cur.showMs = showMsFor(cur.answer);
     cur.answerAt = this.now();
     this.emit("state");
@@ -553,5 +558,5 @@ function toItem(w: Waiting): AgentQueueItem {
 }
 
 function toCurrent(c: AgentCurrent): AgentCurrent {
-  return { id: c.id, name: c.name, ...(c.avatarUrl ? { avatarUrl: c.avatarUrl } : {}), question: c.question, coins: c.coins, answer: c.answer, startedAt: c.startedAt, showMs: c.showMs };
+  return { id: c.id, name: c.name, ...(c.avatarUrl ? { avatarUrl: c.avatarUrl } : {}), question: c.question, coins: c.coins, answer: c.answer, startedAt: c.startedAt, showMs: c.showMs, ...(c.mood ? { mood: c.mood } : {}), ...(c.gesture ? { gesture: c.gesture } : {}) };
 }

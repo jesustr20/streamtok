@@ -1,6 +1,9 @@
 /**
  * Overlay del personaje 3D del agente de IA (`/overlay/agente/personaje`).
  *
+ * La IA controla el cuerpo: cada respuesta trae su emoción y su gesto (los elige el modelo) y, sin preguntas, Nova tiene vida
+ * propia (mira a los lados, bosteza, se estira, saluda) y reacciona a lo que pasa (fila, trivia, seguidores, regalos).
+ *
  * Un chibi ninja (Nova, aprendiz de la Aldea de la Estrella Fugaz) dibujado con three.js que sigue el
  * ánimo del LIVE (calma, alegre, emocionada, misterio), mueve la boca mientras suena una respuesta o un
  * aviso en voz alta y celebra los regalos y los subidones. Fondo transparente o verde croma, con piso.
@@ -299,8 +302,19 @@ export const PERSONAJE_JS = `
   }
   function talkFor(sec) { talkUntil = Math.max(talkUntil, clock.getElapsedTime() + sec); }
 
+  /* gestos del cuerpo: los pide la IA con su respuesta, o salen solos (vida propia y reacciones al LIVE) */
+  var GEST = { wave: 2.0, nod: 1.4, think: 2.6, jump: 0.8, laugh: 2.0, shrug: 1.6, shy: 2.2, look: 2.6, stretch: 2.6, yawn: 2.4 };
+  var gName = "", gT0 = 0, gDur = 0, nextIdle = 8, eyeShown = "";
+  function gestureOn() { return !!gName && clock.getElapsedTime() - gT0 < gDur; }
+  // force = la IA lo pide (pisa al que haya); si no, solo entra cuando no hay otro gesto en curso
+  function playGesture(name, force) {
+    if (!GEST[name] || (!force && gestureOn())) return;
+    gName = name; gT0 = clock.getElapsedTime(); gDur = GEST[name];
+  }
+
   function setMood(k) {
     if (!MOODS[k] || k === cur) return;
+    eyeShown = "";
     cur = k;
     var M = MOODS[k];
     eyes.forEach(function (e, idx) {
@@ -315,13 +329,15 @@ export const PERSONAJE_JS = `
   }
 
   /* ---------- estado del agente ---------- */
-  var seenFirst = false, lastSpike = false, seenNotice = {}, talkedId = "", wantMood = "calm";
+  var seenFirst = false, lastSpike = false, seenNotice = {}, talkedId = "", thinkId = "", wantMood = "calm";
+  var aiMood = "", aiMoodUntil = 0, lastQ = 0, lastTv = "";
   function onState(p) {
     var config = p.config || {};
     applyChar(config.character);
     if (DEMO) { document.documentElement.setAttribute("data-ready", "1"); return; }
     var ani = p.animo, on = !!(config.animo && config.animo.enabled && ani);
     wantMood = on && MOODS[ani.mood] ? ani.mood : "calm";
+    var tnow = clock.getElapsedTime();
     var spike = on && !!ani.spike;
     if (spike && !lastSpike && seenFirst) celebrate();
     lastSpike = spike;
@@ -331,13 +347,28 @@ export const PERSONAJE_JS = `
       seenNotice[n.id] = 1;
       if (!seenFirst) return;
       if (n.kind === "gift") celebrate();
+      else if (n.kind === "thanks") playGesture("wave");
       if (n.speak) talkFor(Math.min(10, (n.text || "").length * 0.065 + 0.8));
     });
     var c = st.current;
+    if (c && !c.answer && c.id !== thinkId && seenFirst) { thinkId = c.id; playGesture("think"); }
     if (c && c.answer && c.id !== talkedId) {
       talkedId = c.id;
       talkFor(Math.min((c.showMs || 8000) / 1000, c.answer.length * 0.065 + 1));
+      // lo que la IA decidio sentir y hacer con esta respuesta
+      if (c.mood && MOODS[c.mood]) { aiMood = c.mood; aiMoodUntil = tnow + Math.min(25, Math.max(6, (c.showMs || 8000) / 1000)); }
+      if (c.gesture && c.gesture !== "none") playGesture(c.gesture, true);
     }
+    // reacciones a lo que pasa en el LIVE
+    var qs = st.queueSize || 0;
+    if (seenFirst && qs > lastQ) playGesture("nod");
+    lastQ = qs;
+    var tv = p.trivia, tvKey = tv && tv.phase !== "idle" ? tv.phase + tv.startedAt : "";
+    if (seenFirst && tvKey && tvKey !== lastTv) {
+      if (tv.phase === "open") playGesture("think");
+      else if (tv.phase === "reveal") playGesture(tv.winner ? "jump" : "shrug");
+    }
+    lastTv = tvKey;
     seenFirst = true;
     document.documentElement.setAttribute("data-ready", "1");
   }
@@ -389,9 +420,10 @@ export const PERSONAJE_JS = `
       demoAt = t + 6; wantMood = order[demoI % order.length]; demoI++;
       if (wantMood === "excited") celebrate();
       if (wantMood === "happy") talkFor(3);
+      playGesture(["wave", "think", "jump", "shy", "laugh", "shrug", "look", "stretch"][demoI % 8], true);
     }
     var celebrating = burstUntil > t;
-    setMood(celebrating ? "excited" : wantMood);
+    setMood(celebrating ? "excited" : (aiMoodUntil > t ? aiMood : wantMood));
     var M = MOODS[cur], mot = reduce ? 0.35 : 1;
     var live = speechAt > 0 && t - speechAt < 0.7;
     var talking = hasVoice ? live : talkUntil > t;
@@ -417,16 +449,48 @@ export const PERSONAJE_JS = `
       pv.rotation.x = 0.25 + Math.sin(t * 3 + n) * (0.08 + P.tail * 0.4) - lag * 0.3;
       pv.rotation.z = pv.userData.side * (0.1 + Math.sin(t * 2.4 + n * 2) * P.tail * 0.25);
     });
+    // ---- gestos: se aplican encima de la pose del animo, subiendo y bajando suave ----
+    var gu = gName ? (t - gT0) / gDur : -1, gOn = gu >= 0 && gu <= 1;
+    var env = gOn ? Math.max(0, Math.min(1, gu / 0.15, (1 - gu) / 0.2)) : 0;
+    var eyeOv = "", forceM = 0, blushOv = 0;
+    function arm(a, rx, rz) { a.rotation.x = lerp(a.rotation.x, rx, env); a.rotation.z = lerp(a.rotation.z, rz, env); }
+    if (gOn) {
+      if (gName === "wave") { arm(armR, 0, 2.45 + Math.sin(t * 11) * 0.45); head.rotation.z += 0.08 * env; }
+      else if (gName === "nod") { head.rotation.x += Math.sin(gu * Math.PI * 4) * 0.2 * env; }
+      else if (gName === "think") { arm(armR, 0.9, 3.3); head.rotation.z -= 0.12 * env; head.rotation.y = 0.18 * env; }
+      else if (gName === "jump") { root.position.y += Math.abs(Math.sin(gu * Math.PI)) * 0.55; arm(armR, 0, 2.2); arm(armL, 0, -2.2); }
+      else if (gName === "laugh") { eyeOv = "arc"; forceM = 0.7 + Math.sin(t * 16) * 0.25; head.rotation.x -= 0.15 * env; root.position.y += Math.abs(Math.sin(t * 14)) * 0.05 * env; body.rotation.z = Math.sin(t * 18) * 0.03 * env; arm(armR, 0, 0.7); arm(armL, 0, -0.7); }
+      else if (gName === "shrug") { arm(armR, 0, 1.3); arm(armL, 0, -1.3); head.rotation.z += 0.2 * env; forceM = 0.35 * env; }
+      else if (gName === "shy") { eyeOv = "arc"; blushOv = 1; arm(armR, 0.9, 3.3); arm(armL, 0.9, -3.3); head.rotation.x += 0.25 * env; head.rotation.z += 0.12 * env; }
+      else if (gName === "look") { head.rotation.y = Math.sin(gu * Math.PI * 2) * 0.6 * env; }
+      else if (gName === "stretch") { arm(armR, 0, 3.0); arm(armL, 0, -3.0); head.rotation.x -= 0.15 * env; body.scale.y *= 1 + 0.05 * env; eyeOv = env > 0.6 ? "arc" : ""; }
+      else if (gName === "yawn") { eyeOv = "arc"; forceM = 0.95 * env; head.rotation.x -= 0.22 * env; }
+    } else { head.rotation.y = lerp(head.rotation.y, 0, Math.min(1, dt * 6)); body.rotation.z = lerp(body.rotation.z, 0, Math.min(1, dt * 6)); }
+    if (eyeOv !== eyeShown) {
+      eyeShown = eyeOv;
+      eyes.forEach(function (e, idx) {
+        var kind = eyeOv || ((cur === "mystery" && idx === 1) ? "arc" : MOODS[cur].eye);
+        e.material.map = eyeTex[kind]; e.material.needsUpdate = true;
+      });
+    }
+    // vida propia: sin hablar ni gestos en curso, cada 8 a 16 s hace algo (segun su animo)
+    if (talking || gOn || celebrating) nextIdle = Math.max(nextIdle, t + 6);
+    else if (!DEMO && t > nextIdle) {
+      var pool2 = cur === "calm" ? ["look", "look", "stretch", "yawn"] : cur === "happy" ? ["look", "wave", "nod"] : cur === "excited" ? ["jump", "laugh", "wave"] : ["look", "think"];
+      playGesture(pool2[Math.floor(Math.random() * pool2.length)]);
+      nextIdle = t + 8 + Math.random() * 8;
+    }
     gold.emissiveIntensity = 0.6 + P.orb * 0.6;
     if (t > nextBlink) { blinkEnd = t + 0.12; nextBlink = t + 2.5 + Math.random() * 3; }
     var open = !(t < blinkEnd);
     eyes.forEach(function (e, idx) {
       var arc = (cur === "mystery" && idx === 1);
       e.scale.y = (open || arc) ? 1 : 0.1;
-      e.userData.blush.material.opacity = P.blush;
+      e.userData.blush.material.opacity = Math.max(P.blush, blushOv);
     });
     // boca: sigue la voz real (volumen); sin dato, un vaiven. Callada, queda como pide el animo.
     var lvl = !talking ? 0 : (hasVoice && speechLevel >= 0 ? speechLevel : 0.3 + 0.55 * Math.abs(Math.sin(t * 10)));
+    lvl = Math.max(lvl, forceM);
     mouthL += (lvl - mouthL) * Math.min(1, dt * 18);
     if (talking || mouthL > 0.06) {
       setMouth(mouthL > 0.08 ? "open" : (M.mouth === "o" ? "o" : "smile"));

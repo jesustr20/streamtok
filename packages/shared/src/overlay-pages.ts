@@ -1369,7 +1369,7 @@ const AGENTE_JS = `
 
   function speak(c) {
     if (!c.answer) return;
-    speakText(c.id, (config.voice.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer);
+    speakText(c.id, (config.voice.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer, c.mood);
   }
   // Voz del equipo (speechSynthesis): la de siempre y el respaldo de la voz de la nube.
   // Ánimo del LIVE (calma, alegre, emocionada...) con la voz del equipo: no sabe actuar, pero sube o baja el ritmo y el tono.
