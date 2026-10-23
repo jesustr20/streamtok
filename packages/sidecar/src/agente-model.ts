@@ -231,14 +231,17 @@ export class ModelService extends EventEmitter {
     }
     this.calls++;
     this.emit("state");
-    const text = await callModel(this.fetchImpl, {
-      provider: config.provider,
-      key,
-      model: modelFor(config),
-      system: systemPrompt(config, this.opts.liveContext?.()),
-      user: userPrompt(question),
-      maxTokens: MAX_TOKENS,
-    });
+    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt(config, this.opts.liveContext?.()), user: userPrompt(question) };
+    let text: string;
+    try {
+      text = await callModel(this.fetchImpl, { ...request, maxTokens: MAX_TOKENS });
+    } catch (err) {
+      // Los modelos que «piensan» a veces gastan todos los tokens razonando y devuelven el texto vacío: se reintenta una vez con más margen.
+      if (!/respuesta vacía/.test((err as Error).message) || this.calls >= config.maxModelCalls) throw err;
+      this.calls++;
+      this.emit("state");
+      text = await callModel(this.fetchImpl, { ...request, maxTokens: MAX_TOKENS * 4 });
+    }
     // la etiqueta [emoción, gesto] se separa antes de limpiar (la limpieza quita barras y otros signos); si no hay, texto solo
     const expr = parseExpression(text);
     const clean = cleanAnswer(expr.text);

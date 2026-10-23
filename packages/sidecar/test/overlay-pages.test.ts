@@ -339,6 +339,16 @@ describe("overlay agente: personaje 3D", () => {
     expect(() => new Function(scriptOf(speaker))).not.toThrow();
   });
 
+  it("la voz de la nube gasta pocas llamadas: trozos grandes, pedidos de uno en uno y pausa de un minuto si Gemini da 429", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain("> 450");
+    expect(html).toContain("function req(k)");
+    expect(html).toContain("if (i >= chunks.length)");
+    expect(html).toContain("cloudOffUntil = now() + 60000");
+    expect(html).toContain("429|demasiadas");
+    expect(() => new Function(scriptOf(html))).not.toThrow();
+  });
+
   it("no cambia las otras partes del agente", () => {
     expect(overlayPage("agente", 7331, { id: "cola" })).not.toContain("three.min.js");
     expect(overlayPage("agente", 7331)).not.toContain("three.min.js");
