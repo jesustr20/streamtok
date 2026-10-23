@@ -122,6 +122,30 @@ describe("AgenteController", () => {
     srv.close();
   });
 
+  it("speech: el overlay que habla avisa cuándo suena la voz y se reenvía al personaje; los demás no pueden", async () => {
+    const srv = new StreamTokWsServer(0);
+    const eng = new AgenteEngine({ store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} } });
+    new AgenteController(srv, eng);
+    const speaker = await connect(srv);
+    const character = await connect(srv);
+    const stranger = await connect(srv);
+    sockets.push(speaker.ws, character.ws, stranger.ws);
+    const isSpeech = (x: Msg) => x.channel === "agente" && x.payload.kind === "speech";
+    speaker.send({ kind: "overlay-hello", speaks: true });
+    await speaker.next(isState);
+    speaker.send({ kind: "speech", speaking: true, level: 0.4 });
+    const got = await character.next(isSpeech);
+    expect(got.payload).toEqual({ kind: "speech", speaking: true, level: 0.4 });
+    // quien no es un overlay con voz no puede mover la boca del personaje
+    stranger.send({ kind: "speech", speaking: true, level: 1 });
+    await new Promise((r) => setTimeout(r, 80));
+    await expect(character.next(isSpeech, 150)).rejects.toThrow("timeout");
+    // mensajes fuera de rango se descartan
+    speaker.send({ kind: "speech", speaking: true, level: 7 });
+    await expect(character.next(isSpeech, 150)).rejects.toThrow("timeout");
+    srv.close();
+  });
+
   it("trivia: se lanza de ejemplo, no filtra la respuesta correcta y se cancela", async () => {
     const srv = new StreamTokWsServer(0);
     const eng = new AgenteEngine({ store: { load: () => ({ config: AgentConfigSchema.parse({}) }), save: async () => {} } });

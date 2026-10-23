@@ -329,6 +329,16 @@ describe("overlay agente: personaje 3D", () => {
     expect(html).not.toContain("spokenId");
   });
 
+  it("la boca sigue la voz real: el overlay que habla manda el volumen y el personaje lo usa", () => {
+    const speaker = overlayPage("agente", 7331);
+    expect(speaker).toContain('kind: "speech"');
+    expect(speaker).toContain("function wavEnvelope(");
+    const character = overlayPage("agente", 7331, { id: "personaje" });
+    expect(character).toContain('m.payload.kind === "speech"');
+    expect(character).toContain("voiceOverlays");
+    expect(() => new Function(scriptOf(speaker))).not.toThrow();
+  });
+
   it("no cambia las otras partes del agente", () => {
     expect(overlayPage("agente", 7331, { id: "cola" })).not.toContain("three.min.js");
     expect(overlayPage("agente", 7331)).not.toContain("three.min.js");

@@ -486,6 +486,9 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
   // pide a Gemini sus modelos de voz (los que traen «tts» en el nombre); responde con `voice-models`
   z.object({ kind: z.literal("list-voice-models") }),
   z.object({ kind: z.literal("voice-models"), ok: z.boolean(), models: z.array(z.string()), message: z.string() }),
+  // el overlay que habla avisa cuándo suena la voz y con qué fuerza (0 a 1; -1 = no se sabe, p. ej. la voz del equipo);
+  // el sidecar lo reenvía a todos y el personaje 3D mueve la boca con eso
+  z.object({ kind: z.literal("speech"), speaking: z.boolean(), level: z.number().min(-1).max(1) }),
   z.object({ kind: z.literal("error"), message: z.string() }),
 ]);
 export type AgentMessage = z.infer<typeof AgentMessageSchema>;

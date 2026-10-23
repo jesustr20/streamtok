@@ -1327,6 +1327,46 @@ const AGENTE_JS = `
     dbgEl.textContent = dbgLines.join("\\n");
     dbgEl.classList.remove("hidden");
   }
+  // Avisa al personaje 3D si suena la voz y con que fuerza (por el sidecar). level -1 = no se sabe (voz del equipo).
+  var levelTimer = null;
+  function sendSpeech(on, level) {
+    if (MUTE_MODE || DEMO || !ws || ws.readyState !== 1) return;
+    try { ws.send(JSON.stringify({ channel: "agente", payload: { kind: "speech", speaking: on, level: level } })); } catch (e) {}
+  }
+  function stopLevels() { if (levelTimer) { clearInterval(levelTimer); levelTimer = null; } }
+  // Volumen de un audio WAV de 16 bits por tramos de 40 ms (0 a 1), para que la boca siga la voz real.
+  function wavEnvelope(b64) {
+    try {
+      var bin = atob(b64), n = bin.length;
+      if (n < 60) return null;
+      var rate = bin.charCodeAt(24) | (bin.charCodeAt(25) << 8) | (bin.charCodeAt(26) << 16);
+      var ch = bin.charCodeAt(22) || 1, bits = bin.charCodeAt(34);
+      if (bits !== 16 || rate < 8000) return null;
+      var step = Math.max(1, Math.round(rate * 0.04)) * 2 * ch, vals = [], peak = 0, i, j, sum, s16, cnt;
+      for (i = 44; i + 1 < n; i += step) {
+        sum = 0; cnt = 0;
+        for (j = i; j + 1 < i + step && j + 1 < n; j += 2 * ch) {
+          s16 = bin.charCodeAt(j) | (bin.charCodeAt(j + 1) << 8);
+          if (s16 >= 32768) s16 -= 65536;
+          sum += s16 * s16; cnt++;
+        }
+        var rms = cnt ? Math.sqrt(sum / cnt) : 0;
+        vals.push(rms); if (rms > peak) peak = rms;
+      }
+      if (!peak) return null;
+      for (i = 0; i < vals.length; i++) vals[i] = Math.min(1, vals[i] / (peak * 0.75));
+      return { win: 0.04, v: vals };
+    } catch (e) { return null; }
+  }
+  function trackLevels(a, env) {
+    stopLevels();
+    levelTimer = setInterval(function () {
+      if (a.paused || a.ended) { sendSpeech(true, 0); return; }
+      var k = env ? Math.min(env.v.length - 1, Math.floor(a.currentTime / env.win)) : -1;
+      sendSpeech(true, k >= 0 ? env.v[k] : -1);
+    }, 60);
+  }
+
   function speak(c) {
     if (!c.answer) return;
     speakText(c.id, (config.voice.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer);
@@ -1345,7 +1385,7 @@ const AGENTE_JS = `
       if (pick) { u.voice = pick; u.lang = pick.lang; } else u.lang = "es-ES";
       var mv = MOOD_VOICE[!mood || mood === "auto" ? liveMood : mood] || MOOD_VOICE.calm;
       u.rate = Math.min(2, v.rate * mv[0]); u.pitch = mv[1]; u.volume = v.volume;
-      u.onstart = function () { dbg("voz del equipo: hablando"); };
+      u.onstart = function () { dbg("voz del equipo: hablando"); stopLevels(); sendSpeech(true, -1); levelTimer = setInterval(function () { sendSpeech(true, -1); }, 250); };
       u.onend = function () { done(); };
       u.onerror = function (ev) { dbg("voz del equipo: error " + (ev && ev.error)); done(); };
       window.speechSynthesis.speak(u);
@@ -1401,14 +1441,15 @@ const AGENTE_JS = `
         if (gen !== ttsGen) return;
         if (!m || !m.ok) { dbg("Gemini: sin audio (" + (m ? (m.message || "error") : "sin respuesta en 30 s") + "), uso la voz del equipo"); fallback(idx); return; }
         dbg("Gemini: audio recibido (" + Math.round((m.data || "").length / 1366) + " KB)");
+        var env = wavEnvelope(m.data);
         cloudFails = 0;
         var a = new Audio("data:" + m.mime + ";base64," + m.data);
         a.volume = v.volume; a.playbackRate = v.rate;
         curAudio = a;
-        a.onended = next;
+        a.onended = function () { stopLevels(); next(); };
         a.onerror = function () { dbg("audio: el navegador no pudo leer el archivo"); if (gen === ttsGen) fallback(idx); };
         var pr = a.play();
-        if (pr && pr.then) pr.then(function () { dbg("audio: reproduciendo"); });
+        if (pr && pr.then) pr.then(function () { dbg("audio: reproduciendo"); trackLevels(a, env); });
         if (pr && pr.catch) pr.catch(function (e) { dbg("audio: BLOQUEADO (" + (e && e.name) + "): el navegador no deja sonar sin un clic"); if (gen === ttsGen) fallback(idx); });
       });
     }
@@ -1443,7 +1484,9 @@ const AGENTE_JS = `
       if (finished) return;
       finished = true;
       if (speechWatch) { clearTimeout(speechWatch); speechWatch = null; }
+      stopLevels();
       speaking = false;
+      if (!speechQ.length) sendSpeech(false, 0);
       var n = speechQ.shift();
       if (n) startSpeech(n.text, n.mood);
     }
