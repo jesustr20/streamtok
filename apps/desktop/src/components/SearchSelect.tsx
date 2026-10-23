@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { matchesQuery } from "../lib/search";
 
 export interface SearchSelectOption {
@@ -10,6 +11,9 @@ export interface SearchSelectOption {
 /**
  * Lista desplegable con caja "Buscar…" arriba. Filtra sin distinguir
  * mayúsculas ni tildes. Enter elige la primera coincidencia, Escape cierra.
+ *
+ * La lista se dibuja fuera del contenedor (portal + position fixed) para que no la recorte ningún
+ * `overflow: hidden` de los modales; se abre hacia arriba si abajo no cabe.
  */
 export function SearchSelect({
   value,
@@ -30,12 +34,45 @@ export function SearchSelect({
   const [query, setQuery] = useState("");
   const [hovered, setHovered] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<React.CSSProperties | null>(null);
   const selected = options.find((o) => o.value === value);
   const filtered = options.filter((o) => matchesQuery(o.label, query));
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-    else setQuery("");
+    if (!open) {
+      setQuery("");
+      setPos(null);
+    }
+  }, [open]);
+  useEffect(() => {
+    if (pos) inputRef.current?.focus(); // el campo existe solo cuando la lista ya está colocada
+  }, [pos]);
+
+  // Coloca la lista junto al botón (debajo, o encima si abajo no hay sitio) y la cierra si algo se mueve.
+  useEffect(() => {
+    if (!open) return;
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const below = window.innerHeight - r.bottom - 12;
+    const up = below < 200 && r.top > below;
+    const maxHeight = Math.max(120, Math.min(260, (up ? r.top : below) - 8));
+    setPos(
+      up
+        ? { left: r.left, width: r.width, bottom: window.innerHeight - r.top + 4, maxHeight }
+        : { left: r.left, width: r.width, top: r.bottom + 4, maxHeight },
+    );
+    const close = (e: Event) => {
+      if (e.target instanceof Node && listRef.current?.contains(e.target)) return; // scroll de la propia lista
+      setOpen(false);
+    };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
   }, [open]);
 
   function pick(v: string) {
@@ -46,6 +83,7 @@ export function SearchSelect({
   return (
     <div style={{ position: "relative" }}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         style={{ ...triggerStyle, height, fontSize, color: selected ? "#F4F4F5" : "#5B5D66" }}
@@ -55,10 +93,10 @@ export function SearchSelect({
         <span style={{ fontSize: 11, color: "#5B5D66" }}>▾</span>
       </button>
 
-      {open && (
+      {open && pos && createPortal(
         <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 15 }} onClick={() => setOpen(false)} />
-          <div style={dropdownStyle}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 1000 }} onClick={() => setOpen(false)} />
+          <div ref={listRef} style={{ ...dropdownStyle, ...pos }}>
             <input
               ref={inputRef}
               value={query}
@@ -98,7 +136,8 @@ export function SearchSelect({
               )}
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );
@@ -128,14 +167,10 @@ const labelStyle: React.CSSProperties = {
 };
 
 const dropdownStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "calc(100% + 4px)",
-  left: 0,
-  right: 0,
-  zIndex: 16,
+  position: "fixed",
+  zIndex: 1001,
   display: "flex",
   flexDirection: "column",
-  maxHeight: 260,
   background: "#0E0F12",
   border: "1px solid #2A2C33",
   borderRadius: 8,
