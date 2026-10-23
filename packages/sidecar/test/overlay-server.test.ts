@@ -44,6 +44,16 @@ describe("OverlayHttpServer", () => {
     expect(await (await fetch(`${base}/overlay/agente`)).text()).toContain('var AGENT_PART = "";');
   });
 
+  it("sirve /overlay/agente/personaje: la página del personaje 3D, sin la del agente", async () => {
+    const base = await start();
+    const res = await fetch(`${base}/overlay/agente/personaje`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("three@0.152.2/build/three.min.js");
+    expect(html).toContain('channel: "agente"');
+    expect(html).not.toContain("AGENT_PART");
+  });
+
   it("sirve la página de prueba de audio en /overlay/prueba-audio", async () => {
     const base = await start();
     const res = await fetch(`${base}/overlay/prueba-audio`);

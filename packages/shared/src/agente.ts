@@ -292,6 +292,21 @@ export function buildTips(c: Pick<AgentConfig, "name" | "command" | "eligibility
   return [...out, ...c.tips.custom];
 }
 
+const HexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "un color como #ffc94d");
+
+/** El personaje 3D (`/overlay/agente/personaje`): sus colores y el fondo para el LIVE. */
+export const AgentCharacterSchema = z.object({
+  /** color de la bufanda */
+  scarfColor: HexColorSchema.default("#ffc94d"),
+  /** color del pelo */
+  hairColor: HexColorSchema.default("#3a3f9e"),
+  /** "transparent" deja solo la figura; "chroma" pone verde puro (#00b140) para quitarlo con el filtro de croma del LIVE */
+  background: z.enum(["transparent", "chroma"]).default("transparent"),
+  /** muestra el piso donde está parado */
+  floor: z.boolean().default(true),
+});
+export type AgentCharacter = z.infer<typeof AgentCharacterSchema>;
+
 export const AgentConfigSchema = z.object({
   enabled: z.boolean().default(true),
   /** nombre con el que se presenta el agente */
@@ -323,6 +338,7 @@ export const AgentConfigSchema = z.object({
   animo: AgentAnimoSchema.default({}),
   trivia: AgentTriviaConfigSchema.default({}),
   tips: AgentTipsConfigSchema.default({}),
+  character: AgentCharacterSchema.default({}),
   style: OverlayStyleSchema.default({ designId: "panel" }),
 });
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;

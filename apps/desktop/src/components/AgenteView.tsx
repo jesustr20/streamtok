@@ -1,9 +1,9 @@
-import { AGENT_PROVIDERS, ANIMO_LEVEL_NAMES, GEMINI_VOICES, TRIVIA_DIFFICULTY_NAMES, TTS_MOODS, type TtsMood, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentAnimo, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
+import { AGENT_PROVIDERS, ANIMO_LEVEL_NAMES, GEMINI_VOICES, TRIVIA_DIFFICULTY_NAMES, TTS_MOODS, type TtsMood, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentAnimo, type AgentCharacter, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
-import { Btn, Card, DesignCard, Field, NumberField, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
+import { Btn, Card, ColorField, DesignCard, Field, NumberField, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
 
 type Api = ReturnType<typeof useAgente>;
 
@@ -119,6 +119,8 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
       </div>
       <UrlCard kind="agente" id="cola" title="Solo la barra de cola" />
       <UrlCard kind="agente" id="respuesta" title="Solo las respuestas" />
+      <Personaje config={config} patch={patch} />
+      <UrlCard kind="agente" id="personaje" title="Personaje 3D (overlay)" showPreview reserve={{ w: 440, h: 500 }} />
       {open && <DesignCard kind="agente" style={config.style} onChange={(style) => patch({ style })} />}
     </>
   );
@@ -378,6 +380,35 @@ function Animo({ config, patch, api }: { config: AgentConfig; patch: (p: Partial
           </Field>
         </div>
       </div>
+    </Card>
+  );
+}
+
+/** El personaje 3D: colores, piso y fondo para quitarlo con el croma del LIVE. */
+function Personaje({ config, patch }: { config: AgentConfig; patch: (p: Partial<AgentConfig>) => void }) {
+  const c = config.character;
+  const set = (p: Partial<AgentCharacter>) => patch({ character: { ...c, ...p } });
+  return (
+    <Card title="Personaje 3D">
+      <div style={{ fontSize: 12.5, color: "#C9CBD2", lineHeight: 1.55 }}>
+        Nova, aprendiz de la Aldea de la Estrella Fugaz, sigue el ánimo del LIVE (calma, alegre, emocionada, misterio), mueve la boca mientras suena una respuesta
+        y celebra los regalos. Ponlo como una fuente más en el LIVE con el enlace de abajo. Usa «▶ Probar subidón» (Ánimo del LIVE) para verlo emocionarse.
+      </div>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <ColorField label="Bufanda" value={c.scarfColor} onChange={(v) => set({ scarfColor: v ?? "#ffc94d" })} />
+        <ColorField label="Pelo" value={c.hairColor} onChange={(v) => set({ hairColor: v ?? "#3a3f9e" })} />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={c.floor} onChange={(e) => set({ floor: e.target.checked })} />
+          Mostrar el piso
+        </label>
+      </div>
+      <Field label="Fondo" hint="«Verde croma» pone verde puro (#00b140): en LIVE Studio u OBS agrega el filtro de croma (clave de color verde) y queda solo la figura con su piso. «Transparente» no lleva fondo.">
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn onClick={() => set({ background: "transparent" })} disabled={c.background === "transparent"}>Transparente</Btn>
+          <Btn onClick={() => set({ background: "chroma" })} disabled={c.background === "chroma"}>Verde croma</Btn>
+        </div>
+      </Field>
+      <div style={{ fontSize: 11.5, color: "#7C7E88" }}>El personaje carga el 3D desde internet (three.js); en LIVE Studio ya hace falta conexión para el nombre del enlace.</div>
     </Card>
   );
 }

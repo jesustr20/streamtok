@@ -1,4 +1,5 @@
 import { PICK_VOICE_JS } from "./agente.js";
+import { personajePage } from "./overlay-personaje.js";
 import type { OverlayKind } from "./overlays.js";
 
 /**
@@ -1215,6 +1216,7 @@ const AGENTE_BODY = `
     <div class="bar"><span class="dot"></span><b id="agname"></b><span class="sep">|</span><span id="agqueue"></span><span class="sep">|</span><span class="free" id="agfree"></span><span class="sep">|</span><span class="hint">Los regalos dan prioridad</span></div>
     <div class="stat hidden" id="agstat"><span id="agstattext"></span><span class="nxt hidden" id="agnext"></span></div>
     <div class="ntcs" id="agnotices"></div>
+    <div class="hidden" id="agdbg" style="position:fixed;left:0;bottom:0;right:0;padding:4px 8px;font:12px/1.35 monospace;color:#fff;background:rgba(0,0,0,.8);white-space:pre-wrap;z-index:99"></div>
     <div class="tip hidden" id="agtip"><b>&#128161;</b><span id="agtiptext"></span></div>
     <div class="tv hidden" id="tvcard">
       <div class="tvhead"><b>Trivia</b><span id="tvtime"></span></div>
@@ -1317,6 +1319,15 @@ const AGENTE_JS = `
 
   // Lee la respuesta en voz alta con una voz del sistema, una sola vez por pregunta. En la vista previa de demo no habla.
   var spokenId = "";
+  // Diagnostico de la voz: con ?debug=1 en el enlace se ve en pantalla que pasa con cada frase.
+  var DEBUG = q.get("debug") === "1", dbgEl = document.getElementById("agdbg"), dbgLines = [];
+  function dbg(msg) {
+    if (!DEBUG) return;
+    dbgLines.push(new Date().toLocaleTimeString() + " " + msg);
+    if (dbgLines.length > 6) dbgLines.shift();
+    dbgEl.textContent = dbgLines.join("\\n");
+    dbgEl.classList.remove("hidden");
+  }
   function speak(c) {
     if (!c.answer) return;
     speakText(c.id, (config.voice.readQuestion ? c.name + " pregunta: " + c.question + (/[?!.]$/.test(c.question) ? " " : ". ") : "") + c.answer);
@@ -1325,16 +1336,19 @@ const AGENTE_JS = `
   // Ánimo del LIVE (calma, alegre, emocionada...) con la voz del equipo: no sabe actuar, pero sube o baja el ritmo y el tono.
   var liveMood = "calm", MOOD_VOICE = { calm: [1, 1], happy: [1.06, 1.1], excited: [1.15, 1.25], mystery: [0.9, 0.85] };
   function speakSystem(text, v, mood) {
-    if (!window.speechSynthesis) return;
+    if (!window.speechSynthesis) { dbg("voz del equipo: este navegador no tiene speechSynthesis"); return; }
     try {
+      dbg("voz del equipo: " + window.speechSynthesis.getVoices().length + " voces instaladas");
       window.speechSynthesis.cancel();
       var u = new SpeechSynthesisUtterance(text);
       var pick = pickVoice(window.speechSynthesis.getVoices(), v.gender, v.voiceName);
       if (pick) { u.voice = pick; u.lang = pick.lang; } else u.lang = "es-ES";
       var mv = MOOD_VOICE[!mood || mood === "auto" ? liveMood : mood] || MOOD_VOICE.calm;
       u.rate = Math.min(2, v.rate * mv[0]); u.pitch = mv[1]; u.volume = v.volume;
+      u.onstart = function () { dbg("voz del equipo: hablando"); };
+      u.onerror = function (ev) { dbg("voz del equipo: error " + (ev && ev.error)); };
       window.speechSynthesis.speak(u);
-    } catch (e) {}
+    } catch (e) { dbg("voz del equipo: fallo " + e); }
   }
 
   // Voz de la nube: el sidecar genera el audio (Gemini) y aqui solo se reproduce, frase a frase.
@@ -1382,15 +1396,17 @@ const AGENTE_JS = `
       var idx = i++;
       reqs[idx].then(function (m) {
         if (gen !== ttsGen) return;
-        if (!m || !m.ok) { fallback(idx); return; }
+        if (!m || !m.ok) { dbg("Gemini: sin audio (" + (m ? (m.message || "error") : "sin respuesta en 30 s") + "), uso la voz del equipo"); fallback(idx); return; }
+        dbg("Gemini: audio recibido (" + Math.round((m.data || "").length / 1366) + " KB)");
         cloudFails = 0;
         var a = new Audio("data:" + m.mime + ";base64," + m.data);
         a.volume = v.volume; a.playbackRate = v.rate;
         curAudio = a;
         a.onended = next;
-        a.onerror = function () { if (gen === ttsGen) fallback(idx); };
+        a.onerror = function () { dbg("audio: el navegador no pudo leer el archivo"); if (gen === ttsGen) fallback(idx); };
         var pr = a.play();
-        if (pr && pr.catch) pr.catch(function () { if (gen === ttsGen) fallback(idx); });
+        if (pr && pr.then) pr.then(function () { dbg("audio: reproduciendo"); });
+        if (pr && pr.catch) pr.catch(function (e) { dbg("audio: BLOQUEADO (" + (e && e.name) + "): el navegador no deja sonar sin un clic"); if (gen === ttsGen) fallback(idx); });
       });
     }
     next();
@@ -1398,7 +1414,11 @@ const AGENTE_JS = `
 
   function speakText(key, text, mood) {
     var v = config && config.voice;
-    if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || spokenId === key) return;
+    if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || spokenId === key) {
+      if (spokenId !== key) dbg("no habla: " + (!v ? "sin config" : !v.enabled ? "voz apagada" : DEMO ? "demo" : MUTE_MODE ? "vista previa" : "parte cola"));
+      return;
+    }
+    dbg("voz: " + v.provider + ", conexion " + (ws ? ws.readyState : "ninguna") + " - " + text.slice(0, 40));
     if (v.provider === "gemini" && ws && ws.readyState === 1 && now() >= cloudOffUntil) { spokenId = key; speakCloud(text, mood || "auto", v); return; }
     if (!window.speechSynthesis) return;
     spokenId = key;
@@ -1546,6 +1566,8 @@ export interface OverlayPageOptions {
 }
 
 export function overlayPage(kind: OverlayKind, wsPort: number, opts: OverlayPageOptions = {}): string {
+  // el personaje 3D del agente es una página aparte (lleva three.js y no usa el diseño ni la voz del resto)
+  if (kind === "agente" && opts.id === "personaje") return personajePage(wsPort, { demo: opts.demo, mute: opts.mute });
   const meta = kind === "meta";
   const nivel = kind === "nivel";
   const duelo = kind === "duelo";
