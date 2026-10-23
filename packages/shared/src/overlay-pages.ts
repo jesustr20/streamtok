@@ -1037,7 +1037,7 @@ const TOP_JS = `
   function applyStyle() {
     var style = config.style;
     document.body.setAttribute("data-design", designOverride || style.designId);
-    document.body.setAttribute("data-glass", style.transparent ? "1" : "0");
+    document.body.setAttribute("data-glass", style.transparent === false ? "0" : "1");
     var root = document.documentElement.style;
     var vars = { "--text": style.textColor, "--bg": style.backgroundColor, "--accent": style.accentColor };
     for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }

@@ -294,7 +294,7 @@ describe("overlay agente: voz", () => {
 describe("overlay top: tarjeta transparente (opción de cualquier diseño)", () => {
   it("la página marca data-glass según el estilo y el CSS quita el relleno sin quitar la tarjeta", () => {
     const html = overlayPage("top", 7331, { id: "likes" });
-    expect(html).toContain('document.body.setAttribute("data-glass", style.transparent ? "1" : "0")');
+    expect(html).toContain('document.body.setAttribute("data-glass", style.transparent === false ? "0" : "1")'); // activa por defecto
     const card = /body\[data-glass="1"\] \.top \{[^}]*\}/.exec(html)?.[0] ?? "";
     expect(card).toContain("background: var(--bg, transparent)");
     expect(card).toContain("box-shadow: none");

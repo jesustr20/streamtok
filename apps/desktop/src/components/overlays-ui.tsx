@@ -213,7 +213,7 @@ export function DesignCard({
 
       {kind === "top" && (
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-          <input type="checkbox" checked={!!style.transparent} onChange={(e) => onChange({ ...style, transparent: e.target.checked })} />
+          <input type="checkbox" checked={style.transparent !== false} onChange={(e) => onChange({ ...style, transparent: e.target.checked })} />
           Tarjeta transparente (se ve el juego a través; los nombres llevan contorno oscuro)
         </label>
       )}

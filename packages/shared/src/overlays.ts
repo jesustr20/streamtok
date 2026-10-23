@@ -61,7 +61,7 @@ export const OverlayStyleSchema = z.object({
   backgroundColor: z.string().optional(),
   /** factor de tamaño (1 = normal) */
   scale: z.number().positive().default(1),
-  /** Tops: tarjeta sin relleno (se ve el juego a través) en cualquier diseño; los textos llevan contorno oscuro */
+  /** Tops: tarjeta sin relleno (se ve el juego a través); activa por defecto, false = tarjeta con fondo. Los textos llevan contorno oscuro */
   transparent: z.boolean().optional(),
 });
 export type OverlayStyle = z.infer<typeof OverlayStyleSchema>;
