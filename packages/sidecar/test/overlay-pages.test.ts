@@ -315,6 +315,12 @@ describe("overlay agente: personaje 3D", () => {
     expect(overlayPage("agente", 7331, { id: "personaje" })).toContain('<div id="root">');
   });
 
+  it("el overlay del agente trae el diagnóstico de la voz (?debug=1)", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain('id="agdbg"');
+    expect(html).toContain('q.get("debug") === "1"');
+  });
+
   it("no cambia las otras partes del agente", () => {
     expect(overlayPage("agente", 7331, { id: "cola" })).not.toContain("three.min.js");
     expect(overlayPage("agente", 7331)).not.toContain("three.min.js");
