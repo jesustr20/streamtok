@@ -349,6 +349,15 @@ describe("overlay agente: personaje 3D", () => {
     expect(html).not.toContain("spokenId");
   });
 
+  it("el resultado de la trivia pasa por delante de la fila y corta la pregunta que aún suena", () => {
+    const html = overlayPage("agente", 7331);
+    // se pide con prioridad (4º argumento) y dice «Correcto» antes de nombrar la respuesta
+    expect(html).toMatch(/speakText\("tvr" \+ t\.startedAt, .*Correcto.*, t\.winner \? "happy" : "calm", true\)/);
+    expect(html).toContain("speechQ.unshift(");
+    expect(html).toContain("curFin");
+    expect(() => new Function(scriptOf(html))).not.toThrow();
+  });
+
   it("la boca sigue la voz real: el overlay que habla manda el volumen y el personaje lo usa", () => {
     const speaker = overlayPage("agente", 7331);
     expect(speaker).toContain('kind: "speech"');

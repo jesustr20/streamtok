@@ -310,6 +310,28 @@ describe("ModelService.generateTrivia", () => {
     expect(body.messages[1].content).toContain("Opciones: 4");
   });
 
+  it("si el modelo devuelve vacío (gastó los tokens razonando), reintenta una vez con más margen", async () => {
+    const bodies: any[] = [];
+    let n = 0;
+    const svc = new ModelService({
+      keys,
+      fetchImpl: async (u, init) => {
+        bodies.push(JSON.parse(init.body));
+        return reply(++n === 1 ? "" : good)(u, init);
+      },
+    });
+    const q = await svc.generateTrivia(AgentConfigSchema.parse({}), []);
+    expect(q?.correct).toBe(0);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].max_tokens).toBeGreaterThan(bodies[0].max_tokens);
+    expect(svc.modelCalls).toBe(2);
+  });
+
+  it("si vuelve a salir vacío, el error llega tal cual", async () => {
+    const svc = new ModelService({ keys, fetchImpl: reply("") });
+    await expect(svc.generateTrivia(AgentConfigSchema.parse({}), [])).rejects.toThrow(/respuesta vacía/);
+  });
+
   it("sin clave o sin presupuesto da null sin llamar", async () => {
     let calls = 0;
     const fetchImpl: FetchLike = async (u, i) => {

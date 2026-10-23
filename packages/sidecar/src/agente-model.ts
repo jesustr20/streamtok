@@ -265,7 +265,7 @@ export class ModelService extends EventEmitter {
     const topics = t.topics.split(",").map((x) => sanitizeQuestion(x)).filter(Boolean);
     const topic = topics.length > 0 ? topics[Math.floor(Math.random() * topics.length)] : "cultura general";
     const avoid = recent.slice(-8).map((q) => `- ${sanitizeQuestion(q)}`).join("\n");
-    const text = await callModel(this.fetchImpl, {
+    const request = {
       provider: config.provider,
       key,
       model: modelFor(config),
@@ -278,8 +278,17 @@ export class ModelService extends EventEmitter {
         "Si no estás completamente seguro de la respuesta, elige otra pregunta.",
       ].join("\n"),
       user: `Tema: ${topic}. Dificultad: ${t.difficulty}. Opciones: ${t.options}.${avoid ? `\nNo repitas estas preguntas:\n${avoid}` : ""}`,
-      maxTokens: 250,
-    });
+    };
+    let text: string;
+    try {
+      text = await callModel(this.fetchImpl, { ...request, maxTokens: 250 });
+    } catch (err) {
+      // Los modelos que «piensan» a veces gastan todos los tokens razonando y devuelven vacío: un reintento con más margen.
+      if (!/respuesta vacía/.test((err as Error).message) || this.calls >= config.maxModelCalls) throw err;
+      this.calls++;
+      this.emit("state");
+      text = await callModel(this.fetchImpl, { ...request, maxTokens: 250 * 6 });
+    }
     const q = parseTrivia(text, t.options);
     if (!q) this.emit("log", { level: "warn", message: "El modelo devolvió una pregunta de trivia que no cumple el formato; se descarta." });
     return q;
