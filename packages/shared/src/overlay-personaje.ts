@@ -342,6 +342,8 @@ export const PERSONAJE_JS = `
     document.documentElement.setAttribute("data-ready", "1");
   }
 
+  // la voz real: el overlay que habla manda cuando suena y con que fuerza; si no hay ninguno, se calcula por el largo del texto
+  var speechAt = 0, speechLevel = 0, hasVoice = false, mouthL = 0;
   var retry = 0, ws = null;
   function schedule() { retry = Math.min(retry + 1, 6); setTimeout(connect, 500 * retry); }
   function connect() {
@@ -350,7 +352,14 @@ export const PERSONAJE_JS = `
     ws.onmessage = function (ev) {
       try {
         var m = JSON.parse(ev.data);
-        if (m.channel !== "agente" || !m.payload || m.payload.kind !== "state") return;
+        if (m.channel !== "agente" || !m.payload) return;
+        if (m.payload.kind === "speech") {
+          if (m.payload.speaking) { speechAt = clock.getElapsedTime(); speechLevel = m.payload.level; }
+          else { speechAt = 0; speechLevel = 0; }
+          return;
+        }
+        if (m.payload.kind !== "state") return;
+        hasVoice = (m.payload.voiceOverlays || 0) > 0;
         onState(m.payload);
       } catch (e) {}
     };
@@ -383,7 +392,9 @@ export const PERSONAJE_JS = `
     }
     var celebrating = burstUntil > t;
     setMood(celebrating ? "excited" : wantMood);
-    var M = MOODS[cur], mot = reduce ? 0.35 : 1, talking = talkUntil > t;
+    var M = MOODS[cur], mot = reduce ? 0.35 : 1;
+    var live = speechAt > 0 && t - speechAt < 0.7;
+    var talking = hasVoice ? live : talkUntil > t;
     ["hop", "hopS", "breath", "tail", "tilt", "talk", "orb", "size", "blush"].forEach(function (k) { P[k] = lerp(P[k], M[k], K); });
     ["R", "L"].forEach(function (a) { ["rz", "amp", "sp", "rx"].forEach(function (k) { P[a][k] = lerp(P[a][k], M[a][k], K); }); });
 
@@ -396,7 +407,7 @@ export const PERSONAJE_JS = `
     armR.rotation.set(P.R.rx, 0, P.R.rz + Math.sin(t * P.R.sp) * P.R.amp);
     armL.rotation.set(P.L.rx, 0, P.L.rz + Math.sin(t * P.L.sp + 1) * P.L.amp);
     head.rotation.z = P.tilt * Math.sin(t * 0.9) + P.tilt * 0.6;
-    head.rotation.x = Math.sin(t * 1.3) * 0.03 + (cur === "mystery" ? 0.08 : 0) + (talking && !reduce ? Math.sin(t * 7) * 0.025 : 0);
+    head.rotation.x = Math.sin(t * 1.3) * 0.03 + (cur === "mystery" ? 0.08 : 0) + (talking && !reduce ? Math.sin(t * 7) * 0.025 + mouthL * 0.03 : 0);
     var lag = Math.cos(ph) * P.hop * 0.8;
     scarf.forEach(function (sgm, n) {
       sgm.rotation.x = Math.sin(t * 3.2 - n * 0.8) * (0.1 + P.tail * 0.55) - lag * 0.4 + 0.12;
@@ -414,10 +425,14 @@ export const PERSONAJE_JS = `
       e.scale.y = (open || arc) ? 1 : 0.1;
       e.userData.blush.material.opacity = P.blush;
     });
-    // boca: habla mientras suena la respuesta (aunque el animo sea calmado)
-    var talkAmt = talking ? Math.max(P.talk, 0.6) : P.talk;
-    setMouth(talking && M.mouth === "smile" ? "open" : M.mouth);
-    mouth.scale.y = talkAmt > 0.05 ? 0.55 + 0.55 * Math.abs(Math.sin(t * 11)) * talkAmt + (1 - talkAmt) * 0.45 : 1;
+    // boca: sigue la voz real (volumen); sin dato, un vaiven. Callada, queda como pide el animo.
+    var lvl = !talking ? 0 : (hasVoice && speechLevel >= 0 ? speechLevel : 0.3 + 0.55 * Math.abs(Math.sin(t * 10)));
+    mouthL += (lvl - mouthL) * Math.min(1, dt * 18);
+    if (talking || mouthL > 0.06) {
+      setMouth(mouthL > 0.08 ? "open" : (M.mouth === "o" ? "o" : "smile"));
+      mouth.scale.y = 0.3 + mouthL * 1.6;
+      mouth.scale.x = 1 + mouthL * 0.5;
+    } else { setMouth(M.mouth); mouth.scale.y = 1; mouth.scale.x = 1; }
     turn.rotation.y = Math.sin(t * 0.35) * 0.18 * mot;
     orbs.forEach(function (o, n) {
       var u = o.userData, a = t * (0.6 + P.orb * 0.5) + u.ph;

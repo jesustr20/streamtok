@@ -180,6 +180,10 @@ export class AgenteController extends EventEmitter {
       case "tts":
         void this.tts(msg, socket);
         return;
+      case "speech":
+        // solo lo manda quien reproduce la voz; se reenvía tal cual al personaje 3D
+        if (this.voiceOverlays.has(socket)) this.server.broadcast("agente", msg);
+        return;
       case "animo-test":
         this.animo?.boost();
         return;
