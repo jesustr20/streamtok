@@ -1401,14 +1401,14 @@ const AGENTE_JS = `
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
   }
 
-  // Parte el texto en trozos de ~200 letras cortando en el final de una frase.
+  // Parte el texto en trozos de ~450 letras (casi todas las respuestas caben en uno: cada trozo es una llamada que cuenta para el limite de Gemini) cortando en el final de una frase.
   function splitSpeech(t) {
     var sentences = t.match(/[^.!?;:\\n]+[.!?;:]*\\s*/g) || [t], out = [], cur = "", i;
     for (i = 0; i < sentences.length; i++) {
-      if (cur && (cur + sentences[i]).length > 200) { out.push(cur.trim()); cur = ""; }
+      if (cur && (cur + sentences[i]).length > 450) { out.push(cur.trim().slice(0, 590)); cur = ""; }
       cur += sentences[i];
     }
-    if (cur.trim()) out.push(cur.trim());
+    if (cur.trim()) out.push(cur.trim().slice(0, 590));
     return out.slice(0, 6);
   }
 
@@ -1425,9 +1425,9 @@ const AGENTE_JS = `
   function speakCloud(text, mood, v, done) {
     done = done || function () {};
     stopSpeech();
-    var gen = ttsGen, chunks = splitSpeech(text), reqs = [], i = 0, k;
-    // se piden todos a la vez (asi el segundo ya esta listo cuando acaba el primero) y suenan en orden
-    for (k = 0; k < chunks.length; k++) reqs.push(requestTts(chunks[k], mood));
+    var gen = ttsGen, chunks = splitSpeech(text), reqs = [], i = 0;
+    // se pide un trozo a la vez, con el siguiente adelantado mientras suena el actual (pedirlos todos juntos pasaba el limite por minuto de Gemini)
+    function req(k) { if (k < chunks.length && !reqs[k]) reqs[k] = requestTts(chunks[k], mood); return reqs[k]; }
     function fallback(from) {
       cloudFails++;
       if (cloudFails >= 3) cloudOffUntil = now() + 120000;
@@ -1435,14 +1435,17 @@ const AGENTE_JS = `
     }
     function next() {
       if (gen !== ttsGen) return;
-      if (i >= reqs.length) { done(); return; }
+      if (i >= chunks.length) { done(); return; }
       var idx = i++;
-      reqs[idx].then(function (m) {
+      req(idx).then(function (m) {
         if (gen !== ttsGen) return;
+        // limite de uso de Gemini (429): se deja la nube un minuto entero, sin seguir gastando llamadas
+        if (m && !m.ok && /429|demasiadas|mite de uso/i.test(m.message || "")) { cloudOffUntil = now() + 60000; cloudFails = 0; dbg("Gemini: limite de uso del plan; voz del equipo durante 1 minuto"); speakSystem(chunks.slice(idx).join(" "), v, mood, done); return; }
         if (!m || !m.ok) { dbg("Gemini: sin audio (" + (m ? (m.message || "error") : "sin respuesta en 30 s") + "), uso la voz del equipo"); fallback(idx); return; }
         dbg("Gemini: audio recibido (" + Math.round((m.data || "").length / 1366) + " KB)");
         var env = wavEnvelope(m.data);
         cloudFails = 0;
+        req(idx + 1);
         var a = new Audio("data:" + m.mime + ";base64," + m.data);
         a.volume = v.volume; a.playbackRate = v.rate;
         curAudio = a;

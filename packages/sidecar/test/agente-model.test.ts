@@ -91,6 +91,23 @@ describe("ModelService.respond", () => {
     expect(f.calls).toHaveLength(0);
   });
 
+  it("si el modelo devuelve el texto vacío (gastó los tokens razonando), reintenta una vez con más margen", async () => {
+    let n = 0;
+    const f = fakeFetch(() => (++n === 1 ? openaiReply("") : openaiReply("Ocho planetas.")));
+    const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
+    expect(await svc.respond("¿Cuántos planetas hay?", ctx())).toBe("Ocho planetas.");
+    expect(f.calls).toHaveLength(2);
+    expect(f.calls[1].body.max_tokens).toBeGreaterThan(f.calls[0].body.max_tokens);
+    expect(svc.modelCalls).toBe(2);
+  });
+
+  it("si vuelve a salir vacío, el error llega tal cual (no se reintenta sin fin)", async () => {
+    const f = fakeFetch(() => openaiReply(""));
+    const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
+    await expect(svc.respond("¿hola?", ctx())).rejects.toThrow(/respuesta vacía/);
+    expect(f.calls).toHaveLength(2);
+  });
+
   it("responde con el modelo, limpia la salida y cuenta la llamada", async () => {
     const f = fakeFetch(() => openaiReply("**Ocho** planetas. https://x.com"));
     const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
