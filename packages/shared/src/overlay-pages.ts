@@ -1468,7 +1468,7 @@ const AGENTE_JS = `
     next();
   }
 
-  function speakText(key, text, mood) {
+  function speakText(key, text, mood, prio) {
     var v = config && config.voice;
     if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || spokenKeys[key]) {
       if (!spokenKeys[key]) dbg("no habla: " + (!v ? "sin config" : !v.enabled ? "voz apagada" : DEMO ? "demo" : MUTE_MODE ? "vista previa" : "parte cola"));
@@ -1480,28 +1480,39 @@ const AGENTE_JS = `
     // Una frase nueva espera a que acabe la que suena (antes la cortaba a media pregunta); la fila guarda las ultimas 3.
     if (speaking) {
       dbg("en fila: " + text.slice(0, 40));
-      speechQ.push({ text: text, mood: mood });
-      while (speechQ.length > 3) speechQ.shift();
+      if (prio) {
+        // el resultado de la trivia pasa por delante: una pregunta vieja que aun espera turno ya no sirve, y si justo suena esa pregunta se corta
+        speechQ = speechQ.filter(function (n) { return !/^tv\\d/.test(n.key || ""); });
+        speechQ.unshift({ text: text, mood: mood, key: key, prio: true });
+        if (/^tv\\d/.test(curKey) && curFin) { stopSpeech(); curFin(); }
+      } else speechQ.push({ text: text, mood: mood, key: key });
+      while (speechQ.length > 3) {
+        var di = -1, qi;
+        for (qi = 0; qi < speechQ.length; qi++) if (!speechQ[qi].prio) { di = qi; break; }
+        speechQ.splice(di < 0 ? speechQ.length - 1 : di, 1);
+      }
       return;
     }
-    startSpeech(text, mood);
+    startSpeech(text, mood, key);
   }
 
-  var spokenKeys = {}, speaking = false, speechQ = [], speechWatch = null;
-  function startSpeech(text, mood) {
+  var spokenKeys = {}, speaking = false, speechQ = [], speechWatch = null, curKey = "", curFin = null;
+  function startSpeech(text, mood, key) {
     var v = config && config.voice, finished = false;
     if (!v) return;
-    speaking = true;
+    speaking = true; curKey = key || "";
     function fin() {
       if (finished) return;
       finished = true;
+      curKey = ""; curFin = null;
       if (speechWatch) { clearTimeout(speechWatch); speechWatch = null; }
       stopLevels();
       speaking = false;
       if (!speechQ.length) sendSpeech(false, 0);
       var n = speechQ.shift();
-      if (n) startSpeech(n.text, n.mood);
+      if (n) startSpeech(n.text, n.mood, n.key);
     }
+    curFin = fin;
     // por si el navegador nunca avisa que acabo, la fila no se queda trabada
     speechWatch = setTimeout(fin, Math.min(90000, text.length * 120 + 15000));
     dbg("voz: " + v.provider + ", conexion " + (ws ? ws.readyState : "ninguna") + " - " + text.slice(0, 40));
@@ -1540,7 +1551,7 @@ const AGENTE_JS = `
       if (t.phase === "open") speakText("tv" + t.startedAt, "Trivia. " + t.question + " " + t.options.map(function (o, n) { return LETTERS[n] + ": " + o + "."; }).join(" "), "happy");
       if (t.phase === "reveal") {
         var ok = t.options[t.correct];
-        speakText("tvr" + t.startedAt, t.winner ? "La respuesta correcta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." : "Nadie acert\u00f3. La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + ".", t.winner ? "happy" : "calm");
+        speakText("tvr" + t.startedAt, t.winner ? "\u00a1Correcto! La respuesta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." : "Nadie acert\u00f3. La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + ".", t.winner ? "happy" : "calm", true);
       }
     }
     if (t.phase === "open") {
