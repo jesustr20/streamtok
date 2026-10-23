@@ -30,8 +30,12 @@ export interface TiktokConnectionDeps {
   onGift(entry: GiftCatalogEntry): void;
   /** Mensajes de la sala sin normalizar (espectadores y batalla, ADR 0013). */
   onRoom?(kind: "roomUser" | "battleArmies" | "battleHosts", raw: unknown): void;
-  /** Se llama cuando una conexión queda establecida (ej. reiniciar la sesión del motor). */
-  onConnected(): void;
+  /**
+   * Se llama cuando una conexión queda establecida (ej. reiniciar la sesión del motor).
+   * `resumed` = es la reconexión automática de un corte reciente del mismo LIVE: la sesión sigue
+   * (cola de preguntas, regalos acreditados, Tops, metas...) y no debe empezar de cero.
+   */
+  onConnected(info?: { resumed: boolean }): void;
 }
 
 const STATE_REFRESH_MS = 1000;
@@ -41,6 +45,9 @@ const STATE_REFRESH_MS = 1000;
  * en el último valor (30 s) mientras no se pulse "Desconectar".
  */
 export const RECONNECT_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
+
+/** Si tras un corte se vuelve a conectar dentro de este plazo, se considera el mismo LIVE (la sesión se conserva). */
+export const RESUME_WINDOW_MS = 10 * 60_000;
 
 /**
  * Arranca/para la conexión al LIVE de TikTok a pedido de la UI (canal WS
@@ -59,6 +66,8 @@ export class TiktokConnectionController extends EventEmitter {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   /** Reintentos seguidos desde el último corte (vuelve a 0 al reconectar). */
   private retryAttempt = 0;
+  /** Cuándo se cortó por última vez una conexión que estaba establecida (para saber si una reconexión es el mismo LIVE). */
+  private lastDropAt = 0;
 
   constructor(
     private readonly server: StreamTokWsServer,
@@ -123,6 +132,7 @@ export class TiktokConnectionController extends EventEmitter {
     source.on("giftCatalogEntry", (entry: GiftCatalogEntry) => current() && this.deps.onGift(entry));
     source.on("disconnected", () => {
       if (!current()) return;
+      this.lastDropAt = Date.now();
       // Estado primero (síncrono) y después se libera la grabación.
       const retry = this.nextRetry();
       this.setState({
@@ -154,7 +164,7 @@ export class TiktokConnectionController extends EventEmitter {
     }
     if (!current()) return;
     this.retryAttempt = 0;
-    this.deps.onConnected();
+    this.deps.onConnected({ resumed: auto && Date.now() - this.lastDropAt <= RESUME_WINDOW_MS });
     let host: { nickname?: string; avatarUrl?: string } | null = null;
     try {
       host = source.getHostProfile?.() ?? null;

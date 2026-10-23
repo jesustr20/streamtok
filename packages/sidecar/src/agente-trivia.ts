@@ -28,7 +28,7 @@ export interface TriviaWinner {
 }
 
 /** Cuánto se queda la respuesta en pantalla. */
-export const REVEAL_MS = 10_000;
+export const REVEAL_MS = 15_000;
 /** Si el modelo falla, espera tanto antes de reintentar solo. */
 const RETRY_AFTER_MS = 60_000;
 

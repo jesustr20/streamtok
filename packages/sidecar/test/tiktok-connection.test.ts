@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import type { TiktokConnectionState } from "@streamtok/shared";
-import { RECONNECT_DELAYS_MS, TiktokConnectionController, type LiveSource } from "../src/tiktok-connection.js";
+import { RECONNECT_DELAYS_MS, RESUME_WINDOW_MS, TiktokConnectionController, type LiveSource } from "../src/tiktok-connection.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
 
 class FakeSource extends EventEmitter implements LiveSource {
@@ -102,6 +102,7 @@ describe("TiktokConnectionController", () => {
     (sources[0] as any).recorder.record("WebcastLikeMessage", { n: 1 });
     expect(recorders[0].records).toEqual([["WebcastLikeMessage", { n: 1 }]]);
     expect(onConnected).toHaveBeenCalledTimes(1);
+    expect(onConnected).toHaveBeenLastCalledWith({ resumed: false }); // conexión manual: sesión nueva
   });
 
   it("reenvía los mensajes de la sala (espectadores y batalla) de la conexión vigente", async () => {
@@ -229,7 +230,20 @@ describe("TiktokConnectionController", () => {
       expect(sources[1].username).toBe("x");
       expect(controller.getState()).toMatchObject({ status: "connected", username: "x" });
       expect(onConnected).toHaveBeenCalledTimes(2);
+      expect(onConnected).toHaveBeenLastCalledWith({ resumed: true }); // mismo LIVE: la sesión sigue
       expect(recorders).toHaveLength(2);
+    });
+
+    it("si el LIVE vuelve después del plazo (otro LIVE), la sesión empieza de cero", async () => {
+      await controller.connect("x");
+      sources[0].emit("disconnected", "1006");
+      nextFail = new Error("LIVE no disponible");
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAYS_MS[0]);
+      await vi.advanceTimersByTimeAsync(RESUME_WINDOW_MS + 60_000);
+      nextFail = null;
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAYS_MS[4]);
+      expect(controller.getState()).toMatchObject({ status: "connected", username: "x" });
+      expect(onConnected).toHaveBeenLastCalledWith({ resumed: false });
     });
 
     it("si el reintento falla sigue intentando con esperas crecientes y topa en el último valor", async () => {
