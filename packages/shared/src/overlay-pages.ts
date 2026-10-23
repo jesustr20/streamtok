@@ -1318,7 +1318,6 @@ const AGENTE_JS = `
   ${PICK_VOICE_JS}
 
   // Lee la respuesta en voz alta con una voz del sistema, una sola vez por pregunta. En la vista previa de demo no habla.
-  var spokenId = "";
   // Diagnostico de la voz: con ?debug=1 en el enlace se ve en pantalla que pasa con cada frase.
   var DEBUG = q.get("debug") === "1", dbgEl = document.getElementById("agdbg"), dbgLines = [];
   function dbg(msg) {
@@ -1335,8 +1334,9 @@ const AGENTE_JS = `
   // Voz del equipo (speechSynthesis): la de siempre y el respaldo de la voz de la nube.
   // Ánimo del LIVE (calma, alegre, emocionada...) con la voz del equipo: no sabe actuar, pero sube o baja el ritmo y el tono.
   var liveMood = "calm", MOOD_VOICE = { calm: [1, 1], happy: [1.06, 1.1], excited: [1.15, 1.25], mystery: [0.9, 0.85] };
-  function speakSystem(text, v, mood) {
-    if (!window.speechSynthesis) { dbg("voz del equipo: este navegador no tiene speechSynthesis"); return; }
+  function speakSystem(text, v, mood, done) {
+    done = done || function () {};
+    if (!window.speechSynthesis) { dbg("voz del equipo: este navegador no tiene speechSynthesis"); done(); return; }
     try {
       dbg("voz del equipo: " + window.speechSynthesis.getVoices().length + " voces instaladas");
       window.speechSynthesis.cancel();
@@ -1346,9 +1346,10 @@ const AGENTE_JS = `
       var mv = MOOD_VOICE[!mood || mood === "auto" ? liveMood : mood] || MOOD_VOICE.calm;
       u.rate = Math.min(2, v.rate * mv[0]); u.pitch = mv[1]; u.volume = v.volume;
       u.onstart = function () { dbg("voz del equipo: hablando"); };
-      u.onerror = function (ev) { dbg("voz del equipo: error " + (ev && ev.error)); };
+      u.onend = function () { done(); };
+      u.onerror = function (ev) { dbg("voz del equipo: error " + (ev && ev.error)); done(); };
       window.speechSynthesis.speak(u);
-    } catch (e) { dbg("voz del equipo: fallo " + e); }
+    } catch (e) { dbg("voz del equipo: fallo " + e); done(); }
   }
 
   // Voz de la nube: el sidecar genera el audio (Gemini) y aqui solo se reproduce, frase a frase.
@@ -1381,7 +1382,8 @@ const AGENTE_JS = `
     });
   }
 
-  function speakCloud(text, mood, v) {
+  function speakCloud(text, mood, v, done) {
+    done = done || function () {};
     stopSpeech();
     var gen = ttsGen, chunks = splitSpeech(text), reqs = [], i = 0, k;
     // se piden todos a la vez (asi el segundo ya esta listo cuando acaba el primero) y suenan en orden
@@ -1389,10 +1391,11 @@ const AGENTE_JS = `
     function fallback(from) {
       cloudFails++;
       if (cloudFails >= 3) cloudOffUntil = now() + 120000;
-      speakSystem(chunks.slice(from).join(" "), v, mood);
+      speakSystem(chunks.slice(from).join(" "), v, mood, done);
     }
     function next() {
-      if (gen !== ttsGen || i >= reqs.length) return;
+      if (gen !== ttsGen) return;
+      if (i >= reqs.length) { done(); return; }
       var idx = i++;
       reqs[idx].then(function (m) {
         if (gen !== ttsGen) return;
@@ -1414,16 +1417,41 @@ const AGENTE_JS = `
 
   function speakText(key, text, mood) {
     var v = config && config.voice;
-    if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || spokenId === key) {
-      if (spokenId !== key) dbg("no habla: " + (!v ? "sin config" : !v.enabled ? "voz apagada" : DEMO ? "demo" : MUTE_MODE ? "vista previa" : "parte cola"));
+    if (!v || !v.enabled || DEMO || MUTE_MODE || PART === "cola" || spokenKeys[key]) {
+      if (!spokenKeys[key]) dbg("no habla: " + (!v ? "sin config" : !v.enabled ? "voz apagada" : DEMO ? "demo" : MUTE_MODE ? "vista previa" : "parte cola"));
       return;
     }
+    var cloud = v.provider === "gemini" && ws && ws.readyState === 1 && now() >= cloudOffUntil;
+    if (!cloud && !window.speechSynthesis) return;
+    spokenKeys[key] = 1;
+    // Una frase nueva espera a que acabe la que suena (antes la cortaba a media pregunta); la fila guarda las ultimas 3.
+    if (speaking) {
+      dbg("en fila: " + text.slice(0, 40));
+      speechQ.push({ text: text, mood: mood });
+      while (speechQ.length > 3) speechQ.shift();
+      return;
+    }
+    startSpeech(text, mood);
+  }
+
+  var spokenKeys = {}, speaking = false, speechQ = [], speechWatch = null;
+  function startSpeech(text, mood) {
+    var v = config && config.voice, finished = false;
+    if (!v) return;
+    speaking = true;
+    function fin() {
+      if (finished) return;
+      finished = true;
+      if (speechWatch) { clearTimeout(speechWatch); speechWatch = null; }
+      speaking = false;
+      var n = speechQ.shift();
+      if (n) startSpeech(n.text, n.mood);
+    }
+    // por si el navegador nunca avisa que acabo, la fila no se queda trabada
+    speechWatch = setTimeout(fin, Math.min(90000, text.length * 120 + 15000));
     dbg("voz: " + v.provider + ", conexion " + (ws ? ws.readyState : "ninguna") + " - " + text.slice(0, 40));
-    if (v.provider === "gemini" && ws && ws.readyState === 1 && now() >= cloudOffUntil) { spokenId = key; speakCloud(text, mood || "auto", v); return; }
-    if (!window.speechSynthesis) return;
-    spokenId = key;
-    stopSpeech();
-    speakSystem(text, v, mood);
+    if (v.provider === "gemini" && ws && ws.readyState === 1 && now() >= cloudOffUntil) speakCloud(text, mood || "auto", v, fin);
+    else { stopSpeech(); speakSystem(text, v, mood, fin); }
   }
 
   function typeStep() {
