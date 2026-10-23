@@ -997,6 +997,14 @@ const TOP_CSS = `
   body[data-design="podio"] .slot.r1 .ped { height: 96px; }
   body[data-design="podio"] .slot.r2 .ped { height: 70px; }
   body[data-design="podio"] .slot.r3 .ped { height: 50px; }
+
+  /* Tarjeta transparente (opcion de cualquier diseno): sin relleno, se ve el juego a traves; los textos llevan contorno oscuro */
+  body[data-glass="1"] .top { background: var(--bg, transparent); box-shadow: none; }
+  body[data-glass="1"] .head, body[data-glass="1"] .nm, body[data-glass="1"] .sc { text-shadow: 0 0 2px #000, 0 0 4px #000, 0 2px 6px rgba(0, 0, 0, .9), 0 0 14px rgba(0, 0, 0, .6); }
+  body[data-glass="1"] .row { background: transparent; border: 1px solid rgba(255, 255, 255, .3); }
+  body[data-glass="1"] .rk { box-shadow: 0 0 0 2px rgba(0, 0, 0, .55); }
+  body[data-glass="1"] .av { box-shadow: 0 0 0 1px rgba(0, 0, 0, .55); }
+  body[data-glass="1"] .slot .ped { opacity: .72; }
 `;
 
 const TOP_BODY = `
@@ -1029,6 +1037,7 @@ const TOP_JS = `
   function applyStyle() {
     var style = config.style;
     document.body.setAttribute("data-design", designOverride || style.designId);
+    document.body.setAttribute("data-glass", style.transparent ? "1" : "0");
     var root = document.documentElement.style;
     var vars = { "--text": style.textColor, "--bg": style.backgroundColor, "--accent": style.accentColor };
     for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }

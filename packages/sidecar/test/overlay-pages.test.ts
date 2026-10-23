@@ -1,4 +1,4 @@
-import { AgentConfigSchema, FORMAT_TIMER_JS, GOAL_REMAINING_JS, goalRemainingText, RATE_TEXT_JS, TimerConfigSchema, formatTimerMs, overlayPage, OVERLAY_DESIGNS, timerRateText } from "@streamtok/shared";
+import { AgentConfigSchema, FORMAT_TIMER_JS, OverlayStyleSchema, GOAL_REMAINING_JS, goalRemainingText, RATE_TEXT_JS, TimerConfigSchema, formatTimerMs, overlayPage, OVERLAY_DESIGNS, timerRateText } from "@streamtok/shared";
 import { describe, expect, it } from "vitest";
 
 describe("overlayPage (compartida entre el servidor y la vista previa de la app)", () => {
@@ -288,6 +288,26 @@ describe("overlay agente: voz", () => {
     expect(overlayPage("agente", 7331, { mute: true })).toContain("var MUTE_MODE = true;");
     expect(overlayPage("agente", 7331)).toContain("var MUTE_MODE = false;");
     expect(overlayPage("agente", 7331)).toContain("DEMO || MUTE_MODE ||");
+  });
+});
+
+describe("overlay top: tarjeta transparente (opción de cualquier diseño)", () => {
+  it("la página marca data-glass según el estilo y el CSS quita el relleno sin quitar la tarjeta", () => {
+    const html = overlayPage("top", 7331, { id: "likes" });
+    expect(html).toContain('document.body.setAttribute("data-glass", style.transparent ? "1" : "0")');
+    const card = /body\[data-glass="1"\] \.top \{[^}]*\}/.exec(html)?.[0] ?? "";
+    expect(card).toContain("background: var(--bg, transparent)");
+    expect(card).toContain("box-shadow: none");
+    expect(card).not.toContain("border"); // el borde de cada diseño se queda
+    expect(html).toMatch(/body\[data-glass="1"\] \.row \{ background: transparent;/);
+    expect(html).not.toMatch(/body\[data-glass="1"\] \.av \{[^}]*display: none/); // las fotos se quedan
+    expect(html).toMatch(/body\[data-glass="1"\] \.head, body\[data-glass="1"\] \.nm, body\[data-glass="1"\] \.sc \{ text-shadow/);
+    expect(html).toContain('body[data-glass="1"] .slot .ped'); // vale también para el Podio
+  });
+
+  it("el esquema acepta transparent (opcional: lo anterior sigue valiendo)", () => {
+    expect(OverlayStyleSchema.parse({ designId: "lista" }).transparent).toBeUndefined();
+    expect(OverlayStyleSchema.parse({ designId: "podio", transparent: true }).transparent).toBe(true);
   });
 });
 

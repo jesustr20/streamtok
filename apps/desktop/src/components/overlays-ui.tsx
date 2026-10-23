@@ -211,6 +211,13 @@ export function DesignCard({
         </>
       )}
 
+      {kind === "top" && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={!!style.transparent} onChange={(e) => onChange({ ...style, transparent: e.target.checked })} />
+          Tarjeta transparente (se ve el juego a través; los nombres llevan contorno oscuro)
+        </label>
+      )}
+
       <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>Personalizar</div>
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-end" }}>
         <ColorField label="Texto" value={style.textColor} onChange={(v) => onChange({ ...style, textColor: v })} />
