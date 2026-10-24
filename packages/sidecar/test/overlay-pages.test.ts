@@ -358,6 +358,13 @@ describe("overlay agente: personaje 3D", () => {
     expect(() => new Function(scriptOf(html))).not.toThrow();
   });
 
+  it("al enseñar la respuesta de la trivia dice y muestra cuánta gente respondió", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain("Respondieron ");
+    expect(html).toContain("respondieron (");
+    expect(() => new Function(scriptOf(html))).not.toThrow();
+  });
+
   it("la boca sigue la voz real: el overlay que habla manda el volumen y el personaje lo usa", () => {
     const speaker = overlayPage("agente", 7331);
     expect(speaker).toContain('kind: "speech"');

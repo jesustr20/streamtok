@@ -1551,7 +1551,9 @@ const AGENTE_JS = `
       if (t.phase === "open") speakText("tv" + t.startedAt, "Trivia. " + t.question + " " + t.options.map(function (o, n) { return LETTERS[n] + ": " + o + "."; }).join(" "), "happy");
       if (t.phase === "reveal") {
         var ok = t.options[t.correct];
-        speakText("tvr" + t.startedAt, t.winner ? "\u00a1Correcto! La respuesta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." : "Nadie acert\u00f3. La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + ".", t.winner ? "happy" : "calm", true);
+        var tot = 0, ti; for (ti = 0; ti < (t.tally || []).length; ti++) tot += t.tally[ti];
+        var how = tot > 0 ? " Respondieron " + tot + (tot === 1 ? " persona." : " personas.") : " Nadie respondi\u00f3 en el chat.";
+        speakText("tvr" + t.startedAt, t.winner ? "\u00a1Correcto! La respuesta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." + (tot > 1 ? how : "") : "Nadie acert\u00f3." + how + " La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + ".", t.winner ? "happy" : "calm", true);
       }
     }
     if (t.phase === "open") {
@@ -1565,7 +1567,8 @@ const AGENTE_JS = `
       tvTime.textContent = ""; tvBar.classList.add("hidden");
       for (var j = 0; j < tvOpts.children.length; j++) tvOpts.children[j].className = "tvopt " + (j === t.correct ? "ok" : "dim");
       tvFoot.className = "tvfoot" + (t.winner ? " win" : "");
-      tvFoot.textContent = t.winner ? "\u{1F3C6} \u00a1Acert\u00f3 " + t.winner.name + "!" : "Nadie acert\u00f3";
+      var tt = 0, tj, tl = []; for (tj = 0; tj < (t.tally || []).length; tj++) { tt += t.tally[tj]; tl.push(LETTERS[tj] + ":" + t.tally[tj]); }
+      tvFoot.textContent = (t.winner ? "\u{1F3C6} \u00a1Acert\u00f3 " + t.winner.name + "!" : "Nadie acert\u00f3") + (tt > 0 ? "  \u00b7  " + tt + " respondieron (" + tl.join(" ") + ")" : "");
     }
   }
 

@@ -118,10 +118,17 @@ export class TriviaEngine extends EventEmitter {
       ...(this.q && open ? { question: this.q.question, options: this.q.options } : { options: [] }),
       deadline: this.phase === "open" ? this.deadline : 0,
       answers: this.answers.size,
-      ...(this.phase === "reveal" && this.q ? { correct: this.q.correct } : {}),
+      ...(this.phase === "reveal" && this.q ? { correct: this.q.correct, tally: this.tally() } : {}),
       ...(this.phase === "reveal" && this.winner ? { winner: this.winner } : {}),
       startedAt: this.startedAt,
     };
+  }
+
+  /** Cuánta gente eligió cada opción (una respuesta por persona). */
+  private tally(): number[] {
+    const out = (this.q?.options ?? []).map(() => 0);
+    for (const idx of this.answers.values()) if (idx < out.length) out[idx]++;
+    return out;
   }
 
   /** Lanza una trivia ya (botón de la app). `sample` usa una pregunta de ejemplo. Devuelve false si ya hay una en curso. */
@@ -149,7 +156,7 @@ export class TriviaEngine extends EventEmitter {
   handleLiveEvent(evt: LiveEvent): void {
     if (evt.event === "comment" || evt.event === "gift") this.lastActivity = this.now();
     if (evt.event !== "comment" || this.phase !== "open" || !this.q) return;
-    const idx = parseTriviaAnswer(evt.text);
+    const idx = parseTriviaAnswer(evt.text, this.q.options);
     if (idx === undefined || idx >= this.q.options.length) return;
     const handle = handleKey(evt.username);
     if (!handle || this.answers.has(handle)) return; // una respuesta por persona: la primera es la que vale
