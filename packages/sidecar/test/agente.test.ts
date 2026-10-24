@@ -229,6 +229,41 @@ describe("AgenteEngine: prioridad y turnos", () => {
     expect(logs[0]).toMatch(/sin saldo/);
   });
 
+  it("si el modelo falla, la pregunta vuelve a la fila una vez (con su prioridad) y a la segunda falla se retira", async () => {
+    let calls = 0;
+    const { engine, advance } = setup({}, async (q) => {
+      if (++calls <= 2) throw new Error("vacía");
+      return `R:${q}`;
+    });
+    engine.ask("A", "a", 7);
+    engine.tick();
+    await settle();
+    expect(engine.getState().current).toBeUndefined();
+    expect(engine.getState().queueSize).toBe(1); // volvió a la fila
+    expect(engine.getState().queue?.[0]).toMatchObject({ question: "a", coins: 7 });
+    advance(1000);
+    engine.tick();
+    await settle();
+    expect(calls).toBe(2);
+    expect(engine.getState().queueSize).toBe(0); // la segunda vez ya no vuelve
+    expect(engine.getState().current).toBeUndefined();
+  });
+
+  it("si el primer intento falla pero el segundo responde, el público solo ve la respuesta", async () => {
+    let calls = 0;
+    const { engine, advance } = setup({}, async (q) => {
+      if (++calls === 1) throw new Error("vacía");
+      return `R:${q}`;
+    });
+    engine.ask("A", "a");
+    engine.tick();
+    await settle();
+    advance(5000);
+    engine.tick();
+    await settle();
+    expect(engine.getState().current).toMatchObject({ question: "a", answer: "R:a" });
+  });
+
   it("reset vacía la cola y la pantalla; una respuesta tardía no reaparece", async () => {
     let release: (s: string) => void = () => {};
     const { engine } = setup({}, () => new Promise<string>((r) => (release = r)));
