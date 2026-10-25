@@ -365,6 +365,8 @@ export const AgentConfigSchema = z.object({
   personality: z.string().max(300).default(""),
   /** qué es tu canal (nombre, de qué trata, qué es la app...): el agente lo usa para responder sobre ti */
   liveContext: z.string().max(500).default(""),
+  /** respuestas libres: contesta de cualquier tema, también opiniones y dudas (con «creo que…»), y da información general de política, salud, leyes o inversión; los filtros de seguridad siguen */
+  freeAnswers: z.boolean().default(true),
   voice: AgentVoiceSchema.default({}),
   animo: AgentAnimoSchema.default({}),
   trivia: AgentTriviaConfigSchema.default({}),
