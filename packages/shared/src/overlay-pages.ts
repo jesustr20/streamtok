@@ -1037,7 +1037,7 @@ const TOP_JS = `
   function applyStyle() {
     var style = config.style;
     document.body.setAttribute("data-design", designOverride || style.designId);
-    document.body.setAttribute("data-glass", style.transparent ? "1" : "0");
+    document.body.setAttribute("data-glass", style.transparent === false ? "0" : "1");
     var root = document.documentElement.style;
     var vars = { "--text": style.textColor, "--bg": style.backgroundColor, "--accent": style.accentColor };
     for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }
@@ -1535,6 +1535,7 @@ const AGENTE_JS = `
     var t = tvState;
     if (!t || t.phase === "idle" || DEMO) { tvEl.classList.add("hidden"); tvKey = ""; return; }
     tvEl.classList.remove("hidden");
+    var waiting = (state && state.queueSize) || 0; // preguntas del chat que esperan: la trivia las avisa y luego se sigue con ellas
     var key = t.phase + t.startedAt, total = ((config.trivia && config.trivia.answerSec) || 30) * 1000;
     if (t.phase === "generating") {
       tvQ.textContent = "Preparando una pregunta...";
@@ -1548,10 +1549,12 @@ const AGENTE_JS = `
       for (i = 0; i < t.options.length; i++) html += '<div class="tvopt" data-i="' + i + '"><b>' + LETTERS[i] + "</b><span></span></div>";
       tvOpts.innerHTML = html;
       for (i = 0; i < t.options.length; i++) tvOpts.children[i].lastChild.textContent = t.options[i];
-      if (t.phase === "open") speakText("tv" + t.startedAt, "Trivia. " + t.question + " " + t.options.map(function (o, n) { return LETTERS[n] + ": " + o + "."; }).join(" "), "happy");
+      if (t.phase === "open") speakText("tv" + t.startedAt, "\u00a1Hora de una trivia!" + (waiting > 0 ? " Despu\u00e9s sigo con las preguntas de la fila." : "") + " " + t.question + " " + t.options.map(function (o, n) { return LETTERS[n] + ": " + o + "."; }).join(" "), "happy");
       if (t.phase === "reveal") {
         var ok = t.options[t.correct];
-        speakText("tvr" + t.startedAt, t.winner ? "\u00a1Correcto! La respuesta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." : "Nadie acert\u00f3. La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + ".", t.winner ? "happy" : "calm", true);
+        var tot = 0, ti; for (ti = 0; ti < (t.tally || []).length; ti++) tot += t.tally[ti];
+        var how = tot > 0 ? " Respondieron " + tot + (tot === 1 ? " persona." : " personas.") : " Nadie respondi\u00f3 en el chat.";
+        speakText("tvr" + t.startedAt, t.winner ? "\u00a1Correcto! La respuesta es " + LETTERS[t.correct] + ": " + ok + ". Acert\u00f3 " + t.winner.name + "." + (tot > 1 ? how : "") + (waiting > 0 ? " Sigo con las preguntas." : "") : "Nadie acert\u00f3." + how + " La respuesta correcta era " + LETTERS[t.correct] + ": " + ok + "." + (waiting > 0 ? " Sigo con las preguntas." : ""), t.winner ? "happy" : "calm", true);
       }
     }
     if (t.phase === "open") {
@@ -1565,7 +1568,8 @@ const AGENTE_JS = `
       tvTime.textContent = ""; tvBar.classList.add("hidden");
       for (var j = 0; j < tvOpts.children.length; j++) tvOpts.children[j].className = "tvopt " + (j === t.correct ? "ok" : "dim");
       tvFoot.className = "tvfoot" + (t.winner ? " win" : "");
-      tvFoot.textContent = t.winner ? "\u{1F3C6} \u00a1Acert\u00f3 " + t.winner.name + "!" : "Nadie acert\u00f3";
+      var tt = 0, tj, tl = []; for (tj = 0; tj < (t.tally || []).length; tj++) { tt += t.tally[tj]; tl.push(LETTERS[tj] + ":" + t.tally[tj]); }
+      tvFoot.textContent = (t.winner ? "\u{1F3C6} \u00a1Acert\u00f3 " + t.winner.name + "!" : "Nadie acert\u00f3") + (tt > 0 ? "  \u00b7  " + tt + " respondieron (" + tl.join(" ") + ")" : "");
     }
   }
 

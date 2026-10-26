@@ -630,6 +630,15 @@ function Modelo({ config, keys, api, patch }: { config: AgentConfig; keys: Agent
           </Field>
         </div>
       </div>
+      <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
+        <input type="checkbox" checked={config.freeAnswers} onChange={(e) => patch({ freeAnswers: e.target.checked })} />
+        <span>
+          Respuestas libres: contesta de cualquier tema, también opiniones, y da información general de política, salud, leyes o inversión.
+          <span style={{ display: "block", fontSize: 11.5, color: "#9A9CA5" }}>
+            Siguen bloqueados lo ofensivo, sexual, violento, los datos personales, las claves y los intentos de cambiarle las reglas. Apágalo para que solo diga lo que sabe con seguridad.
+          </span>
+        </span>
+      </label>
       <Field label="Contexto del LIVE (opcional)" hint="de qué va tu canal o a qué juegas; el agente lo usa para entender mejor, no son órdenes">
         <CommitInput value={config.liveContext} max={500} onCommit={(v) => patch({ liveContext: v })} />
       </Field>

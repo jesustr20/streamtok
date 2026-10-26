@@ -108,6 +108,27 @@ describe("ModelService.respond", () => {
     expect(f.calls).toHaveLength(2);
   });
 
+  it("con DeepSeek apaga el modo «pensar» (si no, gasta los tokens razonando y la respuesta llega vacía)", async () => {
+    const f = fakeFetch(() => openaiReply("ok"));
+    const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
+    await svc.respond("hola", ctx());
+    expect(f.calls[0].body.thinking).toEqual({ type: "disabled" });
+    const g = fakeFetch(() => openaiReply("ok"));
+    const other = new ModelService({ keys: memKeys({ openai: "k-123456789" }), fetchImpl: g.fetchImpl });
+    await other.respond("hola", ctx({ provider: "openai", model: "gpt-4.1-mini" }));
+    expect(g.calls[0].body.thinking).toBeUndefined(); // solo DeepSeek
+  });
+
+  it("si el modelo de DeepSeek no acepta ese parámetro (error 400), repite la llamada sin él", async () => {
+    let n = 0;
+    const f = fakeFetch((): any => (++n === 1 ? { status: 400, text: JSON.stringify({ error: { message: "unknown field thinking" } }) } : openaiReply("ok")));
+    const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
+    expect(await svc.respond("hola", ctx())).toBe("ok");
+    expect(f.calls).toHaveLength(2);
+    expect(f.calls[0].body.thinking).toBeDefined();
+    expect(f.calls[1].body.thinking).toBeUndefined();
+  });
+
   it("responde con el modelo, limpia la salida y cuenta la llamada", async () => {
     const f = fakeFetch(() => openaiReply("**Ocho** planetas. https://x.com"));
     const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });

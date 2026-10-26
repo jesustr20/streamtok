@@ -139,6 +139,8 @@ export function showMsFor(answer: string): number {
 interface Waiting extends AgentQueueItem {
   handle: string;
   seq: number;
+  /** veces que ya se intentó responder y falló el modelo (una pregunta se reintenta una vez antes de retirarse) */
+  tries?: number;
 }
 
 interface Credit {
@@ -163,6 +165,8 @@ export class AgenteEngine extends EventEmitter {
   private config: AgentConfig;
   private queue: Waiting[] = [];
   private current: (AgentCurrent & { answerAt?: number }) | undefined;
+  /** la pregunta que se está respondiendo, tal como esperaba en la fila (para devolverla si el modelo falla) */
+  private currentSrc: Waiting | undefined;
   private nextFreeAt = 0;
   private tip: { id: string; text: string } | undefined;
   private tipUntil = 0;
@@ -270,6 +274,11 @@ export class AgenteEngine extends EventEmitter {
     this.lastAsk.delete(key);
   }
 
+  /** ¿Hay una respuesta en pantalla? */
+  isAnswering(): boolean {
+    return this.current !== undefined;
+  }
+
   /** ¿Hay una respuesta en pantalla o preguntas esperando? (la trivia no se mete en medio) */
   isBusy(): boolean {
     return this.current !== undefined || this.queue.length > 0;
@@ -363,6 +372,7 @@ export class AgenteEngine extends EventEmitter {
       showMs: 0,
     };
     this.current = cur;
+    this.currentSrc = next;
     this.tip = undefined; // la pregunta pasa por delante del aviso
     this.emit("state");
     void this.answer(cur);
@@ -397,8 +407,16 @@ export class AgenteEngine extends EventEmitter {
       const message = (err as Error).message;
       this.emit("log", { level: "error", message: `El agente no pudo responder: ${message}` });
       if (this.current !== cur) return;
-      // Al público no se le enseña un error técnico: la pregunta se retira y el motivo queda en el panel de la app.
+      // Al público no se le enseña un error técnico: el motivo queda en el panel de la app. La pregunta vuelve a la fila una vez
+      // (con su misma prioridad) y, si vuelve a fallar, se retira.
+      const src = this.currentSrc;
       this.current = undefined;
+      this.currentSrc = undefined;
+      if (src && !src.tries && !this.queue.some((w) => w.handle === src.handle) && this.queue.length < this.config.maxQueue) {
+        this.queue.unshift({ ...src, tries: 1 });
+        if (src.coins === 0) this.nextFreeAt = Math.min(this.nextFreeAt, this.now() + 3000); // la gratis no espera otros 45 s
+        this.emit("log", { level: "warn", message: `La pregunta de ${src.name} vuelve a la fila para reintentar.` });
+      }
       this.lastError = { message, at: this.now() };
       this.emit("state");
       return;

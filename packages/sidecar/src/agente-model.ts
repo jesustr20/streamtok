@@ -124,14 +124,21 @@ export async function callModel(fetchImpl: FetchLike, c: ModelCall): Promise<str
             { role: "user", content: c.user },
           ],
         };
-    let res;
-    try {
-      res = await fetchImpl(url, { method: "POST", headers, body: JSON.stringify(body), signal: ctrl.signal });
-    } catch (err) {
-      if (ctrl.signal.aborted) throw new Error(`${info.name} tardó más de ${TIMEOUT_MS / 1000} s en responder.`);
-      throw new Error(`No se pudo conectar con ${info.name}: ${scrub((err as Error).message, c.key)}`);
-    }
-    const raw = await res.text();
+    // DeepSeek V4 «piensa» por defecto y se gasta los tokens razonando (la respuesta llega vacía): para respuestas cortas de un LIVE se apaga.
+    const noThinking = c.provider === "deepseek" && !anthropic;
+    const send = async (b: object): Promise<{ res: Awaited<ReturnType<FetchLike>>; raw: string }> => {
+      let r;
+      try {
+        r = await fetchImpl(url, { method: "POST", headers, body: JSON.stringify(b), signal: ctrl.signal });
+      } catch (err) {
+        if (ctrl.signal.aborted) throw new Error(`${info.name} tardó más de ${TIMEOUT_MS / 1000} s en responder.`);
+        throw new Error(`No se pudo conectar con ${info.name}: ${scrub((err as Error).message, c.key)}`);
+      }
+      return { res: r, raw: await r.text() };
+    };
+    let { res, raw } = await send(noThinking ? { ...body, thinking: { type: "disabled" } } : body);
+    // si ese modelo no acepta el parámetro, se repite sin él
+    if (noThinking && !res.ok && res.status === 400 && /thinking/i.test(raw)) ({ res, raw } = await send(body));
     if (!res.ok) throw new Error(scrub(httpMessage(c.provider, res.status, raw), c.key));
     let json: any;
     try {

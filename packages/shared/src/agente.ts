@@ -236,6 +236,8 @@ export const AgentTriviaStateSchema = z.object({
   deadline: z.number(),
   /** cuánta gente respondió */
   answers: z.number().int().nonnegative(),
+  /** al enseñar la respuesta: cuánta gente eligió cada opción (en el orden de `options`) */
+  tally: z.array(z.number().int().nonnegative()).optional(),
   /** índice de la opción correcta: SOLO se manda al enseñar la respuesta (el overlay lo puede leer cualquiera) */
   correct: z.number().int().nonnegative().optional(),
   winner: z.object({ name: z.string(), avatarUrl: z.string().min(1).optional() }).optional(),
@@ -243,10 +245,39 @@ export const AgentTriviaStateSchema = z.object({
 });
 export type AgentTriviaState = z.infer<typeof AgentTriviaStateSchema>;
 
-/** ¿El comentario es una respuesta de trivia ("a", "B", "c)", "D.")? Devuelve el índice (0 = A), o undefined. */
-export function parseTriviaAnswer(text: string | undefined): number | undefined {
-  const m = /^\s*([a-dA-D])\s*[.)]?\s*$/.exec(text ?? "");
-  return m ? m[1].toLowerCase().charCodeAt(0) - 97 : undefined;
+/** Minúsculas, sin tildes ni signos ni emojis, con los espacios juntos: para comparar lo que escribe la gente con la letra o la opción. */
+export function normalizeTriviaText(text: string | undefined): string {
+  return (text ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9ñ ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const ANSWER_FILLERS = "(?:(?:la|el|opcion|respuesta|resp|letra|es|seria|sera|creo|que|yo|digo|voto|por|mi|va|la)\\s+)*";
+const ANSWER_RE = new RegExp("^" + ANSWER_FILLERS + "([a-d])$");
+
+/**
+ * ¿El comentario es una respuesta de trivia? Vale la letra sola con signos o emojis ("a", "B", "c)", "D.", "A!", "a 😀") y con
+ * palabras de relleno ("la a", "opción b", "la respuesta es c", "creo que es d"). Devuelve el índice (0 = A), o undefined.
+ * Si pasas las opciones, también vale escribir la opción tal cual ("Lima", "a lima").
+ */
+export function parseTriviaAnswer(text: string | undefined, options?: readonly string[]): number | undefined {
+  const t = normalizeTriviaText(text);
+  if (!t) return undefined;
+  const m = ANSWER_RE.exec(t);
+  if (m) return m[1].charCodeAt(0) - 97;
+  if (options) {
+    // «a lima» / «a: lima» / «lima»
+    const rest = t.replace(/^[a-d] /, "");
+    for (let i = 0; i < options.length; i++) {
+      const o = normalizeTriviaText(options[i]);
+      if (o && (t === o || rest === o)) return i;
+    }
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -334,6 +365,8 @@ export const AgentConfigSchema = z.object({
   personality: z.string().max(300).default(""),
   /** qué es tu canal (nombre, de qué trata, qué es la app...): el agente lo usa para responder sobre ti */
   liveContext: z.string().max(500).default(""),
+  /** respuestas libres: contesta de cualquier tema, también opiniones y dudas (con «creo que…»), y da información general de política, salud, leyes o inversión; los filtros de seguridad siguen */
+  freeAnswers: z.boolean().default(true),
   voice: AgentVoiceSchema.default({}),
   animo: AgentAnimoSchema.default({}),
   trivia: AgentTriviaConfigSchema.default({}),

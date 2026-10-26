@@ -11,7 +11,7 @@ const cfg = (c: Partial<AgentConfig> = {}) => AgentConfigSchema.parse({ trivia: 
 
 const Q: TriviaQuestion = { question: "¿Cuál es el planeta más grande?", options: ["Marte", "Júpiter", "Venus", "Tierra"], correct: 1 };
 
-function setup(over: Partial<AgentConfig> = {}, generator?: () => Promise<TriviaQuestion | null>, busy = () => false) {
+function setup(over: Partial<AgentConfig> = {}, generator?: () => Promise<TriviaQuestion | null>, busy = () => false, answering?: () => boolean) {
   let t = 1_000_000;
   const winners: unknown[] = [];
   const config = cfg(over);
@@ -19,6 +19,7 @@ function setup(over: Partial<AgentConfig> = {}, generator?: () => Promise<Trivia
     generator: generator ?? (async () => Q),
     getConfig: () => config,
     busy,
+    answering,
     onWinner: (w) => winners.push(w),
     now: () => t,
     random: () => 0, // sin mezclar: shuffle con random()=0 deja un orden fijo que calculamos abajo
@@ -31,7 +32,16 @@ const correctLetter = (engine: TriviaEngine) => String.fromCharCode(65 + (engine
 
 describe("parseTriviaAnswer", () => {
   it.each([["a", 0], ["B", 1], [" c) ", 2], ["D.", 3]])("%s → %i", (t, i) => expect(parseTriviaAnswer(t as string)).toBe(i));
-  it.each(["e", "ab", "hola", "a b", "1", ""])("«%s» no es respuesta", (t) => expect(parseTriviaAnswer(t)).toBeUndefined());
+  it.each([["A!", 0], ["a 😀", 0], ["la b", 1], ["Opción C", 2], ["la respuesta es d", 3], ["creo que es b", 1], ["¡¡C!!", 2]])("«%s» también vale → %i", (t, i) => expect(parseTriviaAnswer(t as string)).toBe(i));
+  it("también vale escribir la opción (con o sin la letra), si se pasan las opciones", () => {
+    const opts = ["Lima", "Cusco", "Arequipa", "Trujillo"];
+    expect(parseTriviaAnswer("lima", opts)).toBe(0);
+    expect(parseTriviaAnswer("b cusco", opts)).toBe(1);
+    expect(parseTriviaAnswer("  AREQUIPA!! ", opts)).toBe(2);
+    expect(parseTriviaAnswer("lima", undefined)).toBeUndefined();
+    expect(parseTriviaAnswer("quiero ir a lima", opts)).toBeUndefined();
+  });
+  it.each(["e", "ab", "hola", "a b", "1", "", "la casa", "es verdad"])("«%s» no es respuesta", (t) => expect(parseTriviaAnswer(t)).toBeUndefined());
 });
 
 describe("parseTrivia", () => {
@@ -56,6 +66,36 @@ describe("parseTrivia", () => {
 });
 
 describe("TriviaEngine", () => {
+  it("una trivia lanzada a mano espera a que acabe la respuesta que está en pantalla, no la tapa", async () => {
+    let answering = true;
+    const { engine, advance } = setup({}, undefined, () => false, () => answering);
+    expect(engine.start()).toBe(true);
+    expect(engine.start()).toBe(false); // ya hay una esperando
+    await settle();
+    expect(engine.getState().phase).toBe("idle"); // aún no: la respuesta sigue a la vista
+    advance(1000);
+    engine.tick();
+    await settle();
+    expect(engine.getState().phase).toBe("idle");
+    answering = false; // acabó la respuesta
+    advance(1000);
+    engine.tick();
+    await settle();
+    expect(engine.getState().phase).toBe("open");
+  });
+
+  it("cancelar descarta la trivia que esperaba turno", async () => {
+    let answering = true;
+    const { engine, advance } = setup({}, undefined, () => false, () => answering);
+    engine.start();
+    engine.cancel();
+    answering = false;
+    advance(1000);
+    engine.tick();
+    await settle();
+    expect(engine.getState().phase).toBe("idle");
+  });
+
   it("sale sola cuando el chat lleva callado idleSec y no antes", async () => {
     const { engine, advance } = setup();
     advance(30_000);
@@ -141,6 +181,25 @@ describe("TriviaEngine", () => {
     advance(REVEAL_MS + 1000);
     engine.tick();
     expect(engine.getState().phase).toBe("idle");
+  });
+
+  it("al enseñar la respuesta cuenta cuánta gente eligió cada opción (también si nadie acertó)", async () => {
+    const { engine, advance } = setup();
+    engine.start();
+    await settle();
+    const letter = correctLetter(engine);
+    const wrong = letter === "A" ? "B" : "A";
+    engine.handleLiveEvent(comment("@ana", wrong));
+    engine.handleLiveEvent(comment("@beto", `la ${wrong.toLowerCase()}`));
+    expect((engine.getState() as any).tally).toBeUndefined(); // no se adelanta mientras está abierta
+    advance(31_000);
+    engine.tick();
+    const s = engine.getState();
+    expect(s.phase).toBe("reveal");
+    expect(s.winner).toBeUndefined();
+    const tally = (s as any).tally as number[];
+    expect(tally.reduce((a, b) => a + b, 0)).toBe(2);
+    expect(tally[wrong.charCodeAt(0) - 65]).toBe(2);
   });
 
   it("después de una trivia espera otro tiempo de calma antes de la siguiente", async () => {

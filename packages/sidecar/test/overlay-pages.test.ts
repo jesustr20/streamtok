@@ -294,7 +294,7 @@ describe("overlay agente: voz", () => {
 describe("overlay top: tarjeta transparente (opción de cualquier diseño)", () => {
   it("la página marca data-glass según el estilo y el CSS quita el relleno sin quitar la tarjeta", () => {
     const html = overlayPage("top", 7331, { id: "likes" });
-    expect(html).toContain('document.body.setAttribute("data-glass", style.transparent ? "1" : "0")');
+    expect(html).toContain('document.body.setAttribute("data-glass", style.transparent === false ? "0" : "1")'); // activa por defecto
     const card = /body\[data-glass="1"\] \.top \{[^}]*\}/.exec(html)?.[0] ?? "";
     expect(card).toContain("background: var(--bg, transparent)");
     expect(card).toContain("box-shadow: none");
@@ -355,6 +355,22 @@ describe("overlay agente: personaje 3D", () => {
     expect(html).toMatch(/speakText\("tvr" \+ t\.startedAt, .*Correcto.*, t\.winner \? "happy" : "calm", true\)/);
     expect(html).toContain("speechQ.unshift(");
     expect(html).toContain("curFin");
+    expect(() => new Function(scriptOf(html))).not.toThrow();
+  });
+
+  it("al enseñar la respuesta de la trivia dice y muestra cuánta gente respondió", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain("Respondieron ");
+    expect(html).toContain("respondieron (");
+    expect(() => new Function(scriptOf(html))).not.toThrow();
+  });
+
+  it("la trivia avisa que viene y que luego se sigue con las preguntas de la fila", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain("Hora de una trivia");
+    expect(html).toContain("Despu\u00e9s sigo con las preguntas de la fila.");
+    expect(html).toContain("Sigo con las preguntas.");
+    expect(html).toContain("state.queueSize"); // solo lo dice si hay preguntas esperando
     expect(() => new Function(scriptOf(html))).not.toThrow();
   });
 
