@@ -83,6 +83,8 @@ export interface TriviaEngineOptions {
   getConfig: () => AgentConfig;
   /** ¿el agente está ocupado respondiendo? Entonces la trivia espera */
   busy?: () => boolean;
+  /** ¿hay una respuesta en pantalla? Una trivia lanzada a mano espera a que acabe (no la corta) */
+  answering?: () => boolean;
   onWinner?: (winner: TriviaWinner) => void;
   now?: () => number;
   random?: () => number;
@@ -98,6 +100,8 @@ export class TriviaEngine extends EventEmitter {
   private winner: AgentTriviaState["winner"];
   private lastActivity: number;
   private nextAllowedAt = 0;
+  /** trivia lanzada a mano que espera a que acabe la respuesta en pantalla */
+  private pendingStart: { sample: boolean } | undefined;
   private starts: number[] = [];
   private recent: string[] = [];
   private token = 0;
@@ -133,13 +137,20 @@ export class TriviaEngine extends EventEmitter {
 
   /** Lanza una trivia ya (botón de la app). `sample` usa una pregunta de ejemplo. Devuelve false si ya hay una en curso. */
   start(sample = false): boolean {
-    if (this.phase !== "idle") return false;
+    if (this.phase !== "idle" || this.pendingStart !== undefined) return false;
+    // si el agente está enseñando una respuesta, la trivia espera a que termine en vez de taparla
+    if (this.opts.answering?.()) {
+      this.pendingStart = { sample };
+      this.emit("state");
+      return true;
+    }
     void this.begin(sample);
     return true;
   }
 
   /** Cancela la trivia en curso sin premio. */
   cancel(): void {
+    this.pendingStart = undefined;
     if (this.phase === "idle") return;
     this.token++;
     this.toIdle();
@@ -173,6 +184,12 @@ export class TriviaEngine extends EventEmitter {
     else if (this.phase === "reveal" && t >= this.revealUntil) {
       this.toIdle();
       this.nextAllowedAt = Math.max(this.nextAllowedAt, t + this.opts.getConfig().trivia.idleSec * 1000);
+    } else if (this.phase === "idle" && this.pendingStart) {
+      if (!this.opts.answering?.()) {
+        const { sample } = this.pendingStart;
+        this.pendingStart = undefined;
+        void this.begin(sample);
+      }
     } else if (this.phase === "idle") {
       const cfg = this.opts.getConfig();
       if (!cfg.enabled || !cfg.trivia.enabled) return;

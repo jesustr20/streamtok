@@ -236,6 +236,7 @@ const agenteTrivia: TriviaEngine = new TriviaEngine({
   generator: (config, recent) => agenteModel.generateTrivia(config, recent),
   getConfig: () => agente.getConfig(),
   busy: () => agente.isBusy(),
+  answering: () => agente.isAnswering(),
   onWinner: (w) => {
     agente.grantPrize(w.handle, agente.getConfig().trivia.prizeCoins);
     tops.credit("trivia", w.handle, w.name, w.avatarUrl, 1);

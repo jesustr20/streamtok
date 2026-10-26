@@ -274,6 +274,11 @@ export class AgenteEngine extends EventEmitter {
     this.lastAsk.delete(key);
   }
 
+  /** ¿Hay una respuesta en pantalla? */
+  isAnswering(): boolean {
+    return this.current !== undefined;
+  }
+
   /** ¿Hay una respuesta en pantalla o preguntas esperando? (la trivia no se mete en medio) */
   isBusy(): boolean {
     return this.current !== undefined || this.queue.length > 0;

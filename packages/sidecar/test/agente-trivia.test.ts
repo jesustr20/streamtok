@@ -11,7 +11,7 @@ const cfg = (c: Partial<AgentConfig> = {}) => AgentConfigSchema.parse({ trivia: 
 
 const Q: TriviaQuestion = { question: "¿Cuál es el planeta más grande?", options: ["Marte", "Júpiter", "Venus", "Tierra"], correct: 1 };
 
-function setup(over: Partial<AgentConfig> = {}, generator?: () => Promise<TriviaQuestion | null>, busy = () => false) {
+function setup(over: Partial<AgentConfig> = {}, generator?: () => Promise<TriviaQuestion | null>, busy = () => false, answering?: () => boolean) {
   let t = 1_000_000;
   const winners: unknown[] = [];
   const config = cfg(over);
@@ -19,6 +19,7 @@ function setup(over: Partial<AgentConfig> = {}, generator?: () => Promise<Trivia
     generator: generator ?? (async () => Q),
     getConfig: () => config,
     busy,
+    answering,
     onWinner: (w) => winners.push(w),
     now: () => t,
     random: () => 0, // sin mezclar: shuffle con random()=0 deja un orden fijo que calculamos abajo
@@ -65,6 +66,36 @@ describe("parseTrivia", () => {
 });
 
 describe("TriviaEngine", () => {
+  it("una trivia lanzada a mano espera a que acabe la respuesta que está en pantalla, no la tapa", async () => {
+    let answering = true;
+    const { engine, advance } = setup({}, undefined, () => false, () => answering);
+    expect(engine.start()).toBe(true);
+    expect(engine.start()).toBe(false); // ya hay una esperando
+    await settle();
+    expect(engine.getState().phase).toBe("idle"); // aún no: la respuesta sigue a la vista
+    advance(1000);
+    engine.tick();
+    await settle();
+    expect(engine.getState().phase).toBe("idle");
+    answering = false; // acabó la respuesta
+    advance(1000);
+    engine.tick();
+    await settle();
+    expect(engine.getState().phase).toBe("open");
+  });
+
+  it("cancelar descarta la trivia que esperaba turno", async () => {
+    let answering = true;
+    const { engine, advance } = setup({}, undefined, () => false, () => answering);
+    engine.start();
+    engine.cancel();
+    answering = false;
+    advance(1000);
+    engine.tick();
+    await settle();
+    expect(engine.getState().phase).toBe("idle");
+  });
+
   it("sale sola cuando el chat lleva callado idleSec y no antes", async () => {
     const { engine, advance } = setup();
     advance(30_000);
