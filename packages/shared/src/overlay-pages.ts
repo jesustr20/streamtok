@@ -1213,6 +1213,14 @@ const AGENTE_CSS = `
   @keyframes agBlink { 50% { opacity: 0; } }
   @keyframes agIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
   .ag .card.in { animation: agIn .35s ease-out both; }
+  /* Tarjetas transparentes (activas de fábrica; style.transparent = false las vuelve con fondo): se ve el juego a través, con contorno oscuro en los textos */
+  body[data-glass="1"] .ag .bar, body[data-glass="1"] .ag .card, body[data-glass="1"] .ag .stat, body[data-glass="1"] .ag .ntc, body[data-glass="1"] .ag .tip, body[data-glass="1"] .ag .tv { background: var(--bg, transparent); box-shadow: none; }
+  body[data-glass="1"] .ag .bar, body[data-glass="1"] .ag .card, body[data-glass="1"] .ag .stat, body[data-glass="1"] .ag .ntc, body[data-glass="1"] .ag .tip, body[data-glass="1"] .ag .tv { text-shadow: 0 0 2px #000, 0 0 4px #000, 0 2px 6px rgba(0, 0, 0, .9), 0 0 14px rgba(0, 0, 0, .6); }
+  body[data-glass="1"] .ag .coins, body[data-glass="1"] .ag .tv .tvopt b { text-shadow: none; }
+  body[data-glass="1"] .ag .tv .tvopt { background: transparent; border: 1px solid rgba(255, 255, 255, .3); }
+  body[data-glass="1"] .ag .tv .tvopt.ok { background: rgba(31, 157, 85, .78); border-color: #1f9d55; }
+  body[data-glass="1"] .ag .tv .tvbar { background: rgba(0, 0, 0, .45); }
+  body[data-glass="1"] .ag .av { box-shadow: 0 0 0 1px rgba(0, 0, 0, .55); }
   /* Partes sueltas: /overlay/agente/cola solo la barra; /overlay/agente/respuesta todo menos la barra. */
   .ag[data-part="cola"] .tip, .ag[data-part="cola"] .tv, .ag[data-part="cola"] .card, .ag[data-part="cola"] .ntcs { display: none !important; }
   .ag[data-part="respuesta"] .stat { display: none; }
@@ -1267,6 +1275,7 @@ const AGENTE_JS = `
   function applyStyle() {
     var style = config.style;
     document.body.setAttribute("data-design", designOverride || style.designId);
+    document.body.setAttribute("data-glass", style.transparent === false ? "0" : "1");
     var root = document.documentElement.style;
     var vars = { "--text": style.textColor, "--bg": style.backgroundColor, "--accent": style.accentColor };
     for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }

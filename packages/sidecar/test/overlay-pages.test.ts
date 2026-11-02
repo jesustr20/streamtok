@@ -305,6 +305,16 @@ describe("overlay top: tarjeta transparente (opción de cualquier diseño)", () 
     expect(html).toContain('body[data-glass="1"] .slot .ped'); // vale también para el Podio
   });
 
+  it("el overlay del agente también trae tarjetas transparentes (activas de fábrica) que conservan el borde y los textos", () => {
+    const html = overlayPage("agente", 7331);
+    expect(html).toContain('document.body.setAttribute("data-glass", style.transparent === false ? "0" : "1")');
+    for (const part of [".bar", ".card", ".stat", ".ntc", ".tip", ".tv"]) expect(html).toContain('body[data-glass="1"] .ag ' + part);
+    const rule = /body\[data-glass="1"\] \.ag \.bar, [^{]*\{ background: var\(--bg, transparent\); box-shadow: none; \}/.exec(html)?.[0] ?? "";
+    expect(rule).toContain(".ag .tv");
+    expect(html).toContain('body[data-glass="1"] .ag .tv .tvopt { background: transparent;');
+    expect(html).toContain("text-shadow: 0 0 2px #000"); // contorno oscuro para leer sobre el juego
+  });
+
   it("el esquema acepta transparent (opcional: lo anterior sigue valiendo)", () => {
     expect(OverlayStyleSchema.parse({ designId: "lista" }).transparent).toBeUndefined();
     expect(OverlayStyleSchema.parse({ designId: "podio", transparent: true }).transparent).toBe(true);
