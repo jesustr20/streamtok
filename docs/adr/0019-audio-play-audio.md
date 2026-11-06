@@ -32,3 +32,11 @@ El modal de Acción traía "Play Audio" como una casilla sin función. Referenci
 - **Si la app de escritorio está cerrada, no suena nada** (el sidecar no reproduce). El motor igual cuenta la acción como ejecutada.
 - **Derechos de autor**: los sonidos de MyInstants suelen ser clips con copyright. Son efectos de pocos segundos, de uso común en LIVEs; la responsabilidad es del streamer.
 - El audio mezclado depende de que LIVE Studio capture el audio del PC; el volumen se controla en la acción y en el mezclador de LIVE Studio.
+
+## Parte 2: pestañas y MyInstants
+
+- Tres pestañas en "Lista de audios": **Audios públicos** (todos), **Audios locales** (importados desde el PC) y **MyInstants** (agregados con una URL). Todas tienen buscador, enlace "Ir a MyInstants" y el campo para pegar el enlace.
+- "Agregar": el sidecar descarga el MP3 (de la página `/instant/…` o del enlace directo `/media/sounds/…`) a la misma carpeta de audios. No se reproduce desde internet: queda una copia local, así suena sin depender de la web durante el LIVE.
+- El origen de cada archivo se guarda en `origenes.json` dentro de la carpeta (solo los de MyInstants; lo que no figura es local). Los nombres de archivo no cambian, así que las Acciones ya creadas siguen funcionando.
+- Seguridad: solo `https` y solo `myinstants.com` (y subdominios), también tras redirecciones; máximo 10 MB y revisión de los primeros bytes. La app no es un descargador general. El botón "Ir a MyInstants" abre una URL fija desde el sidecar (no acepta URLs del cliente).
+- Pendiente: buscar dentro de MyInstants desde la app (su API oficial no se ha leído); por ahora se busca en su página y se pega el enlace.
