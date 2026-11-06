@@ -158,7 +158,7 @@ export function GiftPicker({
   );
 }
 
-const giftPickerButtonStyle: React.CSSProperties = {
+export const giftPickerButtonStyle: React.CSSProperties = {
   width: "100%",
   height: 44,
   display: "flex",
@@ -173,7 +173,7 @@ const giftPickerButtonStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-const giftThumbStyle: React.CSSProperties = {
+export const giftThumbStyle: React.CSSProperties = {
   width: 28,
   height: 28,
   borderRadius: 4,
@@ -181,7 +181,7 @@ const giftThumbStyle: React.CSSProperties = {
   flexShrink: 0,
 };
 
-const giftTextColumnStyle: React.CSSProperties = {
+export const giftTextColumnStyle: React.CSSProperties = {
   flex: 1,
   display: "flex",
   flexDirection: "column",
@@ -190,7 +190,7 @@ const giftTextColumnStyle: React.CSSProperties = {
   textAlign: "left",
 };
 
-const giftNameStyle: React.CSSProperties = {
+export const giftNameStyle: React.CSSProperties = {
   maxWidth: "100%",
   fontSize: 12.5,
   fontWeight: 600,
@@ -199,13 +199,13 @@ const giftNameStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const giftSubtitleStyle: React.CSSProperties = {
+export const giftSubtitleStyle: React.CSSProperties = {
   fontSize: 11,
   color: "#9A9CA5",
   whiteSpace: "nowrap",
 };
 
-const giftDropdownStyle: React.CSSProperties = {
+export const giftDropdownStyle: React.CSSProperties = {
   position: "absolute",
   top: "calc(100% + 4px)",
   left: 0,
@@ -223,7 +223,7 @@ const giftDropdownStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-const giftSearchStyle: React.CSSProperties = {
+export const giftSearchStyle: React.CSSProperties = {
   height: 32,
   margin: "2px 2px 6px",
   padding: "0 10px",
@@ -237,7 +237,7 @@ const giftSearchStyle: React.CSSProperties = {
   flexShrink: 0,
 };
 
-const giftOptionStyle: React.CSSProperties = {
+export const giftOptionStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
@@ -267,7 +267,7 @@ const unconfirmedNoteStyle: React.CSSProperties = {
   color: "#F5A524",
 };
 
-const giftGroupHeaderStyle: React.CSSProperties = {
+export const giftGroupHeaderStyle: React.CSSProperties = {
   padding: "8px 8px 4px",
   fontSize: 10.5,
   fontWeight: 700,

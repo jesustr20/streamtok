@@ -196,6 +196,12 @@ describe("validateEventos", () => {
     ).toBe(true);
   });
 
+  it("porque stickerEmote no exige id (sin id = cualquiera) y acepta el origen", () => {
+    expect(validateEventos([evento({ porque: "stickerEmote" })]).ok).toBe(true);
+    expect(validateEventos([evento({ porque: "stickerEmote", emoteId: "x", emoteScene: "fanClub" })]).ok).toBe(true);
+    expect(validateEventos([evento({ porque: "stickerEmote", emoteScene: "otra" as never })]).ok).toBe(false);
+  });
+
   it("porque compraTiktokShop requiere nombreProductoContiene", () => {
     expect(validateEventos([evento({ porque: "compraTiktokShop" })]).ok).toBe(false);
     expect(

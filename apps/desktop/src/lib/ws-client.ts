@@ -1,5 +1,6 @@
 import type {
   AccionesMessage,
+  EmoteCatalogMessage,
   EventLogMessage,
   EventosMessage,
   GiftCatalogMessage,
@@ -21,6 +22,7 @@ export type SidecarEvent =
   | { channel: "manual-command"; payload: ManualCommandResponse }
   | { channel: "profiles"; payload: ProfilesMessage }
   | { channel: "gift-catalog"; payload: GiftCatalogMessage }
+  | { channel: "emote-catalog"; payload: EmoteCatalogMessage }
   | { channel: "tiktok-connection"; payload: TiktokConnectionMessage }
   | { channel: "overlays"; payload: OverlaysMessage }
   | { channel: string; payload: unknown };

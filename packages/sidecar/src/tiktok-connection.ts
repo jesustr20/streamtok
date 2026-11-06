@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import {
   TiktokConnectionMessageSchema,
+  type EmoteCatalogEntry,
   type GiftCatalogEntry,
   type LiveEvent,
   type TiktokConnectionState,
@@ -28,6 +29,8 @@ export interface TiktokConnectionDeps {
   createSource(username: string, recorder: Pick<RawRecorder, "record">): LiveSource;
   onEvent(evt: LiveEvent): void;
   onGift(entry: GiftCatalogEntry): void;
+  /** Sticker o emote visto en el LIVE (catálogo, ADR 0018). */
+  onEmote?(entry: EmoteCatalogEntry): void;
   /** Mensajes de la sala sin normalizar (espectadores y batalla, ADR 0013). */
   onRoom?(kind: "roomUser" | "battleArmies" | "battleHosts", raw: unknown): void;
   /**
@@ -130,6 +133,7 @@ export class TiktokConnectionController extends EventEmitter {
       source.on(kind, (raw: unknown) => current() && this.deps.onRoom?.(kind, raw));
     }
     source.on("giftCatalogEntry", (entry: GiftCatalogEntry) => current() && this.deps.onGift(entry));
+    source.on("emoteCatalogEntry", (entry: EmoteCatalogEntry) => current() && this.deps.onEmote?.(entry));
     source.on("disconnected", () => {
       if (!current()) return;
       this.lastDropAt = Date.now();

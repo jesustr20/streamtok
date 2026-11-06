@@ -1,6 +1,8 @@
 import { matchesQuery } from "../lib/search";
 import { useEffect, useState } from "react";
 import { GiftPicker, giftRefOf, type GiftRef } from "./GiftPicker";
+import { EmotePicker, type EmoteRef } from "./EmotePicker";
+import { useEmoteCatalog } from "../lib/use-emote-catalog";
 import type {
   Accion,
   Evento,
@@ -50,7 +52,13 @@ export function EventoModal({
   const [quien, setQuien] = useState<EventoQuien>(initial?.quien ?? "todos");
   const [usuarioEspecifico, setUsuarioEspecifico] = useState(initial?.usuarioEspecifico ?? "");
   const [numeroDonantesTop, setNumeroDonantesTop] = useState<number>(initial?.numeroDonantesTop ?? 3);
-  const [porque, setPorque] = useState<EventoPorque>(initial?.porque ?? "unirse");
+  // Los Eventos antiguos de emote de suscriptor / sticker del club de fans se editan como el
+  // desencadenante único "sticker o emote" (ADR 0018); al guardar quedan con el tipo nuevo.
+  const [porque, setPorque] = useState<EventoPorque>(
+    initial?.porque === "emoteSuscriptor" || initial?.porque === "stickerFanClub"
+      ? "stickerEmote"
+      : (initial?.porque ?? "unirse"),
+  );
   const [porqueSearch, setPorqueSearch] = useState("");
   const [nivelEquipoRequerido, setNivelEquipoRequerido] = useState<number>(
     initial?.nivelEquipoRequerido ?? 0,
@@ -71,8 +79,12 @@ export function EventoModal({
     initial?.giftName ? { id: initial.giftId, name: initial.giftName } : null,
   );
   const [giftCatalog, setGiftCatalog] = useState<GiftCatalogEntry[]>([]);
-  const [emoteId, setEmoteId] = useState(initial?.emoteId ?? "");
-  const [stickerId, setStickerId] = useState(initial?.stickerId ?? "");
+  const [emote, setEmote] = useState<EmoteRef>(() => {
+    if (initial?.porque === "emoteSuscriptor") return { id: initial.emoteId, scene: "subscriber" };
+    if (initial?.porque === "stickerFanClub") return { id: initial.stickerId, scene: "fanClub" };
+    return { id: initial?.emoteId, scene: initial?.emoteScene };
+  });
+  const emoteCatalog = useEmoteCatalog(client);
   const [nombreProductoContiene, setNombreProductoContiene] = useState(
     initial?.nombreProductoContiene ?? "",
   );
@@ -137,14 +149,6 @@ export function EventoModal({
       setError("Elige un regalo del catálogo.");
       return;
     }
-    if (porque === "emoteSuscriptor" && !emoteId.trim()) {
-      setError("Escribe el emote de suscriptor.");
-      return;
-    }
-    if (porque === "stickerFanClub" && !stickerId.trim()) {
-      setError("Escribe el sticker del club de fans.");
-      return;
-    }
     if (porque === "compraTiktokShop" && !nombreProductoContiene.trim()) {
       setError("Indica el nombre del producto.");
       return;
@@ -173,8 +177,8 @@ export function EventoModal({
       valorMinimoMonedas: porque === "regaloValorMinimo" ? numOr(valorMinimoMonedas, 1) : undefined,
       giftId: porque === "regaloEspecifico" ? gift?.id : undefined,
       giftName: porque === "regaloEspecifico" ? gift?.name : undefined,
-      emoteId: porque === "emoteSuscriptor" ? emoteId.trim() : undefined,
-      stickerId: porque === "stickerFanClub" ? stickerId.trim() : undefined,
+      emoteId: porque === "stickerEmote" ? emote.id : undefined,
+      emoteScene: porque === "stickerEmote" ? emote.scene : undefined,
       nombreProductoContiene:
         porque === "compraTiktokShop" ? nombreProductoContiene.trim() : undefined,
     };
@@ -191,8 +195,7 @@ export function EventoModal({
     porque === "comando" ||
     porque === "regaloValorMinimo" ||
     porque === "regaloEspecifico" ||
-    porque === "emoteSuscriptor" ||
-    porque === "stickerFanClub" ||
+    porque === "stickerEmote" ||
     porque === "compraTiktokShop" ||
     porque === "subeNivelFan" ||
     porque === "subeNivelDonador";
@@ -395,34 +398,11 @@ export function EventoModal({
                 </div>
               )}
 
-              {porque === "emoteSuscriptor" && (
-                <label style={labelStyle}>
-                  Emote de suscriptor
-                  <input
-                    style={inputStyle}
-                    value={emoteId}
-                    placeholder="Emote exacto"
-                    onChange={(e) => setEmoteId(e.target.value)}
-                  />
-                  <span style={noteStyle}>
-                    Catálogo real de emotes pendiente — por ahora escribe el emote exacto.
-                  </span>
-                </label>
-              )}
-
-              {porque === "stickerFanClub" && (
-                <label style={labelStyle}>
-                  Sticker del club de fans
-                  <input
-                    style={inputStyle}
-                    value={stickerId}
-                    placeholder="Sticker exacto"
-                    onChange={(e) => setStickerId(e.target.value)}
-                  />
-                  <span style={noteStyle}>
-                    Catálogo real de stickers pendiente — por ahora escribe el sticker exacto.
-                  </span>
-                </label>
+              {porque === "stickerEmote" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <label style={{ fontSize: 10.5, color: "#9A9CA5" }}>Sticker o emote</label>
+                  <EmotePicker value={emote} emotes={emoteCatalog} onSelect={setEmote} />
+                </div>
               )}
 
               {(porque === "subeNivelFan" || porque === "subeNivelDonador") && (

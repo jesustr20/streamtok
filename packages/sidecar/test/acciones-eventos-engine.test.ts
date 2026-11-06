@@ -523,6 +523,25 @@ describe("AccionesEventosEngine — quien con metadata (issue #23)", () => {
     expect(bridge.calls).toHaveLength(1);
   });
 
+  it("porque stickerEmote: sin id dispara con cualquiera; con origen o id filtra", async () => {
+    const run = async (ev: Partial<Parameters<typeof evento>[0]>) => {
+      const bridge = makeBridge();
+      const engine = new AccionesEventosEngine(bridge);
+      engine.setAcciones([accion()]);
+      engine.setEventos([evento({ porque: "stickerEmote", ...ev })]);
+      await engine.handleEvent(emoteEvent("@a", "s1", "fanClub"));
+      await engine.handleEvent(emoteEvent("@a", "e1", "subscriber"));
+      await engine.handleEvent({ event: "comment", username: "@a", text: "hola", timestamp: 0 });
+      return bridge.calls.length;
+    };
+    expect(await run({})).toBe(2); // cualquiera, de cualquier origen
+    expect(await run({ emoteScene: "fanClub" })).toBe(1);
+    expect(await run({ emoteScene: "subscriber" })).toBe(1);
+    expect(await run({ emoteId: "s1", emoteScene: "fanClub" })).toBe(1);
+    expect(await run({ emoteId: "s1", emoteScene: "subscriber" })).toBe(0); // id de otro origen
+    expect(await run({ emoteId: "otro" })).toBe(0);
+  });
+
   it("primeraActividad y compraTiktokShop siguen sin coincidir (sin señal en la fuente)", async () => {
     const bridge = makeBridge();
     const engine = new AccionesEventosEngine(bridge);

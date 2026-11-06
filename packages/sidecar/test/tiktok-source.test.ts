@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EmoteScene } from "tiktok-live-connector";
-import { extractGiftCatalogEntry, extractHostProfile, extractLevels, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
+import { extractEmoteCatalogEntries, extractGiftCatalogEntry, extractHostProfile, extractLevels, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
 
 describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", () => {
   it("normaliza un comentario plano a un LiveEvent válido", () => {
@@ -277,6 +277,40 @@ describe("TikTokLiveSource", () => {
     expect(entries).toEqual([
       { id: "5487", name: "Finger Heart", imageUrl: "https://cdn/finger.png", cost: 5 },
     ]);
+  });
+});
+
+describe("catálogo de stickers y emotes (ADR 0018)", () => {
+  it("extractEmoteCatalogEntries toma id, origen e imagen de cada emote, sin repetir ids", () => {
+    const entries = extractEmoteCatalogEntries({
+      user: { displayId: "fan" },
+      emoteList: [
+        { emoteId: "s1", emoteScene: EmoteScene.FANS_CLUB, image: { urlList: ["https://cdn/s1.png", "https://cdn/s1b.png"] } },
+        { emoteId: "e1", emoteScene: EmoteScene.SUBSCRIPTION },
+        { emoteId: "s1", emoteScene: EmoteScene.FANS_CLUB },
+        { emoteScene: EmoteScene.FANS_CLUB },
+      ],
+    });
+    expect(entries).toEqual([
+      { id: "s1", scene: "fanClub", imageUrl: "https://cdn/s1.png", count: 1, sceneCode: EmoteScene.FANS_CLUB },
+      { id: "e1", scene: "subscriber", imageUrl: undefined, count: 1, sceneCode: EmoteScene.SUBSCRIPTION },
+    ]);
+    expect(extractEmoteCatalogEntries({})).toEqual([]);
+  });
+
+  it("ingest emite emoteCatalogEntry por cada emote y sigue emitiendo el evento", () => {
+    const source = new TikTokLiveSource("alguien");
+    const entries: unknown[] = [];
+    const events: unknown[] = [];
+    source.on("emoteCatalogEntry", (e) => entries.push(e));
+    source.on("event", (e) => events.push(e));
+    source.ingest("emote", {
+      user: { displayId: "fan", nickname: "Fan" },
+      emoteList: [{ emoteId: "s1", emoteScene: EmoteScene.FANS_CLUB, image: { urlList: ["https://cdn/s1.png"] } }],
+    });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ id: "s1", scene: "fanClub", imageUrl: "https://cdn/s1.png" });
+    expect(events).toHaveLength(1);
   });
 });
 
