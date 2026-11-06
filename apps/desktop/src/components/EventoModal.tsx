@@ -1,5 +1,6 @@
 import { matchesQuery } from "../lib/search";
 import { useEffect, useState } from "react";
+import { useUnsavedGuard } from "../lib/unsaved-guard";
 import { GiftPicker, giftRefOf, type GiftRef } from "./GiftPicker";
 import { EmotePicker, type EmoteRef } from "./EmotePicker";
 import { useEmoteCatalog } from "../lib/use-emote-catalog";
@@ -186,6 +187,29 @@ export function EventoModal({
     onSave(evento);
   }
 
+  // Aviso de cambios sin guardar al cerrar (✕ o Cancelar).
+  const { requestClose, dialog } = useUnsavedGuard(
+    {
+      quien,
+      usuarioEspecifico,
+      numeroDonantesTop,
+      porque,
+      nivelEquipoRequerido,
+      nivelPuntosRequerido,
+      nivelMinimo,
+      comando,
+      cantidadMinimaLikes,
+      valorMinimoMonedas,
+      gift,
+      emote,
+      nombreProductoContiene,
+      accionesTodas,
+      accionesAleatorias,
+    },
+    onClose,
+    submit,
+  );
+
   const esProximamente = PROXIMAMENTE_PORQUE.has(porque);
 
   const hasCampos =
@@ -202,11 +226,12 @@ export function EventoModal({
 
   return (
     <div style={overlayStyle}>
+      {dialog}
       <div style={cardStyle}>
         <span style={eyebrowStyle}>MODAL · ABIERTO DESDE GTA V CHAOS MOD</span>
         <div style={titleRowStyle}>
           <h2 style={titleStyle}>{initial ? "Editar Evento" : "Nuevo Evento"}</h2>
-          <button type="button" onClick={onClose} style={closeButtonStyle}>
+          <button type="button" onClick={requestClose} style={closeButtonStyle}>
             ✕
           </button>
         </div>
@@ -475,7 +500,7 @@ export function EventoModal({
         </div>
 
         <div style={footerStyle}>
-          <button type="button" onClick={onClose} style={ghostButtonStyle}>
+          <button type="button" onClick={requestClose} style={ghostButtonStyle}>
             Cancelar
           </button>
           <button type="button" onClick={submit} style={primaryButtonStyle}>

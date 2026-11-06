@@ -1,5 +1,6 @@
 import { SearchSelect } from "./SearchSelect";
 import { Fragment, useState } from "react";
+import { useUnsavedGuard } from "../lib/unsaved-guard";
 import {
   APP_COMMANDS,
   AUDIO_COMMAND_ID,
@@ -207,13 +208,32 @@ export function AccionModal({
     });
   }
 
+  // Aviso de cambios sin guardar al cerrar (✕ o Descartar). La clave de cada comando es
+  // aleatoria y no cuenta como cambio.
+  const { requestClose, dialog } = useUnsavedGuard(
+    {
+      nombre,
+      comandos: comandos.map(({ key: _key, ...rest }) => rest),
+      generales,
+      audioOn,
+      audio,
+      extraOn,
+      repetirConCombo,
+      cooldownGlobal,
+      cooldownUsuario,
+    },
+    onClose,
+    submit,
+  );
+
   return (
     <div style={overlayStyle}>
+      {dialog}
       <div style={cardStyle}>
         <span style={eyebrowStyle}>MODAL · ABIERTO DESDE GTA V CHAOS MOD</span>
         <div style={titleRowStyle}>
           <h2 style={titleStyle}>{initial ? "Editar Acción" : "Nueva Acción"}</h2>
-          <button type="button" onClick={onClose} style={closeButtonStyle}>
+          <button type="button" onClick={requestClose} style={closeButtonStyle}>
             ✕
           </button>
         </div>
@@ -622,7 +642,7 @@ export function AccionModal({
         )}
 
         <div style={footerStyle}>
-          <button type="button" onClick={onClose} style={ghostButtonStyle}>
+          <button type="button" onClick={requestClose} style={ghostButtonStyle}>
             Descartar
           </button>
           <button type="button" onClick={submit} style={primaryButtonStyle}>
