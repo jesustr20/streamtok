@@ -1,5 +1,6 @@
 export * from "./action.js";
 export * from "./agente.js";
+export * from "./audio.js";
 export * from "./alertas.js";
 export * from "./duelos.js";
 export * from "./emote-catalog.js";

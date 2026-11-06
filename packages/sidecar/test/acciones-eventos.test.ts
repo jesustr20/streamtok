@@ -262,6 +262,18 @@ describe("validateAcciones con comandos internos app.* (ADR 0011)", () => {
     expect(r.ok).toBe(true);
   });
 
+  it("Play Audio (app.audio.play) se valida con su propio esquema y completa los valores por defecto", () => {
+    const ok = validateAcciones([{ ...base, comandos: [{ modActionId: "app.audio.play", params: { file: "boom.mp3" } }] }], catalog);
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.acciones[0].comandos[0].params).toEqual({ file: "boom.mp3", volume: 50, oneShot: false, skip: false, queue: false });
+    }
+    const sinArchivo = validateAcciones([{ ...base, comandos: [{ modActionId: "app.audio.play", params: { file: "" } }] }], catalog);
+    expect(sinArchivo.ok).toBe(false);
+    const volumenMalo = validateAcciones([{ ...base, comandos: [{ modActionId: "app.audio.play", params: { file: "a.mp3", volume: 300 } }] }], catalog);
+    expect(volumenMalo.ok).toBe(false);
+  });
+
   it("valida sus parámetros contra el catálogo interno", () => {
     const r = validateAcciones([{ ...base, comandos: [{ modActionId: "app.timer.add", params: { seconds: "mucho" } }] }], catalog);
     expect(r.ok).toBe(false);

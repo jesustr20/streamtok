@@ -1,3 +1,4 @@
+import { createReadStream } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { audioTestPage } from "./audio-test-page.js";
@@ -18,7 +19,11 @@ export interface OverlayHttpServerOptions {
   host?: string;
   /** puerto del WS del sidecar al que se conectan las páginas */
   wsPort: number;
+  /** Resuelve un archivo de la carpeta de audios (ADR 0019); null si no existe. Sin esto /audios/ responde 404. */
+  audioFile?: (name: string) => string | null;
 }
+
+const AUDIO_TYPES: Record<string, string> = { ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg" };
 
 export function overlayPortFromEnv(env: NodeJS.ProcessEnv): number {
   const n = Number(env.STREAMTOK_OVERLAY_PORT);
@@ -45,11 +50,13 @@ export class OverlayHttpServer {
   private host: string;
   private port: number;
   private wsPort: number;
+  private audioFile?: (name: string) => string | null;
 
   constructor(opts: OverlayHttpServerOptions) {
     this.host = opts.host ?? "127.0.0.1";
     this.port = opts.port ?? OVERLAY_DEFAULT_PORT;
     this.wsPort = opts.wsPort;
+    this.audioFile = opts.audioFile;
     this.server = createServer((req, res) => this.handle(req, res));
   }
 
@@ -76,6 +83,32 @@ export class OverlayHttpServer {
     if (/^\/overlay\/prueba-audio\/?$/.test(pathname)) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(method === "HEAD" ? undefined : audioTestPage());
+      return;
+    }
+    // Archivos de la carpeta de audios (ADR 0019): los reproduce la app de escritorio.
+    const audioMatch = /^\/audios\/([^/]+)$/.exec(pathname);
+    if (audioMatch) {
+      let name = "";
+      try {
+        name = decodeURIComponent(audioMatch[1]);
+      } catch {
+        name = "";
+      }
+      const full = this.audioFile?.(name) ?? null;
+      const type = full ? AUDIO_TYPES[full.slice(full.lastIndexOf(".")).toLowerCase()] : undefined;
+      if (!full || !type) {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("No encontrado");
+        return;
+      }
+      res.writeHead(200, { "Content-Type": type });
+      if (method === "HEAD") {
+        res.end();
+        return;
+      }
+      createReadStream(full)
+        .on("error", () => res.destroy())
+        .pipe(res);
       return;
     }
     const target = parsePath(pathname);

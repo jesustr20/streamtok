@@ -515,6 +515,7 @@ export function AccionesEventosSection({
       {accionModal && (
         <AccionModal
           catalog={catalog}
+          client={client}
           initial={accionModal.initial}
           onSave={saveAccion}
           onClose={() => setAccionModal(null)}
