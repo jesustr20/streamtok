@@ -1,3 +1,4 @@
+import { useUnsavedGuard } from "../lib/unsaved-guard";
 import {
   GOAL_METRICS,
   GOAL_PRESETS,
@@ -272,8 +273,12 @@ function GoalForm({
     onSave(parsed.data);
   }
 
+  // Aviso de cambios sin guardar al pulsar Cancelar.
+  const { requestClose, dialog } = useUnsavedGuard({ draft, giftText }, onCancel, submit);
+
   return (
     <Card title={editing ? "Editar meta" : "Nueva meta"}>
+      {dialog}
       <div style={grid3}>
         <Field label="Título" hint="lo muestra el diseño">
           <input
@@ -326,7 +331,7 @@ function GoalForm({
         <Btn primary onClick={submit}>
           {editing ? "Guardar" : "Crear meta"}
         </Btn>
-        <Btn onClick={onCancel}>Cancelar</Btn>
+        <Btn onClick={requestClose}>Cancelar</Btn>
       </div>
     </Card>
   );
