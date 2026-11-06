@@ -11,7 +11,7 @@ import {
   type AudioLike,
   type AudioPlayParams,
 } from "@streamtok/shared";
-import { AudioController, looksLikeAudio } from "../src/audio.js";
+import { AudioController, findMyInstantsMp3, isMyInstantsUrl, looksLikeAudio } from "../src/audio.js";
 import { StreamTokWsServer } from "../src/ws-server.js";
 
 const mp3 = (extra = 8) => Buffer.concat([Buffer.from("ID3"), Buffer.alloc(extra, 1)]);
@@ -180,7 +180,7 @@ describe("AudioController (ADR 0019)", () => {
     dir = "";
   });
 
-  const setup = (extra: { openFolder?: (d: string) => void } = {}) => {
+  const setup = (extra: Partial<ConstructorParameters<typeof AudioController>[1]> = {}) => {
     dir = mkdtempSync(join(tmpdir(), "streamtok-audios-"));
     const audiosDir = join(dir, "audios"); // aún no existe: el controlador la crea al subir
     server = new StreamTokWsServer(0);
@@ -194,7 +194,7 @@ describe("AudioController (ADR 0019)", () => {
     const r = controller.upload("Boom.mp3", b64(mp3(20)));
     expect(r).toEqual({ ok: true, name: "Boom.mp3" });
     expect(existsSync(join(audiosDir, "Boom.mp3"))).toBe(true);
-    expect(controller.list()).toEqual([{ name: "Boom.mp3", sizeBytes: 23 }]);
+    expect(controller.list()).toEqual([{ name: "Boom.mp3", sizeBytes: 23, origin: "local" }]);
   });
 
   it("un nombre repetido no pisa al anterior: agrega (2)", () => {
@@ -284,5 +284,68 @@ describe("AudioController (ADR 0019)", () => {
     ws.send(JSON.stringify({ channel: "audio", payload: { kind: "delete", name: "a.mp3" } }));
     await vi.waitFor(() => expect(controller.list()).toEqual([]));
     ws.close();
+  });
+
+  describe("MyInstants", () => {
+    const withUrl = (r: Response, url: string) => Object.defineProperty(r, "url", { value: url });
+    const page = '<html><a href="/media/sounds/vine-boom.mp3">x</a></html>';
+    const fakeFetch = (calls: string[] = []) =>
+      (async (input: string | URL | Request) => {
+        const u = String(input);
+        calls.push(u);
+        if (u.endsWith(".mp3")) {
+          return withUrl(new Response(new Uint8Array(mp3(40))), u);
+        }
+        return withUrl(new Response(page), u);
+      }) as unknown as typeof fetch;
+
+    it("solo acepta enlaces https de myinstants.com y encuentra el MP3 en la página", () => {
+      expect(isMyInstantsUrl("https://www.myinstants.com/es/instant/vine-boom-1/")).not.toBeNull();
+      expect(isMyInstantsUrl("http://www.myinstants.com/x")).toBeNull();
+      expect(isMyInstantsUrl("https://evil.com/myinstants.com/x.mp3")).toBeNull();
+      expect(isMyInstantsUrl("https://myinstants.com.evil.com/x")).toBeNull();
+      expect(findMyInstantsMp3(page)).toBe("https://www.myinstants.com/media/sounds/vine-boom.mp3");
+      expect(findMyInstantsMp3("<html></html>")).toBeNull();
+    });
+
+    it("agrega desde la página del sonido, queda como myinstants y se borra con su registro", async () => {
+      const calls: string[] = [];
+      const { controller, audiosDir } = setup({ fetchFn: fakeFetch(calls) });
+      const r = await controller.addFromUrl("https://www.myinstants.com/es/instant/vine-boom-1/");
+      expect(r).toEqual({ ok: true, name: "vine-boom.mp3" });
+      expect(calls).toEqual([
+        "https://www.myinstants.com/es/instant/vine-boom-1/",
+        "https://www.myinstants.com/media/sounds/vine-boom.mp3",
+      ]);
+      controller.upload("mio.mp3", b64(mp3()));
+      expect(controller.list().map((f) => [f.name, f.origin])).toEqual([
+        ["mio.mp3", "local"],
+        ["vine-boom.mp3", "myinstants"],
+      ]);
+      expect(controller.remove("vine-boom.mp3")).toEqual({ ok: true });
+      expect(existsSync(join(audiosDir, "origenes.json"))).toBe(true);
+      expect(controller.list().map((f) => f.name)).toEqual(["mio.mp3"]);
+    });
+
+    it("acepta el MP3 directo y rechaza enlaces ajenos o páginas sin audio", async () => {
+      const { controller } = setup({ fetchFn: fakeFetch() });
+      expect(await controller.addFromUrl("https://www.myinstants.com/media/sounds/otro.mp3")).toEqual({ ok: true, name: "otro.mp3" });
+      expect(await controller.addFromUrl("https://example.com/a.mp3")).toMatchObject({ ok: false });
+      const empty = (async () => withUrl(new Response("<html/>"), "https://www.myinstants.com/x")) as unknown as typeof fetch;
+      const c2 = setup({ fetchFn: empty }).controller;
+      expect(await c2.addFromUrl("https://www.myinstants.com/es/instant/nada/")).toMatchObject({ ok: false, error: expect.stringContaining("No encontré") });
+    });
+
+    it("abre la página de MyInstants desde el canal WS", async () => {
+      const opened: string[] = [];
+      const { controller } = setup({ openUrl: (u) => opened.push(u) });
+      void controller;
+      const port = server!.actualPort || (await new Promise<number>((r) => server!.once("listening", () => r(server!.actualPort))));
+      const ws = new WebSocket(`ws://localhost:${port}`);
+      await new Promise((r) => ws.on("open", r));
+      ws.send(JSON.stringify({ channel: "audio", payload: { kind: "open-myinstants" } }));
+      await vi.waitFor(() => expect(opened).toEqual(["https://www.myinstants.com/es/index/pe/"]));
+      ws.close();
+    });
   });
 });

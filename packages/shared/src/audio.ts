@@ -32,9 +32,14 @@ export const AudioPlayParamsSchema = z.object({
 });
 export type AudioPlayParams = z.infer<typeof AudioPlayParamsSchema>;
 
+/** De dónde salió un audio: importado desde el PC (`local`) o agregado con una URL de MyInstants. */
+export const AudioOriginSchema = z.enum(["local", "myinstants"]);
+export type AudioOrigin = z.infer<typeof AudioOriginSchema>;
+
 export const AudioFileSchema = z.object({
   name: z.string(),
   sizeBytes: z.number().int().nonnegative(),
+  origin: AudioOriginSchema.default("local"),
 });
 export type AudioFile = z.infer<typeof AudioFileSchema>;
 
@@ -45,6 +50,8 @@ export type AudioFile = z.infer<typeof AudioFileSchema>;
  *  - `upload`       UI → sidecar: guardar un archivo (contenido en base64).
  *  - `delete`       UI → sidecar: borrar un archivo.
  *  - `open-folder`  UI → sidecar: abrir la carpeta de audios en el explorador.
+ *  - `add-url`      UI → sidecar: descargar un audio de MyInstants a partir de su URL.
+ *  - `open-myinstants` UI → sidecar: abrir la página de MyInstants en el navegador.
  *  - `play`         sidecar → UI: reproducir (lo dispara una Acción, o el botón "Probar").
  *  - `error`        sidecar → UI: algo salió mal (archivo inválido, muy grande…).
  */
@@ -54,10 +61,15 @@ export const AudioMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("upload"), name: z.string(), data: z.string() }),
   z.object({ kind: z.literal("delete"), name: z.string() }),
   z.object({ kind: z.literal("open-folder") }),
+  z.object({ kind: z.literal("add-url"), url: z.string() }),
+  z.object({ kind: z.literal("open-myinstants") }),
   z.object({ kind: z.literal("play") }).merge(AudioPlayParamsSchema),
   z.object({ kind: z.literal("error"), message: z.string() }),
 ]);
 export type AudioMessage = z.infer<typeof AudioMessageSchema>;
+
+/** Página de MyInstants que se abre desde "Ir a MyInstants". */
+export const MYINSTANTS_HOME = "https://www.myinstants.com/es/index/pe/";
 
 /** Nombre de archivo seguro: sin rutas, sin caracteres raros y con extensión admitida; null si no sirve. */
 export function sanitizeAudioName(raw: string): string | null {

@@ -5,6 +5,10 @@ import { audioFileUrl, uploadAudioFile, useAudioLibrary } from "../lib/use-audio
 
 const ACCENT = "#E23A57";
 
+type TabKey = "public" | "local" | "myinstants";
+
+const TAB_LABELS: Record<TabKey, string> = { public: "Audios públicos", local: "Audios locales", myinstants: "MyInstants" };
+
 type SortKey = "name-asc" | "name-desc" | "size-asc" | "size-desc";
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -114,8 +118,8 @@ function AudioCard({
 
 /**
  * "Lista de audios" (ADR 0019): los audios de la carpeta del streamer, con buscador,
- * ▶ para escuchar, ✓ para elegir, subir archivo y "Abrir Carpeta". Las pestañas de
- * audios públicos y de MyInstants llegan en una siguiente parte.
+ * ▶ para escuchar, ✓ para elegir, subir archivo y "Abrir Carpeta". Tres pestañas:
+ * públicos (todos), locales (importados del PC) y MyInstants (agregados con su URL).
  */
 export function AudioLibraryModal({
   client,
@@ -133,6 +137,8 @@ export function AudioLibraryModal({
   const [sort, setSort] = useState<SortKey>("name-asc");
   const [volume, setVolume] = useState(50);
   const [playingFile, setPlayingFile] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("public");
+  const [urlText, setUrlText] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -142,7 +148,10 @@ export function AudioLibraryModal({
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = files.filter((f) => !q || f.name.toLowerCase().includes(q));
+    // Públicos = todos; Locales = importados desde el PC; MyInstants = agregados con URL.
+    const list = files.filter(
+      (f) => (tab === "public" || (tab === "local" ? f.origin === "local" : f.origin === "myinstants")) && (!q || f.name.toLowerCase().includes(q)),
+    );
     const by = {
       "name-asc": (a: AudioFile, b: AudioFile) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }),
       "name-desc": (a: AudioFile, b: AudioFile) => b.name.localeCompare(a.name, "es", { sensitivity: "base" }),
@@ -150,7 +159,19 @@ export function AudioLibraryModal({
       "size-desc": (a: AudioFile, b: AudioFile) => b.sizeBytes - a.sizeBytes,
     }[sort];
     return [...list].sort(by);
-  }, [files, query, sort]);
+  }, [files, query, sort, tab]);
+
+  const counts = { public: files.length, local: files.filter((f) => f.origin === "local").length, myinstants: files.filter((f) => f.origin === "myinstants").length };
+
+  function addUrl() {
+    const url = urlText.trim();
+    if (!client || !url) return;
+    setLocalError(null);
+    clearError();
+    client.send("audio", { kind: "add-url", url });
+    setUrlText("");
+    setTab("myinstants");
+  }
 
   function togglePlay(name: string) {
     audioRef.current?.pause();
@@ -193,10 +214,18 @@ export function AudioLibraryModal({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar audios…"
+            placeholder="Buscar audio…"
             autoFocus
             style={{ ...inputStyle, flex: 1, minWidth: 180 }}
           />
+          <button
+            type="button"
+            title="Abre MyInstants en tu navegador: busca un sonido, abre su página y copia el enlace aquí abajo"
+            onClick={() => client?.send("audio", { kind: "open-myinstants" })}
+            style={secondaryButtonStyle}
+          >
+            Ir a MyInstants ↗
+          </button>
           <label style={{ fontSize: 11.5, color: "#9A9CA5", display: "flex", alignItems: "center", gap: 8 }}>
             Ordenar por:
             <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} style={{ ...inputStyle, width: 190 }}>
@@ -226,15 +255,40 @@ export function AudioLibraryModal({
         </div>
 
         <div style={{ display: "flex", gap: 6, background: "#0E0F12", border: "1px solid #2A2C33", borderRadius: 10, padding: 4 }}>
-          <span style={{ ...tabStyle, color: "#5B5D66" }} title="Próximamente">
-            Audios públicos
-          </span>
-          <span style={{ ...tabStyle, background: ACCENT, color: "#fff" }}>Audios locales ({files.length})</span>
-          <span style={{ ...tabStyle, color: "#5B5D66" }} title="Próximamente">
-            MyInstants
-          </span>
+          {(Object.keys(TAB_LABELS) as TabKey[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setTab(k)}
+              title={
+                k === "public"
+                  ? "Todos los audios: los de tu PC y los de MyInstants"
+                  : k === "local"
+                    ? "Audios que importaste desde tu PC"
+                    : "Audios que agregaste con un enlace de MyInstants"
+              }
+              style={{ ...tabStyle, border: "none", cursor: "pointer", background: tab === k ? ACCENT : "transparent", color: tab === k ? "#fff" : "#9A9CA5" }}
+            >
+              {TAB_LABELS[k]} ({counts[k]})
+            </button>
+          ))}
         </div>
 
+        <div style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
+          <input
+            type="text"
+            value={urlText}
+            onChange={(e) => setUrlText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addUrl()}
+            placeholder="Pega aquí el enlace del audio de MyInstants (https://www.myinstants.com/es/instant/…)"
+            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+          />
+          <button type="button" onClick={addUrl} disabled={!urlText.trim()} style={{ ...secondaryButtonStyle, opacity: urlText.trim() ? 1 : 0.5 }} title="Descarga el audio y lo guarda en la pestaña MyInstants">
+            Agregar
+          </button>
+        </div>
+
+        {tab !== "myinstants" && (
         <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
           <button
             type="button"
@@ -289,6 +343,7 @@ export function AudioLibraryModal({
             o suelta aquí tus MP3 (máx. 10 MB c/u)
           </div>
         </div>
+        )}
 
         <div style={{ fontSize: 11, color: "#9A9CA5", borderLeft: "3px solid #5BC0A0", background: "#0E0F12", padding: "8px 12px", borderRadius: 6, lineHeight: 1.5 }}>
           Se guardan en <b style={{ color: "#C4C5CC" }}>{dir || "la carpeta de StreamTok"}</b>. Haz una copia antes de formatear o cambiar de equipo: no se pasan solos al otro.
@@ -312,9 +367,13 @@ export function AudioLibraryModal({
 
         {shown.length === 0 ? (
           <div style={{ padding: "24px 8px", textAlign: "center", fontSize: 12.5, color: "#5B5D66", lineHeight: 1.6 }}>
-            {files.length === 0
-              ? "Aún no hay audios. Sube un MP3 o copia tus archivos a la carpeta."
-              : "Ningún audio coincide con la búsqueda."}
+            {counts[tab] > 0
+              ? "Ningún audio coincide con la búsqueda."
+              : tab === "myinstants"
+                ? "Aún no agregaste audios de MyInstants. Pulsa «Ir a MyInstants», copia el enlace de un sonido y pégalo arriba."
+                : tab === "local"
+                  ? "Aún no hay audios locales. Sube un MP3 o copia tus archivos a la carpeta."
+                  : "Aún no hay audios. Sube un MP3 o agrega uno de MyInstants con su enlace."}
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
