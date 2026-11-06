@@ -991,6 +991,21 @@ describe("comandos internos de la app (ADR 0011)", () => {
     expect(entries[0].action).toBe("app.timer.add");
   });
 
+  it("Play Audio (app.audio.play) llega al ejecutor de comandos internos con sus parámetros", async () => {
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    const c = counters();
+    engine.setCounters(c);
+    const params = { file: "boom.mp3", volume: 80, oneShot: true, skip: false, queue: false };
+    engine.setAcciones([accion({ comandos: [{ modActionId: "app.audio.play", params }] })]);
+    engine.setEventos([evento()]);
+
+    await engine.handleEvent(followEvent());
+
+    expect(c.applied).toEqual([{ id: "app.audio.play", params }]);
+    expect((bridge as unknown as { calls: Call[] }).calls).toEqual([]);
+  });
+
   it("una acción puede mezclar comandos del mod y comandos internos", async () => {
     const bridge = makeBridge();
     const engine = new AccionesEventosEngine(bridge);

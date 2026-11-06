@@ -1,5 +1,7 @@
 import {
   APP_COMMANDS,
+  AUDIO_COMMAND_ID,
+  AudioPlayParamsSchema,
   AccionSchema,
   EventoSchema,
   isAppCommand,
@@ -74,6 +76,16 @@ export function validateAcciones(
   const limpias = acciones.map((accion) => ({
     ...accion,
     comandos: accion.comandos.map((comando) => {
+      // Play Audio (ADR 0019) lleva un nombre de archivo, que el catálogo de comandos no sabe describir:
+      // se valida con su propio esquema.
+      if (comando.modActionId === AUDIO_COMMAND_ID) {
+        const audio = AudioPlayParamsSchema.safeParse(comando.params);
+        if (!audio.success) {
+          errors.push(`La acción "${accion.nombre}" (${accion.id}) tiene un Play Audio inválido (¿falta elegir el audio?).`);
+          return comando;
+        }
+        return { ...comando, params: audio.data };
+      }
       // Los comandos internos `app.*` (ADR 0011) se validan contra su propio
       // catálogo, no contra el del mod.
       const action = isAppCommand(comando.modActionId)

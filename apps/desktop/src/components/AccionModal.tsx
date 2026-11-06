@@ -1,7 +1,10 @@
 import { SearchSelect } from "./SearchSelect";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   APP_COMMANDS,
+  AUDIO_COMMAND_ID,
+  AudioPlayParamsSchema,
+  type AudioPlayParams,
   isAppCommand,
   type Accion,
   type AccionMedia,
@@ -9,6 +12,8 @@ import {
   type ModHelloPayload,
 } from "@streamtok/shared";
 import { getCategoryIcon, TimerIcon, TrophyIcon } from "../lib/categoryIcons";
+import type { SidecarClient } from "../lib/ws-client";
+import { PlayAudioPanel } from "./PlayAudioPanel";
 import {
   defaultParamValues,
   ParamEditor,
@@ -28,7 +33,6 @@ const ACCENT = "#E23A57";
 
 const GENERALES = [
   "Comandos Minecraft",
-  "Play Audio",
   "Mostrar IMG / GIF / VIDEO",
   "Mostrar Alerta",
   "Animaciones",
@@ -73,18 +77,22 @@ function emptyMedia(): AccionMedia {
  */
 export function AccionModal({
   catalog,
+  client,
   initial,
   onSave,
   onClose,
 }: {
   catalog: ModHelloPayload | null;
+  client: SidecarClient | null;
   initial: Accion | null;
   onSave: (accion: Accion) => void;
   onClose: () => void;
 }) {
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [comandos, setComandos] = useState<ComandoDraft[]>(
-    initial?.comandos.map((c) => ({
+    initial?.comandos
+      .filter((c) => c.modActionId !== AUDIO_COMMAND_ID) // Play Audio tiene su propio panel
+      .map((c) => ({
       key: newId(),
       kind: isAppCommand(c.modActionId) ? ("app" as const) : ("mod" as const),
       modActionId: c.modActionId,
@@ -92,6 +100,14 @@ export function AccionModal({
     })) ?? [],
   );
   const [generales, setGenerales] = useState<Record<string, boolean>>({});
+  // Play Audio (ADR 0019): un comando interno `app.audio.play` con su panel propio.
+  const initialAudio = initial?.comandos.find((c) => c.modActionId === AUDIO_COMMAND_ID);
+  const [audioOn, setAudioOn] = useState(!!initialAudio);
+  const [audio, setAudio] = useState<AudioPlayParams>(
+    () =>
+      AudioPlayParamsSchema.safeParse(initialAudio?.params ?? {}).data ??
+      ({ file: "", volume: 50, oneShot: false, skip: false, queue: false } as AudioPlayParams),
+  );
   const [repetirConCombo, setRepetirConCombo] = useState(initial?.repetirConComboDeRegalos ?? false);
   // Cooldowns en segundos (ADR 0010). Como texto para poder borrar el campo mientras se escribe.
   const [cooldownGlobal, setCooldownGlobal] = useState(String(initial?.cooldownGlobalSeg ?? 0));
@@ -155,6 +171,11 @@ export function AccionModal({
       return;
     }
 
+    if (audioOn && !audio.file) {
+      setError("Elige un audio para Play Audio (o desmárcalo).");
+      return;
+    }
+
     const validComandos = comandos
       .filter((c) => c.modActionId !== "")
       .map((c) => {
@@ -169,6 +190,7 @@ export function AccionModal({
           params: onlyKnownParams(sanitizeParamValues(c.params), actions.find((a) => a.id === c.modActionId)),
         };
       });
+    if (audioOn) validComandos.push({ modActionId: AUDIO_COMMAND_ID, params: { ...audio } });
 
     onSave({
       id: initial?.id ?? newId(),
@@ -229,7 +251,20 @@ export function AccionModal({
             » ¿Qué deseas realizar?
           </div>
           {GENERALES.map((g) => (
-            <CheckRow key={g} label={g} checked={generales[g] === true} onClick={() => toggleGeneral(g)} />
+            <Fragment key={g}>
+              <CheckRow label={g} checked={generales[g] === true} onClick={() => toggleGeneral(g)} />
+              {g === "Comandos Minecraft" && (
+                <>
+                  <CheckRow
+                    label="Play Audio"
+                    hint="Reproduce un sonido (suena en la app)"
+                    checked={audioOn}
+                    onClick={() => setAudioOn((v) => !v)}
+                  />
+                  {audioOn && <PlayAudioPanel client={client} value={audio} onChange={setAudio} />}
+                </>
+              )}
+            </Fragment>
           ))}
           <CheckRow
             label="Timer y Wins (overlays)"

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { ALERT_PRESETS, DUEL_PRESETS, GOAL_PRESETS, TOP_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
+import { ALERT_PRESETS, AUDIO_COMMAND_ID, DUEL_PRESETS, GOAL_PRESETS, TOP_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventRecorder, maxBytesFromEnv } from "./event-recorder.js";
 import {
@@ -38,6 +38,7 @@ import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
 import { OverlayHttpServer, overlayPortFromEnv } from "./overlay-server.js";
 import { OverlaysController } from "./overlays-controller.js";
 import { registerManualCommand } from "./manual-command.js";
+import { AudioController } from "./audio.js";
 import {
   ProfilesController,
   ProfilesStore,
@@ -275,14 +276,26 @@ const room = new RoomStateEngine();
 new RoomController(server, room);
 room.on("viewers", (count: number) => goals.handleViewers(count));
 
-// Los comandos internos `app.*` de las Acciones: `app.goal.*` van a las metas, el resto a Timer/Wins.
+// Módulo de audio (ADR 0019): la carpeta de audios y la acción "Play Audio" (suena en la app de escritorio).
+const overlayPort = overlayPortFromEnv(process.env);
+const audio = new AudioController(server, { httpPort: () => overlayPort });
+audio.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[audio:${entry.level}]`, entry.message);
+});
+
+// Los comandos internos `app.*` de las Acciones: `app.goal.*` van a las metas, `app.audio.play` al audio, el resto a Timer/Wins.
 const appCommands = {
   applyAppCommand: (id: string, params: Record<string, unknown>) =>
-    id.startsWith("app.goal.") ? goals.applyAppCommand(id, params) : overlayCounters.applyAppCommand(id, params),
+    id === AUDIO_COMMAND_ID
+      ? audio.applyPlay(params)
+      : id.startsWith("app.goal.")
+        ? goals.applyAppCommand(id, params)
+        : overlayCounters.applyAppCommand(id, params),
 };
 engine.setCounters(appCommands);
 
-const overlayHttp = new OverlayHttpServer({ port: overlayPortFromEnv(process.env), wsPort: PORT });
+const overlayHttp = new OverlayHttpServer({ port: overlayPort, wsPort: PORT, audioFile: (name) => audio.resolveFile(name) });
 overlayHttp
   .listen()
   .then((port) => {

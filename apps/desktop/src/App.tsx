@@ -15,6 +15,7 @@ import { TopsView } from "./components/TopsView";
 import { MetasView } from "./components/MetasView";
 import { WinsView } from "./components/WinsView";
 import { SidecarClient } from "./lib/ws-client";
+import { useAudioPlayer } from "./lib/use-audio";
 
 export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas" | "alertas" | "duelos" | "tops" | "agente";
 
@@ -31,6 +32,8 @@ export function App() {
   const [alertSel, setAlertSel] = useState("comunidad");
   const [duelSel, setDuelSel] = useState("regalo-vs-regalo");
   const [topSel, setTopSel] = useState("gifters");
+  // Reproductor de la acción "Play Audio" (ADR 0019): vive en la raíz para sonar estés en la pantalla que estés.
+  const audioPlayer = useAudioPlayer(client);
 
   useEffect(() => {
     // Catálogo offline: se pide apenas arranca la app, independientemente
@@ -145,6 +148,38 @@ export function App() {
         {view === "tops" && <TopsView client={client} selected={topSel} />}
         {view === "agente" && <AgenteView client={client} />}
       </main>
+      {audioPlayer.error && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed",
+            right: 20,
+            bottom: 20,
+            maxWidth: 360,
+            zIndex: 300,
+            display: "flex",
+            gap: 10,
+            alignItems: "flex-start",
+            padding: "10px 14px",
+            background: "#17181D",
+            border: "1px solid #B3261E",
+            borderRadius: 10,
+            color: "#F4F4F5",
+            fontSize: 12,
+            lineHeight: 1.5,
+            boxShadow: "0 12px 40px #00000080",
+          }}
+        >
+          <span style={{ flex: 1 }}>{audioPlayer.error}</span>
+          <button
+            type="button"
+            onClick={audioPlayer.dismiss}
+            style={{ background: "none", border: "none", color: "#9A9CA5", cursor: "pointer", fontSize: 14 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,42 @@ async function start(wsPort = 7331) {
   return `http://127.0.0.1:${port}`;
 }
 
+describe("OverlayHttpServer /audios (ADR 0019)", () => {
+  it("sirve un archivo de la carpeta de audios y 404 para lo demás", async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "streamtok-audios-http-"));
+    try {
+      writeFileSync(join(dir, "boom.mp3"), Buffer.from([0x49, 0x44, 0x33, 1, 2, 3]));
+      server = new OverlayHttpServer({
+        port: 0,
+        wsPort: 1,
+        audioFile: (name) => (name === "boom.mp3" ? join(dir, name) : null),
+      });
+      const base = `http://127.0.0.1:${await server.listen()}`;
+
+      const ok = await fetch(`${base}/audios/boom.mp3`);
+      expect(ok.status).toBe(200);
+      expect(ok.headers.get("content-type")).toBe("audio/mpeg");
+      expect(ok.headers.get("access-control-allow-origin")).toBe("*");
+      expect(Buffer.from(await ok.arrayBuffer())).toEqual(Buffer.from([0x49, 0x44, 0x33, 1, 2, 3]));
+
+      expect((await fetch(`${base}/audios/otro.mp3`)).status).toBe(404);
+      expect((await fetch(`${base}/audios/..%2Fsecreto.mp3`)).status).toBe(404);
+    } finally {
+      await server?.close();
+      server = undefined;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sin carpeta de audios configurada responde 404", async () => {
+    const base = await start();
+    expect((await fetch(`${base}/audios/boom.mp3`)).status).toBe(404);
+  });
+});
+
 describe("OverlayHttpServer", () => {
   it("sirve /overlay/timer y /overlay/wins como HTML con las cabeceras de red privada", async () => {
     const base = await start(9999);
