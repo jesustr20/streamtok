@@ -6,7 +6,12 @@ import {
   TikTokLiveConnection,
   WebcastEvent,
 } from "tiktok-live-connector";
-import { LiveEventSchema, type GiftCatalogEntry, type LiveEvent } from "@streamtok/shared";
+import {
+  LiveEventSchema,
+  type EmoteCatalogEntry,
+  type GiftCatalogEntry,
+  type LiveEvent,
+} from "@streamtok/shared";
 import type { EventRecorder } from "./event-recorder.js";
 import { extractAvatarUrl } from "./room-state.js";
 
@@ -242,6 +247,32 @@ export function extractGiftCatalogEntry(raw: unknown): GiftCatalogEntry | null {
   return { id, name, imageUrl, cost };
 }
 
+/** Extrae del mensaje `emote` crudo lo que va al catálogo de stickers/emotes (ADR 0018): id,
+ * origen e imagen de cada emote de la lista (sin repetir ids). */
+export function extractEmoteCatalogEntries(raw: unknown): EmoteCatalogEntry[] {
+  const msg = asRecord(raw);
+  const list = Array.isArray(msg.emoteList) ? msg.emoteList : [];
+  const out: EmoteCatalogEntry[] = [];
+  for (const item of list) {
+    const emote = asRecord(item);
+    const id = typeof emote.emoteId === "string" && emote.emoteId.length > 0 ? emote.emoteId : undefined;
+    if (!id || out.some((e) => e.id === id)) continue;
+    const urls = asRecord(emote.image).urlList;
+    const imageUrl = Array.isArray(urls)
+      ? urls.find((u): u is string => typeof u === "string" && u.length > 0)
+      : undefined;
+    const code = typeof emote.emoteScene === "number" ? emote.emoteScene : undefined;
+    out.push({
+      id,
+      scene: code === EmoteScene.FANS_CLUB ? "fanClub" : "subscriber",
+      imageUrl,
+      count: 1,
+      sceneCode: code,
+    });
+  }
+  return out;
+}
+
 export interface HostProfile {
   nickname?: string;
   avatarUrl?: string;
@@ -386,6 +417,10 @@ export class TikTokLiveSource extends EventEmitter {
     if (kind === "gift") {
       const entry = extractGiftCatalogEntry(raw);
       if (entry) this.emit("giftCatalogEntry", entry);
+    }
+    // Igual con los stickers y emotes (ADR 0018): el mensaje trae el id y la imagen.
+    if (kind === "emote") {
+      for (const entry of extractEmoteCatalogEntries(raw)) this.emit("emoteCatalogEntry", entry);
     }
     const evt = mapTiktokEvent(kind, raw);
     if (evt) {

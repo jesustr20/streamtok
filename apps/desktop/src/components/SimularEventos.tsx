@@ -8,6 +8,7 @@ import type {
 } from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
 import { GiftPicker, findGift, giftRefOf, type GiftRef } from "./GiftPicker";
+import { useEmoteCatalog } from "../lib/use-emote-catalog";
 
 const ACCENT = "#E23A57";
 
@@ -65,6 +66,7 @@ export function SimularEventos({
   const [likes, setLikes] = useState(20);
   const [comment, setComment] = useState("");
   const [roles, setRoles] = useState({ isFollower: false, isSubscriber: false, isModerator: false });
+  const emoteCatalog = useEmoteCatalog(client);
   const [emoteId, setEmoteId] = useState("");
   const [emoteScene, setEmoteScene] = useState<"subscriber" | "fanClub">("subscriber");
   const [knownEmotes, setKnownEmotes] = useState<{ subscriber: string[]; fanClub: string[] }>({
@@ -102,10 +104,17 @@ export function SimularEventos({
         const msg = evt.payload as EventosMessage;
         if (msg.kind !== "update") return;
         const uniq = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))];
-        setKnownEmotes({
-          subscriber: uniq(msg.eventos.filter((e) => e.porque === "emoteSuscriptor").map((e) => e.emoteId)),
-          fanClub: uniq(msg.eventos.filter((e) => e.porque === "stickerFanClub").map((e) => e.stickerId)),
-        });
+        // Ids que ya usan los Eventos guardados (incluye los tipos antiguos, ADR 0018).
+        const ofScene = (scene: "subscriber" | "fanClub") =>
+          uniq(
+            msg.eventos.map((e) => {
+              if (e.porque === "stickerEmote") return !e.emoteScene || e.emoteScene === scene ? e.emoteId : undefined;
+              if (scene === "subscriber" && e.porque === "emoteSuscriptor") return e.emoteId;
+              if (scene === "fanClub" && e.porque === "stickerFanClub") return e.stickerId;
+              return undefined;
+            }),
+          );
+        setKnownEmotes({ subscriber: ofScene("subscriber"), fanClub: ofScene("fanClub") });
       } else if (evt.channel === "event-log") {
         const msg = evt.payload as EventLogMessage;
         if (msg.kind !== "append" || !watching.current) return;
@@ -177,7 +186,10 @@ export function SimularEventos({
   }
 
   const canSend = client !== null;
-  const suggestions = knownEmotes[emoteScene];
+  // Sugerencias: los que ya llegaron por un LIVE (catálogo) y los que ya usan los Eventos.
+  const suggestions = [
+    ...new Set([...emoteCatalog.filter((e) => e.scene === emoteScene).map((e) => e.id), ...knownEmotes[emoteScene]]),
+  ];
   const lastResult = results[results.length - 1];
 
   return (
@@ -300,8 +312,8 @@ export function SimularEventos({
           onChange={(e) => setEmoteScene(e.target.value as "subscriber" | "fanClub")}
           style={{ ...inputStyle, width: 176, flexShrink: 0 }}
         >
-          <option value="subscriber">Emote de suscriptor</option>
-          <option value="fanClub">Sticker club de fans</option>
+          <option value="subscriber">Emote de Super Fan</option>
+          <option value="fanClub">Sticker del Club de fans</option>
         </select>
         <input
           type="text"

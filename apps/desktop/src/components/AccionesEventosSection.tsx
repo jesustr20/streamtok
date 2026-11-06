@@ -4,6 +4,7 @@ import type {
   AccionesMessage,
   Evento,
   EventosMessage,
+  EmoteCatalogEntry,
   GiftCatalogEntry,
   GiftCatalogMessage,
   ModHelloPayload,
@@ -13,6 +14,8 @@ import { describeQuien, PORQUE_LABELS } from "../lib/labels";
 import { AccionModal } from "./AccionModal";
 import { EventoModal } from "./EventoModal";
 import { findGift } from "./GiftPicker";
+import { optionFor } from "./EmotePicker";
+import { useEmoteCatalog } from "../lib/use-emote-catalog";
 import { Pagination, usePagination } from "./Pagination";
 import { matchesQuery } from "../lib/search";
 
@@ -46,11 +49,11 @@ function eventoAccionesIds(e: Evento): string[] {
  * (el regalo con imagen/nombre/coins, el comando, el mínimo de likes, etc.).
  */
 type TriggerInfo =
-  | { kind: "gift"; name: string; cost?: number; imageUrl?: string; id?: string }
+  | { kind: "gift"; name: string; cost?: number; imageUrl?: string; id?: string; subtitle?: string }
   | { kind: "text"; text: string }
   | { kind: "none" };
 
-function triggerFor(e: Evento, gifts: GiftCatalogEntry[]): TriggerInfo {
+function triggerFor(e: Evento, gifts: GiftCatalogEntry[], emotes: EmoteCatalogEntry[] = []): TriggerInfo {
   switch (e.porque) {
     case "regaloEspecifico": {
       // Por id primero (hay nombres repetidos con distinto id); nombre solo si no hay id.
@@ -76,6 +79,11 @@ function triggerFor(e: Evento, gifts: GiftCatalogEntry[]): TriggerInfo {
       return e.emoteId ? { kind: "text", text: `Emote ${e.emoteId}` } : { kind: "none" };
     case "stickerFanClub":
       return e.stickerId ? { kind: "text", text: `Sticker ${e.stickerId}` } : { kind: "none" };
+    case "stickerEmote": {
+      // Con imagen y origen, como un regalo; sin id elegido = cualquiera.
+      const o = optionFor({ id: e.emoteId, scene: e.emoteScene }, emotes);
+      return { kind: "gift", name: o.title, imageUrl: o.imageUrl, id: e.emoteId, subtitle: o.subtitle };
+    }
     case "compraTiktokShop":
       return e.nombreProductoContiene
         ? { kind: "text", text: `Producto: ${e.nombreProductoContiene}` }
@@ -86,7 +94,7 @@ function triggerFor(e: Evento, gifts: GiftCatalogEntry[]): TriggerInfo {
 }
 
 function triggerSearchText(t: TriggerInfo): string {
-  if (t.kind === "gift") return `${t.name} ${t.cost ?? ""} ${t.id ?? ""}`;
+  if (t.kind === "gift") return `${t.name} ${t.cost ?? ""} ${t.id ?? ""} ${t.subtitle ?? ""}`;
   if (t.kind === "text") return t.text;
   return "";
 }
@@ -104,19 +112,27 @@ function TriggerCell({ trigger }: { trigger: TriggerInfo }) {
           style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", flexShrink: 0 }}
         />
       )}
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F4F5", whiteSpace: "normal" }}>
-        {trigger.name}
-        {trigger.cost !== undefined ? ` - ${trigger.cost} coin${trigger.cost === 1 ? "" : "s"}` : ""}
+      <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F4F5", whiteSpace: "normal" }}>
+          {trigger.name}
+          {trigger.cost !== undefined ? ` - ${trigger.cost} coin${trigger.cost === 1 ? "" : "s"}` : ""}
+        </span>
+        {trigger.subtitle && <span style={{ fontSize: 11, color: "#9A9CA5" }}>{trigger.subtitle}</span>}
       </span>
     </div>
   );
 }
 
-function eventoSearchText(e: Evento, acciones: Accion[], gifts: GiftCatalogEntry[]): string {
+function eventoSearchText(
+  e: Evento,
+  acciones: Accion[],
+  gifts: GiftCatalogEntry[],
+  emotes: EmoteCatalogEntry[],
+): string {
   return [
     describeQuien(e),
     PORQUE_LABELS[e.porque],
-    triggerSearchText(triggerFor(e, gifts)),
+    triggerSearchText(triggerFor(e, gifts, emotes)),
     e.usuarioEspecifico ?? "",
     e.comando ?? "",
     accionNamesFor(acciones, eventoAccionesIds(e)),
@@ -141,6 +157,7 @@ export function AccionesEventosSection({
   const [acciones, setAcciones] = useState<Accion[]>([]);
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [gifts, setGifts] = useState<GiftCatalogEntry[]>([]);
+  const emotes = useEmoteCatalog(client);
   const [error, setError] = useState<string | null>(null);
 
   const [accionModal, setAccionModal] = useState<{ initial: Accion | null } | null>(null);
@@ -246,7 +263,7 @@ export function AccionesEventosSection({
 
   const filteredAcciones = acciones.filter((a) => matchesQuery(a.nombre, accionSearch));
   const filteredEventos = eventos.filter((e) =>
-    matchesQuery(eventoSearchText(e, acciones, gifts), eventoSearch),
+    matchesQuery(eventoSearchText(e, acciones, gifts, emotes), eventoSearch),
   );
   const accionesPaging = usePagination(filteredAcciones, accionSearch);
   const eventosPaging = usePagination(filteredEventos, eventoSearch);
@@ -483,7 +500,7 @@ export function AccionesEventosSection({
                     <td style={{ ...tdStyle, fontSize: 12, color: "#9A9CA5", whiteSpace: "normal" }}>{describeQuien(e)}</td>
                     <td style={{ ...tdStyle, fontSize: 12.5, fontWeight: 600, whiteSpace: "normal" }}>{PORQUE_LABELS[e.porque]}</td>
                     <td style={{ ...tdStyle, fontSize: 12 }}>
-                      <TriggerCell trigger={triggerFor(e, gifts)} />
+                      <TriggerCell trigger={triggerFor(e, gifts, emotes)} />
                     </td>
                     <td style={{ ...tdStyle, fontSize: 12, color: "#C4C5CC" }}>{accionNamesFor(acciones, eventoAccionesIds(e))}</td>
                   </tr>

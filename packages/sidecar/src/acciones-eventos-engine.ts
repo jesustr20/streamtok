@@ -37,6 +37,7 @@ export const PORQUE_LABELS: Record<EventoPorque, string> = {
   regaloEspecifico: "regalo",
   emoteSuscriptor: "emote suscriptor",
   stickerFanClub: "sticker fan club",
+  stickerEmote: "sticker/emote",
   compraTiktokShop: "compra TikTok Shop",
   subeNivelFan: "sube de nivel de fan",
   subeNivelDonador: "sube de nivel de donador",
@@ -252,6 +253,10 @@ export class AccionesEventosEngine extends EventEmitter {
         if (live.event !== "emote") return false;
         if (live.emoteScene !== "fanClub") return false;
         return !!ev.stickerId && live.emoteId === ev.stickerId;
+      case "stickerEmote":
+        if (live.event !== "emote") return false;
+        if (ev.emoteScene && live.emoteScene !== ev.emoteScene) return false;
+        return !ev.emoteId || live.emoteId === ev.emoteId;
       case "compraTiktokShop":
         return false; // oecLiveShopping no es una compra confirmada (ADR 0005)
       case "subeNivelFan":

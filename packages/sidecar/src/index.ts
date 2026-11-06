@@ -7,6 +7,11 @@ import {
   GiftCatalogStore,
   defaultGiftCatalogFilePath,
 } from "./gift-catalog.js";
+import {
+  EmoteCatalogController,
+  EmoteCatalogStore,
+  defaultEmoteCatalogFilePath,
+} from "./emote-catalog.js";
 import { appDataDir } from "./mapping-rules.js";
 import { ModBridge } from "./mod-bridge.js";
 import {
@@ -106,6 +111,17 @@ const giftCatalogController = new GiftCatalogController(
 );
 giftCatalogController.on("log", (entry) => {
   const tag = `[gift-catalog:${entry.level}]`;
+  // eslint-disable-next-line no-console
+  console.log(tag, entry.message, entry.details ?? "");
+});
+
+// Catálogo de stickers y emotes (ADR 0018): se llena con los que llegan en el LIVE.
+const emoteCatalogController = new EmoteCatalogController(
+  server,
+  new EmoteCatalogStore(defaultEmoteCatalogFilePath()),
+);
+emoteCatalogController.on("log", (entry) => {
+  const tag = `[emote-catalog:${entry.level}]`;
   // eslint-disable-next-line no-console
   console.log(tag, entry.message, entry.details ?? "");
 });
@@ -344,6 +360,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     });
   },
   onGift: (entry) => giftCatalogController.learn(entry),
+  onEmote: (entry) => emoteCatalogController.learn(entry),
   onRoom: (kind, raw) => {
     if (kind === "roomUser") room.ingestRoomUser(raw);
     else if (kind === "battleArmies") room.ingestBattleArmies(raw);

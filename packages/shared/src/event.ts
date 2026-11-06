@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LiveEventEmoteScene } from "./live-event.js";
 
 /**
  * Evento (ADR 0004). Concepto UI↔sidecar, NO en mod-protocol.ts. Es "qué lo
@@ -29,6 +30,9 @@ export const EventoPorqueSchema = z.enum([
   "regaloEspecifico",
   "emoteSuscriptor",
   "stickerFanClub",
+  // Sticker o emote del streamer (ADR 0018): reemplaza a los dos anteriores en la UI; los dos
+  // anteriores siguen siendo válidos para los Eventos ya guardados.
+  "stickerEmote",
   "compraTiktokShop",
   // Al subir de nivel (ADR 0007).
   "subeNivelFan",
@@ -54,6 +58,8 @@ const baseSchema = z.object({
   giftName: z.string().optional(),
   emoteId: z.string().optional(),
   stickerId: z.string().optional(),
+  /** `stickerEmote`: solo dispara si el sticker/emote viene de este origen (ausente = cualquiera). */
+  emoteScene: LiveEventEmoteScene.optional(),
   nombreProductoContiene: z.string().optional(),
   /** Acciones que se disparan TODAS al coincidir el evento. */
   accionesTodas: z.array(z.string()).default([]),
@@ -157,6 +163,9 @@ export const EventoSchema = z.preprocess(migrateEventoAcciones, baseSchema.super
       }
       break;
     }
+    case "stickerEmote":
+      // emoteId y emoteScene opcionales: sin id dispara con cualquier sticker/emote (del origen elegido).
+      break;
     case "subeNivelFan":
     case "subeNivelDonador":
       // nivelMinimo opcional (default 1)

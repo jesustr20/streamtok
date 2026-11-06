@@ -31,6 +31,7 @@ export const PORQUE_LABELS: Record<EventoPorque, string> = {
   regaloEspecifico: "Enviando un regalo específico",
   emoteSuscriptor: "Enviando un emote de suscriptor",
   stickerFanClub: "Enviando un sticker del club de fans",
+  stickerEmote: "Enviando un sticker o emote",
   compraTiktokShop: "Comprar un producto en TikTok Shop",
   subeNivelFan: "Subiendo de nivel de fan (club de fans)",
   subeNivelDonador: "Subiendo de nivel de donador",
@@ -47,8 +48,9 @@ export const PORQUE_OPTIONS: { value: EventoPorque; label: string }[] = [
   { value: "comando", label: PORQUE_LABELS.comando },
   { value: "regaloValorMinimo", label: PORQUE_LABELS.regaloValorMinimo },
   { value: "regaloEspecifico", label: PORQUE_LABELS.regaloEspecifico },
-  { value: "emoteSuscriptor", label: PORQUE_LABELS.emoteSuscriptor },
-  { value: "stickerFanClub", label: PORQUE_LABELS.stickerFanClub },
+  // Un solo desencadenante para sticker y emote (ADR 0018). Los dos antiguos (emoteSuscriptor /
+  // stickerFanClub) siguen funcionando en los Eventos ya guardados, pero ya no se ofrecen.
+  { value: "stickerEmote", label: PORQUE_LABELS.stickerEmote },
   { value: "compraTiktokShop", label: PORQUE_LABELS.compraTiktokShop },
   { value: "subeNivelFan", label: PORQUE_LABELS.subeNivelFan },
   { value: "subeNivelDonador", label: PORQUE_LABELS.subeNivelDonador },
