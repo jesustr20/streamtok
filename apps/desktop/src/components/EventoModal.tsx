@@ -43,12 +43,15 @@ export function EventoModal({
   onSave,
   onClose,
   client,
+  soloStickers = false,
 }: {
   acciones: Accion[];
   initial: Evento | null;
   onSave: (evento: Evento) => void;
   onClose: () => void;
   client: SidecarClient | null;
+  /** Desde el panel «Stickers y emotes»: el desencadenante queda fijo en «sticker o emote» (ADR 0021). */
+  soloStickers?: boolean;
 }) {
   const [quien, setQuien] = useState<EventoQuien>(initial?.quien ?? "todos");
   const [usuarioEspecifico, setUsuarioEspecifico] = useState(initial?.usuarioEspecifico ?? "");
@@ -58,7 +61,7 @@ export function EventoModal({
   const [porque, setPorque] = useState<EventoPorque>(
     initial?.porque === "emoteSuscriptor" || initial?.porque === "stickerFanClub"
       ? "stickerEmote"
-      : (initial?.porque ?? "unirse"),
+      : (initial?.porque ?? (soloStickers ? "stickerEmote" : "unirse")),
   );
   const [porqueSearch, setPorqueSearch] = useState("");
   const [nivelEquipoRequerido, setNivelEquipoRequerido] = useState<number>(
@@ -228,7 +231,7 @@ export function EventoModal({
     <div style={overlayStyle}>
       {dialog}
       <div style={cardStyle}>
-        <span style={eyebrowStyle}>MODAL · ABIERTO DESDE GTA V CHAOS MOD</span>
+        <span style={eyebrowStyle}>{soloStickers ? "STICKERS Y EMOTES" : "MODAL · ABIERTO DESDE GTA V CHAOS MOD"}</span>
         <div style={titleRowStyle}>
           <h2 style={titleStyle}>{initial ? "Editar Evento" : "Nuevo Evento"}</h2>
           <button type="button" onClick={requestClose} style={closeButtonStyle}>
@@ -268,6 +271,14 @@ export function EventoModal({
             </label>
           )}
 
+          {soloStickers ? (
+            <div>
+              <span style={questionLabelStyle}>¿Por qué se desencadenará el evento?</span>
+              <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "#C4C5CC" }}>
+                Enviando un sticker o emote <span style={{ color: "#5B5D66" }}>(fijo en este panel)</span>
+              </p>
+            </div>
+          ) : (
           <div>
             <span style={questionLabelStyle}>¿Por qué se desencadenará el evento?</span>
             <input
@@ -301,6 +312,7 @@ export function EventoModal({
               regalo, "valor mínimo" pide un número).
             </p>
           </div>
+          )}
 
           {esProximamente && <div style={proximamenteNoteStyle}>{PROXIMAMENTE_NOTE}</div>}
 

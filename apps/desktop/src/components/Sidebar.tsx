@@ -77,6 +77,7 @@ const NAV_BOTTOM: NavItem[] = [
   { id: "simulador", label: "Simulador", enabled: false },
   { id: "puntos", label: "Puntos", enabled: false },
   { id: "juegos", label: "Juegos", enabled: true },
+  { id: "stickers", label: "Stickers y emotes", enabled: true },
   { id: "suscripciones", label: "Suscripciones", enabled: false },
   { id: "admin", label: "Admin", enabled: false },
 ];

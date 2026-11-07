@@ -17,6 +17,7 @@ import { findGift } from "./GiftPicker";
 import { optionFor } from "./EmotePicker";
 import { useEmoteCatalog } from "../lib/use-emote-catalog";
 import { Pagination, usePagination } from "./Pagination";
+import { STICKER_PORQUES } from "./StickersView";
 import { matchesQuery } from "../lib/search";
 
 function sanitizeUnknownParams(
@@ -262,9 +263,11 @@ export function AccionesEventosSection({
   }
 
   const filteredAcciones = acciones.filter((a) => matchesQuery(a.nombre, accionSearch));
-  const filteredEventos = eventos.filter((e) =>
-    matchesQuery(eventoSearchText(e, acciones, gifts, emotes), eventoSearch),
-  );
+  // Los eventos de stickers/emotes se ven en su propio panel (ADR 0021), para no cargar esta tabla.
+  const stickerEventos = eventos.filter((e) => STICKER_PORQUES.has(e.porque)).length;
+  const filteredEventos = eventos
+    .filter((e) => !STICKER_PORQUES.has(e.porque))
+    .filter((e) => matchesQuery(eventoSearchText(e, acciones, gifts, emotes), eventoSearch));
   const accionesPaging = usePagination(filteredAcciones, accionSearch);
   const eventosPaging = usePagination(filteredEventos, eventoSearch);
 
@@ -417,6 +420,12 @@ export function AccionesEventosSection({
             usan el mismo motor.
           </p>
         </div>
+
+        {stickerEventos > 0 && (
+          <p style={{ ...subDescStyle, color: "#C4C5CC" }}>
+            Los {stickerEventos} evento{stickerEventos === 1 ? "" : "s"} de stickers y emotes están en el panel «Stickers y emotes» del menú.
+          </p>
+        )}
 
         <div style={toolbarStyle}>
           <button type="button" onClick={() => setEventoModal({ initial: null })} style={createButtonStyle}>
