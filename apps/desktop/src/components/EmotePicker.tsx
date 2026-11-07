@@ -49,7 +49,7 @@ function entryOption(e: EmoteCatalogEntry): Option {
     key: `id|${e.id}`,
     ref: { id: e.id, scene: e.scene },
     title: entryTitle(e),
-    subtitle: `ID:${e.id} · ×${e.count}`,
+    subtitle: `ID:${e.id}`,
     imageUrl: e.imageUrl,
   };
 }
@@ -122,13 +122,11 @@ export function EmotePicker({
     !q || o.title.toLowerCase().includes(q) || o.subtitle.toLowerCase().includes(q);
 
   const anyOptions = [anyOption(), anyOption("fanClub"), anyOption("subscriber")].filter(matches);
-  const byCount = (a: EmoteCatalogEntry, b: EmoteCatalogEntry) => b.count - a.count;
   const groups = (["fanClub", "subscriber"] as const)
     .map((scene) => ({
       scene,
       options: emotes
         .filter((e) => e.scene === scene)
-        .sort(byCount)
         .map(entryOption)
         .filter(matches),
     }))

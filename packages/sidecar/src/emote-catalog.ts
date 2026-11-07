@@ -25,7 +25,6 @@ export function defaultEmoteCatalogFilePath(): string {
 const SCENE_LABEL = { subscriber: "Super Fan / suscripción", fanClub: "Club de fans" } as const;
 
 /** Cada cuánto se guarda en disco el solo aumento del contador (sin entradas nuevas). */
-const COUNT_FLUSH_MS = 5_000;
 
 export class EmoteCatalogStore {
   constructor(private filePath: string, private onWarn?: (message: string) => void) {}
@@ -66,7 +65,6 @@ export class EmoteCatalogStore {
 /** Expone el catálogo por el canal WS `emote-catalog` (patrón `get-state`) y lo guarda en disco. */
 export class EmoteCatalogController extends EventEmitter {
   private entries: EmoteCatalogEntry[];
-  private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private server: StreamTokWsServer, private store: EmoteCatalogStore) {
     super();
@@ -88,9 +86,9 @@ export class EmoteCatalogController extends EventEmitter {
 
   /**
    * Registra un sticker/emote que llegó por un evento real. El id es la clave: si ya
-   * está, suma una vez y refresca imagen y origen con lo último que dijo TikTok (las
-   * URLs de imagen pueden cambiar). Devuelve true si el catálogo cambió de forma visible
-   * (entrada nueva, otra imagen u otro origen); el solo contador se guarda un poco después.
+   * está, no se agrega ni se cuenta nada; solo se refresca la imagen y el origen si
+   * TikTok mandó otros (las URLs de imagen pueden cambiar). Devuelve true si el catálogo
+   * cambió (entrada nueva, otra imagen u otro origen).
    */
   learn(entry: EmoteCatalogEntry): boolean {
     const idx = this.entries.findIndex((e) => e.id === entry.id);
@@ -106,35 +104,18 @@ export class EmoteCatalogController extends EventEmitter {
     const current = this.entries[idx];
     const imageChanged = !!entry.imageUrl && entry.imageUrl !== current.imageUrl;
     const sceneChanged = entry.scene !== current.scene;
+    if (!imageChanged && !sceneChanged) return false; // ya existe: no se hace nada
     this.entries[idx] = {
       ...current,
       scene: entry.scene,
       sceneCode: entry.sceneCode ?? current.sceneCode,
       imageUrl: entry.imageUrl ?? current.imageUrl,
-      count: current.count + 1,
     };
-    if (imageChanged || sceneChanged) {
-      this.persistAndBroadcast();
-      return true;
-    }
-    this.scheduleFlush();
-    return false;
-  }
-
-  private scheduleFlush() {
-    if (this.flushTimer) return;
-    this.flushTimer = setTimeout(() => {
-      this.flushTimer = null;
-      this.persistAndBroadcast();
-    }, COUNT_FLUSH_MS);
-    this.flushTimer.unref?.();
+    this.persistAndBroadcast();
+    return true;
   }
 
   private persistAndBroadcast() {
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
     this.broadcastState();
     void this.store.save(this.entries).catch((err) => {
       this.emit("log", {
