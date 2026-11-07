@@ -83,6 +83,23 @@ export function StickersView({ client, catalog }: { client: SidecarClient | null
   }, [client]);
 
   const accionById = (id: string) => acciones.find((a) => a.id === id);
+  // Solo las acciones creadas en este panel (ADR 0023): las de Juegos no aparecen aquí.
+  const accionesStickers = acciones.filter((a) => a.ambito === "stickers");
+
+  // Migración única: las acciones que ya usaban solo alertas de sticker (creadas antes de separar los módulos)
+  // pasan a este panel. Una acción compartida con un evento de Juegos se queda donde está.
+  useEffect(() => {
+    if (!client || acciones.length === 0 || eventos.length === 0) return;
+    const usedBySticker = new Set<string>();
+    const usedByOther = new Set<string>();
+    for (const e of eventos) {
+      for (const id of [...e.accionesTodas, ...e.accionesAleatorias]) (STICKER_PORQUES.has(e.porque) ? usedBySticker : usedByOther).add(id);
+    }
+    const move = acciones.filter((a) => !a.ambito && usedBySticker.has(a.id) && !usedByOther.has(a.id));
+    if (move.length === 0) return;
+    const ids = new Set(move.map((a) => a.id));
+    client.send("acciones", { kind: "set", acciones: acciones.map((a) => (ids.has(a.id) ? { ...a, ambito: "stickers" as const } : a)) });
+  }, [client, acciones, eventos]);
   const accionesDe = (e: Evento) => [...e.accionesTodas, ...e.accionesAleatorias].map(accionById);
 
   const rows = eventos
@@ -304,11 +321,11 @@ export function StickersView({ client, catalog }: { client: SidecarClient | null
       <Pagination page={paging.page} pageCount={paging.pageCount} onChange={paging.setPage} />
 
       {accionModal && (
-        <AccionModal catalog={catalog} client={client} initial={accionModal.initial} onSave={saveAccion} onClose={() => setAccionModal(null)} />
+        <AccionModal catalog={catalog} client={client} initial={accionModal.initial} ambito="stickers" onSave={saveAccion} onClose={() => setAccionModal(null)} />
       )}
       {eventoModal && (
         <EventoModal
-          acciones={acciones}
+          acciones={accionesStickers}
           initial={eventoModal.initial}
           onSave={saveEvento}
           onClose={() => setEventoModal(null)}

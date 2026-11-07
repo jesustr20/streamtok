@@ -51,6 +51,8 @@ export const AccionSchema = z.object({
    * solo para quien la disparó (por @username) durante estos segundos. 0 o
    * ausente = sin cooldown. */
   cooldownUsuarioSeg: z.number().nonnegative().optional(),
+  /** Dónde vive la acción (ADR 0023): `stickers` = panel «Stickers y emotes»; ausente = Juegos. Cada lugar solo ve las suyas. */
+  ambito: z.enum(["juegos", "stickers"]).optional(),
 });
 export type Accion = z.infer<typeof AccionSchema>;
 

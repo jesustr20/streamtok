@@ -83,12 +83,15 @@ export function AccionModal({
   catalog,
   client,
   initial,
+  ambito,
   onSave,
   onClose,
 }: {
   catalog: ModHelloPayload | null;
   client: SidecarClient | null;
   initial: Accion | null;
+  /** `stickers`: la acción se crea en el panel «Stickers y emotes» y no aparece en Juegos (ADR 0023). */
+  ambito?: "stickers";
   onSave: (accion: Accion) => void;
   onClose: () => void;
 }) {
@@ -222,6 +225,7 @@ export function AccionModal({
       repetirConComboDeRegalos: repetirConCombo,
       cooldownGlobalSeg: parseSeconds(cooldownGlobal),
       cooldownUsuarioSeg: parseSeconds(cooldownUsuario),
+      ...(initial?.ambito ?? ambito ? { ambito: initial?.ambito ?? ambito } : {}),
     });
   }
 
