@@ -14,10 +14,11 @@ import { AgenteView } from "./components/AgenteView";
 import { TopsView } from "./components/TopsView";
 import { MetasView } from "./components/MetasView";
 import { WinsView } from "./components/WinsView";
+import { StickersView } from "./components/StickersView";
 import { SidecarClient } from "./lib/ws-client";
 import { useAudioPlayer } from "./lib/use-audio";
 
-export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas" | "alertas" | "duelos" | "tops" | "agente";
+export type ViewId = "inicio" | "juegos" | "juego-detalle" | "gestionar-perfiles" | "overlays" | "temporizador" | "wins" | "metas" | "alertas" | "duelos" | "tops" | "agente" | "stickers";
 
 export function App() {
   const [catalog, setCatalog] = useState<ModHelloPayload | null>(null);
@@ -147,6 +148,7 @@ export function App() {
         {view === "duelos" && <DuelosView client={client} selected={duelSel} />}
         {view === "tops" && <TopsView client={client} selected={topSel} />}
         {view === "agente" && <AgenteView client={client} />}
+        {view === "stickers" && <StickersView client={client} catalog={catalog} />}
       </main>
       {audioPlayer.error && (
         <div
