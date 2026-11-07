@@ -247,30 +247,48 @@ export function extractGiftCatalogEntry(raw: unknown): GiftCatalogEntry | null {
   return { id, name, imageUrl, cost };
 }
 
-/** Extrae del mensaje `emote` crudo lo que va al catálogo de stickers/emotes (ADR 0018): id,
- * origen e imagen de cada emote de la lista (sin repetir ids). */
-export function extractEmoteCatalogEntries(raw: unknown): EmoteCatalogEntry[] {
-  const msg = asRecord(raw);
-  const list = Array.isArray(msg.emoteList) ? msg.emoteList : [];
+/** Convierte un `EmoteModel` crudo de TikTok en una entrada del catálogo (o null si no trae id). */
+function emoteModelToEntry(item: unknown): EmoteCatalogEntry | null {
+  const emote = asRecord(item);
+  const id = typeof emote.emoteId === "string" && emote.emoteId.length > 0 ? emote.emoteId : undefined;
+  if (!id) return null;
+  const urls = asRecord(emote.image).urlList;
+  const imageUrl = Array.isArray(urls)
+    ? urls.find((u): u is string => typeof u === "string" && u.length > 0)
+    : undefined;
+  const code = typeof emote.emoteScene === "number" ? emote.emoteScene : undefined;
+  return {
+    id,
+    scene: code === EmoteScene.FANS_CLUB ? "fanClub" : "subscriber",
+    imageUrl,
+    count: 1,
+    sceneCode: code,
+  };
+}
+
+function uniqueEntries(models: unknown[]): EmoteCatalogEntry[] {
   const out: EmoteCatalogEntry[] = [];
-  for (const item of list) {
-    const emote = asRecord(item);
-    const id = typeof emote.emoteId === "string" && emote.emoteId.length > 0 ? emote.emoteId : undefined;
-    if (!id || out.some((e) => e.id === id)) continue;
-    const urls = asRecord(emote.image).urlList;
-    const imageUrl = Array.isArray(urls)
-      ? urls.find((u): u is string => typeof u === "string" && u.length > 0)
-      : undefined;
-    const code = typeof emote.emoteScene === "number" ? emote.emoteScene : undefined;
-    out.push({
-      id,
-      scene: code === EmoteScene.FANS_CLUB ? "fanClub" : "subscriber",
-      imageUrl,
-      count: 1,
-      sceneCode: code,
-    });
+  for (const m of models) {
+    const entry = emoteModelToEntry(m);
+    if (entry && !out.some((e) => e.id === entry.id)) out.push(entry);
   }
   return out;
+}
+
+/** Extrae del mensaje `emote` crudo (sticker/emote enviado solo) lo que va al catálogo de
+ * stickers/emotes (ADR 0018): id, origen e imagen de cada emote de la lista (sin repetir ids). */
+export function extractEmoteCatalogEntries(raw: unknown): EmoteCatalogEntry[] {
+  const msg = asRecord(raw);
+  return uniqueEntries(Array.isArray(msg.emoteList) ? msg.emoteList : []);
+}
+
+/** Igual, pero para los emotes que van DENTRO de un comentario del chat
+ * (`WebcastChatMessage.emotes[].emote`): así también se aprenden los emotes de Super Fan
+ * que se escriben como comentario, no solo los que llegan como mensaje suelto. */
+export function extractChatEmoteCatalogEntries(raw: unknown): EmoteCatalogEntry[] {
+  const msg = asRecord(raw);
+  const list = Array.isArray(msg.emotes) ? msg.emotes : [];
+  return uniqueEntries(list.map((item) => asRecord(item).emote));
 }
 
 export interface HostProfile {
@@ -421,6 +439,8 @@ export class TikTokLiveSource extends EventEmitter {
     // Igual con los stickers y emotes (ADR 0018): el mensaje trae el id y la imagen.
     if (kind === "emote") {
       for (const entry of extractEmoteCatalogEntries(raw)) this.emit("emoteCatalogEntry", entry);
+    } else if (kind === "chat") {
+      for (const entry of extractChatEmoteCatalogEntries(raw)) this.emit("emoteCatalogEntry", entry);
     }
     const evt = mapTiktokEvent(kind, raw);
     if (evt) {

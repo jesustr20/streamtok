@@ -29,3 +29,7 @@ La librería `tiktok-live-connector` no ofrece una función para listar los stic
 
 - Mantener los dos desencadenantes: confunde (son el mismo mensaje) y el nombre "suscriptor" ya no es el de TikTok.
 - Migrar los Eventos guardados al abrir el archivo: riesgo innecesario; basta con aceptar ambos tipos.
+
+## Corrección (2026-11-06): emotes dentro del chat
+
+El catálogo solo escuchaba el mensaje `emote` (sticker/emote enviado suelto). Los emotes de Super Fan que se escriben **dentro de un comentario** llegan en `WebcastChatMessage.emotes[].emote` (el mismo `EmoteModel`: id, imagen, escena), así que no se aprendían. Ahora el mensaje de chat también alimenta el catálogo (`extractChatEmoteCatalogEntries`). El comentario sigue siendo un evento de chat normal; el desencadenante "sticker o emote" de los Eventos sigue disparándose solo con el mensaje `emote` (disparar con emotes del chat queda por decidir).
