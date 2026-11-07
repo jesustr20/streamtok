@@ -379,6 +379,33 @@ function mapEmote(raw: RawRecord): LiveEvent | null {
 }
 
 /**
+ * Un sticker/emote enviado desde el panel de stickers puede llegar como un comentario de
+ * chat (`WebcastChatMessage.emotes`, normalmente sin texto) en vez de como mensaje `emote`.
+ * Se mapea al mismo evento `emote` para que dispare los Eventos de "sticker o emote".
+ */
+export function mapChatEmote(raw: unknown): LiveEvent | null {
+  const msg = asRecord(raw);
+  const { username, nickname } = extractUserIdentity(msg);
+  if (!username) return null;
+  const [first] = extractChatEmoteCatalogEntries(msg);
+  if (!first) return null;
+  return finalize({
+    event: "emote",
+    username,
+    nickname,
+    emoteId: first.id,
+    emoteScene: first.scene,
+    timestamp: Date.now(),
+    ...extractUserFlags(msg),
+  });
+}
+
+/** Ventana en la que el mismo sticker del mismo usuario llegado por los DOS caminos (mensaje
+ * `emote` y comentario de chat) cuenta como un solo envío. Si manda el mismo sticker varias
+ * veces por el mismo camino, cada envío cuenta. */
+const EMOTE_DEDUP_MS = 3_000;
+
+/**
  * Mapea un evento crudo de tiktok-live-connector a un `LiveEvent` validado.
  * Devuelve `null` (descarta) si el evento es un streak intermedio de regalo o
  * si no se puede normalizar (remitente faltante / malformado). Es puro y
@@ -411,6 +438,7 @@ export function mapTiktokEvent(kind: TiktokEventKind, raw: unknown): LiveEvent |
 export class TikTokLiveSource extends EventEmitter {
   private connection: TikTokLiveConnection | null = null;
   private readonly levels = new LevelTracker();
+  private readonly recentEmotes = new Map<string, { t: number; via: "chat" | "emote" }>();
 
   /** `recorder` (opcional) graba cada mensaje crudo del LIVE para análisis
    * posterior (ver event-recorder.ts); no afecta al mapeo ni al motor. */
@@ -442,17 +470,38 @@ export class TikTokLiveSource extends EventEmitter {
     } else if (kind === "chat") {
       for (const entry of extractChatEmoteCatalogEntries(raw)) this.emit("emoteCatalogEntry", entry);
     }
-    const evt = mapTiktokEvent(kind, raw);
+    let evt = mapTiktokEvent(kind, raw);
+    // Sticker enviado desde el panel: llega como comentario con emotes (sin texto).
+    const chatEmote = kind === "chat" ? mapChatEmote(raw) : null;
+    if (chatEmote && this.claimEmote(chatEmote, "chat")) this.emit("event", chatEmote);
+    if (evt && evt.event === "emote" && !this.claimEmote(evt, "emote")) {
+      // Ya se procesó el mismo sticker (llegó también como comentario): no se repite.
+      this.detectLevelUps(raw);
+      return evt;
+    }
     if (evt) {
       this.emit("event", evt);
-    } else {
+    } else if (!chatEmote) {
       this.emit("log", {
         level: "warn",
         message: `Evento "${kind}" de TikTok descartado (sin remitente, streak intermedio o malformado)`,
       });
     }
+    if (!evt && chatEmote) evt = chatEmote;
     this.detectLevelUps(raw);
     return evt;
+  }
+
+  /** true si este envío es nuevo; false si el mismo sticker del mismo usuario ya llegó hace instantes por el OTRO camino. */
+  private claimEmote(evt: LiveEvent, via: "chat" | "emote"): boolean {
+    if (evt.event !== "emote") return true;
+    const now = Date.now();
+    for (const [k, v] of this.recentEmotes) if (now - v.t > EMOTE_DEDUP_MS) this.recentEmotes.delete(k);
+    const key = `${evt.username}|${evt.emoteId ?? ""}`;
+    const prev = this.recentEmotes.get(key);
+    if (prev && prev.via !== via) return false;
+    this.recentEmotes.set(key, { t: now, via });
+    return true;
   }
 
   /** Subidas de nivel (ADR 0007): se compara contra el último nivel visto del
