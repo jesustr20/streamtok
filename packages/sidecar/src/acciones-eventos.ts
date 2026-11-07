@@ -1,6 +1,8 @@
 import {
   APP_COMMANDS,
   AUDIO_COMMAND_ID,
+  MEDIA_COMMAND_ID,
+  MediaShowParamsSchema,
   AudioPlayParamsSchema,
   AccionSchema,
   EventoSchema,
@@ -85,6 +87,15 @@ export function validateAcciones(
           return comando;
         }
         return { ...comando, params: audio.data };
+      }
+      // Mostrar IMG/GIF/VIDEO (ADR 0022): también con su propio esquema.
+      if (comando.modActionId === MEDIA_COMMAND_ID) {
+        const media = MediaShowParamsSchema.safeParse(comando.params);
+        if (!media.success) {
+          errors.push(`La acción "${accion.nombre}" (${accion.id}) tiene un Mostrar IMG/GIF/VIDEO inválido (¿falta elegir el archivo o la URL?).`);
+          return comando;
+        }
+        return { ...comando, params: media.data };
       }
       // Los comandos internos `app.*` (ADR 0011) se validan contra su propio
       // catálogo, no contra el del mod.

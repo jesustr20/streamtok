@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { ALERT_PRESETS, AUDIO_COMMAND_ID, DUEL_PRESETS, GOAL_PRESETS, TOP_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
+import { ALERT_PRESETS, AUDIO_COMMAND_ID, DUEL_PRESETS, GOAL_PRESETS, MEDIA_COMMAND_ID, TOP_PRESETS, type EventLogEntry, type Goal, type LiveEvent } from "@streamtok/shared";
 import { AccionesEventosEngine } from "./acciones-eventos-engine.js";
 import { EventRecorder, maxBytesFromEnv } from "./event-recorder.js";
 import {
@@ -39,6 +39,7 @@ import { OverlayHttpServer, overlayPortFromEnv } from "./overlay-server.js";
 import { OverlaysController } from "./overlays-controller.js";
 import { registerManualCommand } from "./manual-command.js";
 import { AudioController } from "./audio.js";
+import { MediaController } from "./media.js";
 import {
   ProfilesController,
   ProfilesStore,
@@ -284,23 +285,32 @@ audio.on("log", (entry) => {
   console.log(`[audio:${entry.level}]`, entry.message);
 });
 
-// Los comandos internos `app.*` de las Acciones: `app.goal.*` van a las metas, `app.audio.play` al audio, el resto a Timer/Wins.
+// Módulo de medios (ADR 0022): "Mostrar IMG / GIF / VIDEO" en las pantallas /overlay/pantalla/<n>.
+const media = new MediaController(server, { httpPort: () => overlayPort });
+media.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[media:${entry.level}]`, entry.message);
+});
+
+// Los comandos internos `app.*` de las Acciones: `app.goal.*` van a las metas, `app.audio.play` al audio, `app.media.show` a las pantallas, el resto a Timer/Wins.
 const appCommands = {
   applyAppCommand: (id: string, params: Record<string, unknown>) =>
     id === AUDIO_COMMAND_ID
       ? audio.applyPlay(params)
-      : id.startsWith("app.goal.")
+      : id === MEDIA_COMMAND_ID
+        ? media.applyShow(params)
+        : id.startsWith("app.goal.")
         ? goals.applyAppCommand(id, params)
         : overlayCounters.applyAppCommand(id, params),
 };
 engine.setCounters(appCommands);
 
-const overlayHttp = new OverlayHttpServer({ port: overlayPort, wsPort: PORT, audioFile: (name) => audio.resolveFile(name) });
+const overlayHttp = new OverlayHttpServer({ port: overlayPort, wsPort: PORT, audioFile: (name) => audio.resolveFile(name), mediaFile: (name) => media.resolveFile(name) });
 overlayHttp
   .listen()
   .then((port) => {
     // eslint-disable-next-line no-console
-    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins, /overlay/meta/<id>, /overlay/nivel/<id>, /overlay/duelo/<id>, /overlay/top/<id>, /overlay/agente (o /overlay/agente/cola y /overlay/agente/respuesta por separado) y /overlay/prueba-audio`);
+    console.log(`[overlays:info] overlays en http://localhost:${port}/overlay/timer, /overlay/wins, /overlay/meta/<id>, /overlay/nivel/<id>, /overlay/duelo/<id>, /overlay/top/<id>, /overlay/pantalla/<n>, /overlay/agente (o /overlay/agente/cola y /overlay/agente/respuesta por separado) y /overlay/prueba-audio`);
   })
   .catch((err) => {
     // No tumba el sidecar: sin el servidor de overlays todo lo demás sigue funcionando.

@@ -36,7 +36,7 @@ export function useAudioLibrary(client: SidecarClient | null) {
   return { ...state, error, clearError: () => setError(null) };
 }
 
-function toBase64(buf: ArrayBuffer): string {
+export function toBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let bin = "";
   const chunk = 0x8000;
