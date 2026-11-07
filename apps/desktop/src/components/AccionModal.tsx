@@ -4,6 +4,9 @@ import { useUnsavedGuard } from "../lib/unsaved-guard";
 import {
   APP_COMMANDS,
   AUDIO_COMMAND_ID,
+  MEDIA_COMMAND_ID,
+  MediaShowParamsSchema,
+  type MediaShowParams,
   AudioPlayParamsSchema,
   type AudioPlayParams,
   isAppCommand,
@@ -15,6 +18,7 @@ import {
 import { getCategoryIcon, TimerIcon, TrophyIcon } from "../lib/categoryIcons";
 import type { SidecarClient } from "../lib/ws-client";
 import { PlayAudioPanel } from "./PlayAudioPanel";
+import { PlayMediaPanel } from "./PlayMediaPanel";
 import {
   defaultParamValues,
   ParamEditor,
@@ -34,7 +38,6 @@ const ACCENT = "#E23A57";
 
 const GENERALES = [
   "Comandos Minecraft",
-  "Mostrar IMG / GIF / VIDEO",
   "Mostrar Alerta",
   "Animaciones",
   "Simular Keystrokes",
@@ -92,7 +95,7 @@ export function AccionModal({
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [comandos, setComandos] = useState<ComandoDraft[]>(
     initial?.comandos
-      .filter((c) => c.modActionId !== AUDIO_COMMAND_ID) // Play Audio tiene su propio panel
+      .filter((c) => c.modActionId !== AUDIO_COMMAND_ID && c.modActionId !== MEDIA_COMMAND_ID) // Play Audio y Mostrar medios tienen su propio panel
       .map((c) => ({
       key: newId(),
       kind: isAppCommand(c.modActionId) ? ("app" as const) : ("mod" as const),
@@ -108,6 +111,14 @@ export function AccionModal({
     () =>
       AudioPlayParamsSchema.safeParse(initialAudio?.params ?? {}).data ??
       ({ file: "", volume: 50, oneShot: false, skip: false, queue: false } as AudioPlayParams),
+  );
+  // Mostrar IMG / GIF / VIDEO (ADR 0022): un comando interno `app.media.show` con su panel propio.
+  const initialMedia = initial?.comandos.find((c) => c.modActionId === MEDIA_COMMAND_ID);
+  const [mediaOn, setMediaOn] = useState(!!initialMedia);
+  const [media, setMedia] = useState<MediaShowParams>(
+    () =>
+      MediaShowParamsSchema.safeParse(initialMedia?.params ?? {}).data ??
+      ({ source: "local", file: "", url: "", screen: 1, sizePct: 50, durationSec: 0, volume: 50 } as MediaShowParams),
   );
   const [repetirConCombo, setRepetirConCombo] = useState(initial?.repetirConComboDeRegalos ?? false);
   // Cooldowns en segundos (ADR 0010). Como texto para poder borrar el campo mientras se escribe.
@@ -177,6 +188,11 @@ export function AccionModal({
       return;
     }
 
+    if (mediaOn && !(media.source === "web" ? media.url : media.file)) {
+      setError("Elige un archivo o una URL para Mostrar IMG / GIF / VIDEO (o desmárcalo).");
+      return;
+    }
+
     const validComandos = comandos
       .filter((c) => c.modActionId !== "")
       .map((c) => {
@@ -192,6 +208,7 @@ export function AccionModal({
         };
       });
     if (audioOn) validComandos.push({ modActionId: AUDIO_COMMAND_ID, params: { ...audio } });
+    if (mediaOn) validComandos.push({ modActionId: MEDIA_COMMAND_ID, params: { ...media } });
 
     onSave({
       id: initial?.id ?? newId(),
@@ -217,6 +234,8 @@ export function AccionModal({
       generales,
       audioOn,
       audio,
+      mediaOn,
+      media,
       extraOn,
       repetirConCombo,
       cooldownGlobal,
@@ -275,6 +294,13 @@ export function AccionModal({
               <CheckRow label={g} checked={generales[g] === true} onClick={() => toggleGeneral(g)} />
               {g === "Comandos Minecraft" && (
                 <>
+                  <CheckRow
+                    label="Mostrar IMG / GIF / VIDEO"
+                    hint="Muestra una imagen, GIF o video en una pantalla del overlay"
+                    checked={mediaOn}
+                    onClick={() => setMediaOn((v) => !v)}
+                  />
+                  {mediaOn && <PlayMediaPanel client={client} value={media} onChange={setMedia} />}
                   <CheckRow
                     label="Play Audio"
                     hint="Reproduce un sonido (suena en la app)"

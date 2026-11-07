@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   AUDIO_COMMAND_ID,
+  MEDIA_COMMAND_ID,
   type Accion,
   type AccionesMessage,
   type Evento,
@@ -36,6 +37,9 @@ export function describeAccion(a: Accion): string {
     if (c.modActionId === AUDIO_COMMAND_ID) {
       const file = typeof c.params.file === "string" ? c.params.file : "";
       parts.push(`Audio: ${file.replace(/\.(mp3|wav|ogg)$/i, "")}`);
+    } else if (c.modActionId === MEDIA_COMMAND_ID) {
+      const label = c.params.source === "web" ? c.params.url : c.params.file;
+      parts.push(`Medio: ${typeof label === "string" ? label : ""}`);
     } else {
       parts.push(c.modActionId);
     }
