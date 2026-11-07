@@ -10,9 +10,13 @@ export function mediaFileUrl(port: number, name: string): string {
   return `http://localhost:${port}/media/${encodeURIComponent(name)}`;
 }
 
-/** Dirección que se pega en TikTok LIVE Studio para la pantalla `n`. */
-export function screenOverlayUrl(port: number, n: number): string {
-  return `http://localhost:${port}/overlay/pantalla/${n}`;
+/**
+ * Dirección de la pantalla `n` para pegar como fuente de enlace en TikTok LIVE Studio.
+ * LIVE Studio rechaza "localhost" y "127.0.0.1" (ADR 0011): se usa `127.0.0.1.nip.io`, que resuelve a 127.0.0.1,
+ * igual que los demás overlays. Con `obs` sale la versión `localhost` (OBS sí la acepta).
+ */
+export function screenOverlayUrl(port: number, n: number, obs = false): string {
+  return `http://${obs ? "localhost" : "127.0.0.1.nip.io"}:${port}/overlay/pantalla/${n}`;
 }
 
 /** Biblioteca de medios del sidecar (canal WS `media`). */
