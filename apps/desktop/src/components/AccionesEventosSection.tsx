@@ -262,7 +262,9 @@ export function AccionesEventosSection({
     });
   }
 
-  const filteredAcciones = acciones.filter((a) => matchesQuery(a.nombre, accionSearch));
+  // Las acciones del panel «Stickers y emotes» (ADR 0023) no se mezclan con las de Juegos.
+  const accionesJuegos = acciones.filter((a) => a.ambito !== "stickers");
+  const filteredAcciones = accionesJuegos.filter((a) => matchesQuery(a.nombre, accionSearch));
   // Los eventos de stickers/emotes se ven en su propio panel (ADR 0021), para no cargar esta tabla.
   const stickerEventos = eventos.filter((e) => STICKER_PORQUES.has(e.porque)).length;
   const filteredEventos = eventos
@@ -533,7 +535,7 @@ export function AccionesEventosSection({
 
       {eventoModal && (
         <EventoModal
-          acciones={acciones}
+          acciones={accionesJuegos}
           initial={eventoModal.initial}
           onSave={saveEvento}
           onClose={() => setEventoModal(null)}

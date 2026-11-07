@@ -37,6 +37,9 @@ const PROXIMAMENTE_NOTE =
  * ¿Por qué?), cada `porque` muestra únicamente su propio bloque de campos
  * condicionales, y un buscador para asociar una o más Acciones existentes.
  */
+/** Desencadenantes de sticker/emote: solo se crean en el panel «Stickers y emotes» (ADR 0023), no en Juegos. */
+const SOLO_PANEL_STICKERS = new Set<string>(["stickerEmote", "emoteSuscriptor", "stickerFanClub"]);
+
 export function EventoModal({
   acciones,
   initial,
@@ -289,7 +292,7 @@ export function EventoModal({
             />
             <div style={radioListStyle}>
               {PORQUE_OPTIONS.filter(
-                (o) => o.value === porque || matchesQuery(o.label, porqueSearch),
+                (o) => o.value === porque || (!SOLO_PANEL_STICKERS.has(o.value) && matchesQuery(o.label, porqueSearch)),
               ).map((o) => (
                 <button
                   key={o.value}
