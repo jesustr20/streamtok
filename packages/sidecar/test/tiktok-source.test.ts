@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EmoteScene } from "tiktok-live-connector";
-import { extractEmoteCatalogEntries, extractGiftCatalogEntry, extractHostProfile, extractLevels, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
+import { extractChatEmoteCatalogEntries, extractEmoteCatalogEntries, extractGiftCatalogEntry, extractHostProfile, extractLevels, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
 
 describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", () => {
   it("normaliza un comentario plano a un LiveEvent válido", () => {
@@ -311,6 +311,38 @@ describe("catálogo de stickers y emotes (ADR 0018)", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ id: "s1", scene: "fanClub", imageUrl: "https://cdn/s1.png" });
     expect(events).toHaveLength(1);
+  });
+
+  it("también aprende los emotes que van dentro de un comentario del chat", () => {
+    expect(
+      extractChatEmoteCatalogEntries({
+        content: "[hola] [hola] [gg]",
+        emotes: [
+          { index: 0, emote: { emoteId: "e9", emoteScene: EmoteScene.SUBSCRIPTION, image: { urlList: ["https://cdn/e9.png"] } } },
+          { index: 7, emote: { emoteId: "e9", emoteScene: EmoteScene.SUBSCRIPTION } },
+          { index: 14, emote: { emoteId: "e10", emoteScene: EmoteScene.FANS_CLUB } },
+          { index: 20 },
+        ],
+      }),
+    ).toEqual([
+      { id: "e9", scene: "subscriber", imageUrl: "https://cdn/e9.png", count: 1, sceneCode: EmoteScene.SUBSCRIPTION },
+      { id: "e10", scene: "fanClub", imageUrl: undefined, count: 1, sceneCode: EmoteScene.FANS_CLUB },
+    ]);
+    expect(extractChatEmoteCatalogEntries({ content: "hola" })).toEqual([]);
+
+    const source = new TikTokLiveSource("alguien");
+    const entries: unknown[] = [];
+    const events: unknown[] = [];
+    source.on("emoteCatalogEntry", (e) => entries.push(e));
+    source.on("event", (e) => events.push(e));
+    source.ingest("chat", {
+      user: { displayId: "fan", nickname: "Fan" },
+      content: "[hola]",
+      emotes: [{ index: 0, emote: { emoteId: "e9", emoteScene: EmoteScene.SUBSCRIPTION } }],
+    });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ id: "e9", scene: "subscriber" });
+    expect(events).toHaveLength(1); // el comentario sigue siendo un evento de chat normal
   });
 });
 
