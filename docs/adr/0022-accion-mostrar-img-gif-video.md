@@ -13,7 +13,7 @@ Mismo patrón que Play Audio (ADR 0019):
 - **Comando interno** `app.media.show` (ADR 0011) con `MediaShowParams`: `source` (`local`|`web`), `file` o `url`, `screen` (1–9), `sizePct` (10–100, relativo a la pantalla del overlay), `durationSec` (0 = automática: imagen 5 s, video hasta que termine) y `volume` (solo videos). Se valida con su propio esquema en `validateAcciones`.
 - **Sidecar** `MediaController`: carpeta `%APPDATA%\StreamTok\media` (JPG, PNG, WEBP, AVIF, GIF, MP4, WEBM, MOV; hasta 50 MB; se comprueban los primeros bytes), lista de enlaces web `enlaces.json`, canal WS `media` (`get-state`, `state`, `upload`, `delete`, `add-web`, `delete-web`, `open-folder`, `show`, `error`). Los archivos se sirven en `/media/<nombre>` con soporte de `Range`.
 - **Overlay** `/overlay/pantalla/<n>`: página transparente que escucha `media/show` de su pantalla y dibuja el medio. Una cola por pantalla. Si el navegador bloquea el video con sonido, se reintenta en silencio. No forma parte de `OverlayKind` (no tiene diseños ni estilo).
-- **UI** `PlayMediaPanel` dentro de `AccionModal`: tamaño, duración, volumen, pantalla con su URL para copiar y pestañas **Archivos locales**, **Archivos web** (URL + nombre + «+») e **Imágenes App** (marcada «Próximamente»: no existe aún una fuente de imágenes por juego).
+- **UI** `PlayMediaPanel` compacto dentro de `AccionModal` (tamaño, duración, volumen, «Abrir lista de medios», «Subir archivo» y zona de arrastre), igual que el de audio. «Abrir lista de medios» abre `MediaLibraryModal` con buscador y las pestañas **Archivos locales**, **Archivos web** (pantalla + URL para copiar, URL + nombre + «+») e **Imágenes App** («Próximamente»: no existe aún una fuente de imágenes por juego).
 
 ## Consecuencias
 

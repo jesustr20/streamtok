@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { MEDIA_MAX_SCREENS, mediaKindOf, parseMediaUrl, type MediaShowParams } from "@streamtok/shared";
+import { mediaKindOf, type MediaShowParams } from "@streamtok/shared";
 import type { SidecarClient } from "../lib/ws-client";
-import { mediaFileUrl, requestMediaShow, screenOverlayUrl, uploadMediaFile, useMediaLibrary } from "../lib/use-media";
+import { requestMediaShow, uploadMediaFile, useMediaLibrary } from "../lib/use-media";
+import { MediaLibraryModal } from "./MediaLibraryModal";
 
 const ACCENT = "#E23A57";
-type Tab = "local" | "web" | "app";
 
 /**
- * Panel de la acción general «Mostrar IMG / GIF / VIDEO» (ADR 0022), con el mismo orden que
- * Interactive: tamaño, duración, volumen, subir archivo y las pestañas Archivos locales /
- * Archivos web / Imágenes App. Lo que se elige se muestra en la pantalla `/overlay/pantalla/<n>`.
+ * Panel de la acción general «Mostrar IMG / GIF / VIDEO» (ADR 0022), igual que el de Play Audio:
+ * tamaño, duración y volumen aquí; «Abrir lista de medios» abre el modal con las pestañas
+ * Archivos locales / Archivos web / Imágenes App. «Subir archivo» sube y deja elegido el archivo.
  */
 export function PlayMediaPanel({
   client,
@@ -20,17 +20,14 @@ export function PlayMediaPanel({
   value: MediaShowParams;
   onChange: (next: MediaShowParams) => void;
 }) {
-  const { files, web, port, error, clearError } = useMediaLibrary(client);
-  const [tab, setTab] = useState<Tab>(value.source === "web" ? "web" : "local");
+  const { files, error, clearError } = useMediaLibrary(client);
+  const [listOpen, setListOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
-  const [webUrl, setWebUrl] = useState("");
-  const [webName, setWebName] = useState("");
-  const [copied, setCopied] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
+  // Archivos que había al subir: el que aparezca de más es el que se acaba de subir y se elige solo.
   const before = useRef<Set<string> | null>(null);
 
-  // El archivo que aparece de más tras subir es el nuevo: se elige solo.
   useEffect(() => {
     if (!before.current) return;
     const added = files.filter((f) => !before.current!.has(f.name));
@@ -55,25 +52,10 @@ export function PlayMediaPanel({
     }
   }
 
-  function addWeb() {
-    if (!client) return;
-    setLocalError(null);
-    const u = parseMediaUrl(webUrl);
-    if (!u) {
-      setLocalError("Pega una URL válida (https://…) de una imagen, GIF o video.");
-      return;
-    }
-    client.send("media", { kind: "add-web", url: u.href, name: webName.trim() });
-    onChange({ ...value, source: "web", url: u.href, file: "" });
-    setWebUrl("");
-    setWebName("");
-  }
-
   const chosen = value.source === "web" ? value.url : value.file;
   const missing = value.source === "local" && value.file !== "" && !files.some((f) => f.name === value.file) && files.length > 0;
-  const overlayUrl = screenOverlayUrl(port, value.screen);
-  const shownError = localError ?? error;
   const isVideo = mediaKindOf(value.source === "web" ? value.url.split("?")[0] : value.file) === "video";
+  const shownError = localError ?? error;
 
   return (
     <div style={panelStyle}>
@@ -107,8 +89,9 @@ export function PlayMediaPanel({
       </div>
 
       <Slider label={`Tamaño: ${value.sizePct} %`} min={10} max={100} value={value.sizePct} onChange={(v) => onChange({ ...value, sizePct: v })} />
-      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11.5, color: "#9A9CA5" }}>
-        <span style={{ minWidth: 130 }}>Duración (segundos):</span>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11.5, color: "#9A9CA5", flexWrap: "wrap" }}>
+        <span style={{ minWidth: 86 }}>Duración (seg):</span>
         <input
           type="number"
           min={0}
@@ -119,184 +102,66 @@ export function PlayMediaPanel({
         />
         <span style={{ fontSize: 11 }}>0 = automática (imagen 5 s · video hasta que termine)</span>
       </div>
-      <Slider
-        label={`Volumen: ${value.volume}`}
-        min={0}
-        max={100}
-        value={value.volume}
-        onChange={(v) => onChange({ ...value, volume: v })}
-        dim={!isVideo}
-      />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11.5, color: "#9A9CA5", flexWrap: "wrap" }}>
-        <span style={{ minWidth: 130 }}>Pantalla (overlay):</span>
-        <select
-          value={value.screen}
-          onChange={(e) => onChange({ ...value, screen: Number(e.target.value) })}
-          style={{ ...inputStyle, width: 80 }}
-        >
-          {Array.from({ length: MEDIA_MAX_SCREENS }, (_, i) => i + 1).map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <input readOnly value={overlayUrl} onFocus={(e) => e.currentTarget.select()} style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
+      <Slider label={`Volumen: ${value.volume}`} min={0} max={100} value={value.volume} onChange={(v) => onChange({ ...value, volume: v })} dim={!isVideo} />
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
+        <button type="button" onClick={() => setListOpen(true)} style={buttonStyle}>
+          Abrir lista de medios
+        </button>
         <button
           type="button"
-          style={smallButtonStyle}
-          onClick={() => {
-            void navigator.clipboard?.writeText(overlayUrl).then(
-              () => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              },
-              () => {},
-            );
+          title="Elige una imagen, GIF o video de tu PC: se copia a la carpeta de medios y queda elegido"
+          onClick={() => fileInput.current?.click()}
+          style={buttonStyle}
+        >
+          Subir archivo
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".jpg,.jpeg,.png,.webp,.avif,.gif,.mp4,.webm,.mov,image/*,video/mp4,video/webm,video/quicktime"
+          hidden
+          onChange={(e) => {
+            if (e.target.files) void upload(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDrag(true);
+          }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDrag(false);
+            void upload(e.dataTransfer.files);
+          }}
+          style={{
+            flex: 1,
+            minWidth: 140,
+            minHeight: 36,
+            border: `1px dashed ${drag ? ACCENT : "#2A2C33"}`,
+            borderRadius: 9,
+            padding: "6px 12px",
+            fontSize: 11.5,
+            color: drag ? "#fff" : "#9A9CA5",
+            display: "flex",
+            alignItems: "center",
           }}
         >
-          {copied ? "¡Copiada!" : "Copiar"}
-        </button>
-      </div>
-      <div style={{ fontSize: 10.5, color: "#5B5D66", lineHeight: 1.4, marginTop: -6 }}>
-        Pega esta dirección como fuente web en TikTok LIVE Studio (una vez) y ahí aparecerá lo que dispare la acción.
-      </div>
-
-      <div style={{ display: "flex", gap: 6 }}>
-        {(
-          [
-            ["local", "Archivos locales"],
-            ["web", "Archivos web"],
-            ["app", "Imágenes App"],
-          ] as Array<[Tab, string]>
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            style={{
-              ...smallButtonStyle,
-              height: 32,
-              borderColor: tab === id ? ACCENT : "#2A2C33",
-              background: tab === id ? "#E23A5718" : "#17181D",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "local" && (
-        <>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              style={buttonStyle}
-              title="JPG, PNG, WEBP, AVIF, GIF, MP4, WEBM o MOV (hasta 50 MB): se copia a la carpeta de medios y queda elegido"
-              onClick={() => fileInput.current?.click()}
-            >
-              Subir archivo
-            </button>
-            <button type="button" style={buttonStyle} onClick={() => client?.send("media", { kind: "open-folder" })}>
-              Abrir carpeta
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp,.avif,.gif,.mp4,.webm,.mov,image/*,video/mp4,video/webm,video/quicktime"
-              multiple
-              hidden
-              onChange={(e) => {
-                if (e.target.files) void upload(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDrag(true);
-              }}
-              onDragLeave={() => setDrag(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDrag(false);
-                void upload(e.dataTransfer.files);
-              }}
-              style={{
-                flex: 1,
-                minWidth: 140,
-                minHeight: 36,
-                border: `1px dashed ${drag ? ACCENT : "#2A2C33"}`,
-                borderRadius: 9,
-                padding: "6px 12px",
-                fontSize: 11.5,
-                color: drag ? "#fff" : "#9A9CA5",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              Suéltalo aquí (imagen, GIF o video)
-            </div>
-          </div>
-          <List empty="Aún no hay archivos. Sube uno con el botón o suéltalo arriba.">
-            {files.map((f) => (
-              <Row
-                key={f.name}
-                selected={value.source === "local" && value.file === f.name}
-                title={f.name}
-                subtitle={`${f.kind === "video" ? "Video" : "Imagen"} · ${(f.sizeBytes / 1024 / 1024).toFixed(1)} MB`}
-                thumb={f.kind === "image" ? mediaFileUrl(port, f.name) : undefined}
-                onPick={() => onChange({ ...value, source: "local", file: f.name, url: "" })}
-                onDelete={() => client?.send("media", { kind: "delete", name: f.name })}
-              />
-            ))}
-          </List>
-        </>
-      )}
-
-      {tab === "web" && (
-        <>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input
-              value={webUrl}
-              onChange={(e) => setWebUrl(e.target.value)}
-              placeholder="URL de la imagen, GIF o video (https://…)"
-              style={{ ...inputStyle, flex: 2, minWidth: 200 }}
-            />
-            <input
-              value={webName}
-              onChange={(e) => setWebName(e.target.value)}
-              placeholder="Nombre"
-              style={{ ...inputStyle, flex: 1, minWidth: 110 }}
-            />
-            <button type="button" style={{ ...buttonStyle, width: 40, padding: 0 }} onClick={addWeb} title="Guardar este enlace en la lista">
-              +
-            </button>
-          </div>
-          <List empty="Aún no hay enlaces guardados. Pega una URL y pulsa «+».">
-            {web.map((w) => (
-              <Row
-                key={w.url}
-                selected={value.source === "web" && value.url === w.url}
-                title={w.name}
-                subtitle={w.url}
-                thumb={mediaKindOf(w.url.split("?")[0]) === "video" ? undefined : w.url}
-                onPick={() => onChange({ ...value, source: "web", url: w.url, file: "" })}
-                onDelete={() => client?.send("media", { kind: "delete-web", url: w.url })}
-              />
-            ))}
-          </List>
-        </>
-      )}
-
-      {tab === "app" && (
-        <div style={{ fontSize: 11.5, color: "#9A9CA5", lineHeight: 1.5, padding: "6px 2px" }}>
-          <b style={{ color: "#C4C5CC" }}>Próximamente.</b> Aquí irán las imágenes propias de cada juego de la app (por ejemplo, las de un mod).
-          Mientras tanto, sube la imagen en «Archivos locales».
+          o suéltalo aquí (imagen, GIF o video)
         </div>
-      )}
+      </div>
+
+      <div style={{ fontSize: 10.5, color: "#5B5D66", lineHeight: 1.4 }}>
+        Se muestra en la pantalla {value.screen}. Su dirección para TikTok LIVE Studio está en «Abrir lista de medios» → «Archivos web».
+      </div>
 
       {shownError && <div style={{ fontSize: 11.5, color: "#F2776F" }}>{shownError}</div>}
+
+      {listOpen && <MediaLibraryModal client={client} value={value} onChange={onChange} onClose={() => setListOpen(false)} />}
     </div>
   );
 }
@@ -318,81 +183,8 @@ function Slider({
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11.5, color: "#9A9CA5", opacity: dim ? 0.45 : 1 }}>
-      <span style={{ minWidth: 130 }}>{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{ flex: 1, accentColor: ACCENT }}
-      />
-    </div>
-  );
-}
-
-function List({ children, empty }: { children: React.ReactNode[]; empty: string }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
-      {children.length === 0 ? <div style={{ fontSize: 11.5, color: "#5B5D66", padding: "6px 2px" }}>{empty}</div> : children}
-    </div>
-  );
-}
-
-function Row({
-  selected,
-  title,
-  subtitle,
-  thumb,
-  onPick,
-  onDelete,
-}: {
-  selected: boolean;
-  title: string;
-  subtitle: string;
-  thumb?: string;
-  onPick: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "6px 8px",
-        border: `1px solid ${selected ? ACCENT : "#2A2C33"}`,
-        background: selected ? "#E23A5718" : "transparent",
-        borderRadius: 9,
-      }}
-    >
-      <div
-        style={{
-          width: 44,
-          height: 32,
-          borderRadius: 6,
-          background: "#17181D",
-          flexShrink: 0,
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 14,
-        }}
-      >
-        {thumb ? <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🎬"}
-      </div>
-      <button
-        type="button"
-        onClick={onPick}
-        style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", color: "#F4F4F5", cursor: "pointer", padding: 0 }}
-      >
-        <div style={{ fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-        <div style={{ fontSize: 10.5, color: "#9A9CA5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
-      </button>
-      <button type="button" onClick={onDelete} title="Quitar de la lista" style={{ ...smallButtonStyle, color: "#F2776F" }}>
-        ✕
-      </button>
+      <span style={{ minWidth: 86 }}>{label}</span>
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} style={{ flex: 1, accentColor: ACCENT }} />
     </div>
   );
 }
