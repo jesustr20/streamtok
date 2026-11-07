@@ -67,17 +67,19 @@ describe("EmoteCatalog (ADR 0018)", () => {
     await vi.waitFor(() => expect(JSON.parse(readFileSync(path, "utf8"))).toEqual([sticker]));
   });
 
-  it("el mismo id solo suma al contador (sin avisar a la UI) y refresca la imagen si cambió", () => {
+  it("si el id ya existe no hace nada (sin contar ni avisar); solo refresca la imagen si cambió", () => {
     server = new StreamTokWsServer(0);
     const controller = new EmoteCatalogController(server, new EmoteCatalogStore(tmpPath()));
     controller.learn(sticker);
 
-    vi.useFakeTimers();
     expect(controller.learn({ ...sticker })).toBe(false);
-    expect(controller.getEntries()[0].count).toBe(2);
+    expect(controller.learn({ ...sticker })).toBe(false);
+    expect(controller.getEntries()).toEqual([sticker]);
+    expect(controller.getEntries()).toHaveLength(1);
 
     expect(controller.learn({ ...sticker, imageUrl: "https://cdn/nueva.png" })).toBe(true);
-    expect(controller.getEntries()[0]).toMatchObject({ count: 3, imageUrl: "https://cdn/nueva.png" });
+    expect(controller.getEntries()).toHaveLength(1);
+    expect(controller.getEntries()[0]).toMatchObject({ count: 1, imageUrl: "https://cdn/nueva.png" });
   });
 
   it("si un mensaje no trae imagen, conserva la que ya tenía; si cambia el origen, lo actualiza", () => {
@@ -86,21 +88,6 @@ describe("EmoteCatalog (ADR 0018)", () => {
     controller.learn(sticker);
     controller.learn({ id: "s1", scene: "subscriber", count: 1 });
     expect(controller.getEntries()[0]).toMatchObject({ scene: "subscriber", imageUrl: "https://cdn/s1.png" });
-  });
-
-  it("guarda los contadores acumulados pasado un rato", async () => {
-    const path = tmpPath();
-    server = new StreamTokWsServer(0);
-    const controller = new EmoteCatalogController(server, new EmoteCatalogStore(path));
-    controller.learn(sticker);
-    await vi.waitFor(() => expect(JSON.parse(readFileSync(path, "utf8"))[0].count).toBe(1));
-
-    vi.useFakeTimers();
-    controller.learn(sticker);
-    controller.learn(sticker);
-    await vi.advanceTimersByTimeAsync(5_001);
-    vi.useRealTimers();
-    await vi.waitFor(() => expect(JSON.parse(readFileSync(path, "utf8"))[0].count).toBe(3));
   });
 
   it("entrega el catálogo por el canal emote-catalog al conectar y a pedido", async () => {

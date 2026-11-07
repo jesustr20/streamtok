@@ -33,3 +33,7 @@ La librería `tiktok-live-connector` no ofrece una función para listar los stic
 ## Corrección (2026-11-06): emotes dentro del chat
 
 El catálogo solo escuchaba el mensaje `emote` (sticker/emote enviado suelto). Los emotes de Super Fan que se escriben **dentro de un comentario** llegan en `WebcastChatMessage.emotes[].emote` (el mismo `EmoteModel`: id, imagen, escena), así que no se aprendían. Ahora el mensaje de chat también alimenta el catálogo (`extractChatEmoteCatalogEntries`). El comentario sigue siendo un evento de chat normal; el desencadenante "sticker o emote" de los Eventos sigue disparándose solo con el mensaje `emote` (disparar con emotes del chat queda por decidir).
+
+## Cambio (2026-11-06): sin contador
+
+Como el catálogo de regalos: se compara por id; si no existe se agrega solo, y si ya existe **no se hace nada** (no se cuenta ni se avisa a la UI). Solo se refresca la imagen o el origen si TikTok mandó otros. Se quitó el "×N" de la lista y el orden por veces vistas (ahora por orden de llegada). El campo `count` se conserva en el esquema solo para leer archivos guardados antes.

@@ -15,7 +15,7 @@ export const EmoteCatalogEntrySchema = z.object({
   scene: LiveEventEmoteScene,
   /** URL de la imagen (`emote.image.urlList[0]`). Puede faltar si el mensaje no la trajo. */
   imageUrl: z.string().optional(),
-  /** Veces que ha llegado (para ordenar y para ver cuáles se usan). */
+  /** Ya no se usa (el catálogo no cuenta repetidos); se conserva para leer archivos guardados antes. */
   count: z.number().int().positive().default(1),
   /** Código numérico crudo de `EmoteScene` que mandó TikTok (diagnóstico: ver ADR 0018). */
   sceneCode: z.number().int().optional(),
