@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EmoteScene } from "tiktok-live-connector";
-import { extractChatEmoteCatalogEntries, extractEmoteCatalogEntries, extractGiftCatalogEntry, extractHostProfile, extractLevels, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
+import { mapChatEmote, extractChatEmoteCatalogEntries, extractEmoteCatalogEntries, extractGiftCatalogEntry, extractHostProfile, extractLevels, mapTiktokEvent, TikTokLiveSource } from "../src/tiktok-source.js";
 
 describe("mapTiktokEvent (normalización tiktok-live-connector → LiveEvent)", () => {
   it("normaliza un comentario plano a un LiveEvent válido", () => {
@@ -342,7 +342,65 @@ describe("catálogo de stickers y emotes (ADR 0018)", () => {
     });
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ id: "e9", scene: "subscriber" });
-    expect(events).toHaveLength(1); // el comentario sigue siendo un evento de chat normal
+    // el comentario sigue siendo un evento normal y además dispara el emote
+    expect(events.map((e: any) => e.event).sort()).toEqual(["comment", "emote"]);
+  });
+});
+
+describe("sticker enviado desde el panel (llega como comentario con emotes)", () => {
+  const chatSticker = {
+    user: { displayId: "fan", nickname: "Fan" },
+    content: "",
+    emotes: [{ index: 0, emote: { emoteId: "s7", emoteScene: EmoteScene.FANS_CLUB, image: { urlList: ["https://cdn/s7.png"] } } }],
+  };
+  const emoteMsg = {
+    user: { displayId: "fan", nickname: "Fan" },
+    emoteList: [{ emoteId: "s7", emoteScene: EmoteScene.FANS_CLUB }],
+  };
+  const collect = () => {
+    const source = new TikTokLiveSource("alguien");
+    const events: any[] = [];
+    const logs: any[] = [];
+    source.on("event", (e) => events.push(e));
+    source.on("log", (l) => logs.push(l));
+    return { source, events, logs };
+  };
+
+  it("mapChatEmote produce el evento emote con id y origen", () => {
+    expect(mapChatEmote(chatSticker)).toMatchObject({ event: "emote", username: "@fan", emoteId: "s7", emoteScene: "fanClub" });
+    expect(mapChatEmote({ user: { displayId: "fan" }, content: "hola" })).toBeNull();
+  });
+
+  it("un comentario sin texto pero con sticker dispara el evento emote y no se avisa como descartado", () => {
+    const { source, events, logs } = collect();
+    source.ingest("chat", chatSticker);
+    expect(events.map((e) => e.event)).toEqual(["emote"]);
+    expect(logs.filter((l) => l.level === "warn")).toHaveLength(0);
+  });
+
+  it("un comentario con texto y emote da el comentario y el emote", () => {
+    const { source, events } = collect();
+    source.ingest("chat", { ...chatSticker, content: "jaja" });
+    expect(events.map((e) => e.event).sort()).toEqual(["comment", "emote"]);
+  });
+
+  it("si el mismo sticker llega por los dos caminos cuenta una sola vez", () => {
+    const { source, events } = collect();
+    source.ingest("chat", chatSticker);
+    source.ingest("emote", emoteMsg);
+    expect(events.filter((e) => e.event === "emote")).toHaveLength(1);
+    const b = collect();
+    b.source.ingest("emote", emoteMsg);
+    b.source.ingest("chat", chatSticker);
+    expect(b.events.filter((e) => e.event === "emote")).toHaveLength(1);
+  });
+
+  it("el mismo sticker enviado varias veces por el mismo camino cuenta cada vez", () => {
+    const { source, events } = collect();
+    source.ingest("chat", chatSticker);
+    source.ingest("chat", chatSticker);
+    source.ingest("chat", chatSticker);
+    expect(events.filter((e) => e.event === "emote")).toHaveLength(3);
   });
 });
 

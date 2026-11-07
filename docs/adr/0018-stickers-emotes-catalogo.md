@@ -37,3 +37,7 @@ El catálogo solo escuchaba el mensaje `emote` (sticker/emote enviado suelto). L
 ## Cambio (2026-11-06): sin contador
 
 Como el catálogo de regalos: se compara por id; si no existe se agrega solo, y si ya existe **no se hace nada** (no se cuenta ni se avisa a la UI). Solo se refresca la imagen o el origen si TikTok mandó otros. Se quitó el "×N" de la lista y el orden por veces vistas (ahora por orden de llegada). El campo `count` se conserva en el esquema solo para leer archivos guardados antes.
+
+## Cambio (2026-11-06): el sticker del panel también dispara el Evento
+
+Un sticker enviado desde el panel de stickers del LIVE llega como comentario de chat con `emotes` (sin texto), no siempre como mensaje `emote`. Antes el catálogo lo aprendía (#97) pero el Evento "sticker o emote" no se disparaba, y el comentario vacío se descartaba con un aviso. Ahora un comentario con emotes produce además un `LiveEvent` `emote` (el primer emote del mensaje). Si el mismo sticker del mismo usuario llega por los dos caminos (mensaje `emote` y comentario) en 3 s se cuenta una vez; enviarlo varias veces por el mismo camino cuenta cada vez.
