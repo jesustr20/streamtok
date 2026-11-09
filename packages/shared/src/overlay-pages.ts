@@ -34,24 +34,26 @@ const TIMER_CSS = `
   body.paused #time { opacity: .7; }
   .label { display: none; }
 
-  /* Título y equivalencia por moneda, sobre el temporizador */
-  .head { text-align: center; line-height: 1.15; }
+  /* Título arriba, tiempo en medio y equivalencia por moneda ("1 moneda = 3 s") debajo */
+  .box { display: flex; flex-direction: column; align-items: center; }
+  .head { text-align: center; line-height: 1.1; }
   .head b { display: block; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
-  .head span { display: block; font-weight: 600; opacity: .85; }
+  .rate { display: block; text-align: center; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; line-height: 1.1; }
   body.has-title .label { display: none !important; }
   body[data-design="interactive"] .head b { font-size: 34px; }
-  body[data-design="interactive"] .head span { font-size: 26px; }
+  body[data-design="interactive"] .rate { font-size: 30px; }
   body[data-design="tikfinity"] .head b { font-size: 20px; }
-  body[data-design="tikfinity"] .head span { font-size: 15px; }
+  body[data-design="tikfinity"] .rate { font-size: 15px; }
   body[data-design="streamtok"] .head b { font-size: 24px; color: var(--accent, #ff3d71); }
-  body[data-design="streamtok"] .head span { font-size: 18px; }
+  body[data-design="streamtok"] .rate { font-size: 18px; opacity: .85; }
 
-  /* Dígitos grandes: cuadro oscuro con números gruesos */
-  body[data-design="interactive"] .box { background: var(--bg, rgba(0,0,0,.72)); border-radius: 14px; padding: 6px 30px; }
-  body[data-design="interactive"] #time { font: 800 120px/1.05 Consolas, "SF Mono", "Courier New", monospace; letter-spacing: 4px; }
+  /* Dígitos grandes y rojos (como el de referencia); sin cuadro: se ve el juego a través */
+  body[data-design="interactive"] .box { background: var(--bg, transparent); border-radius: 14px; padding: 6px 30px; }
+  body[data-design="interactive"] #time { font: 800 120px/1.05 Consolas, "SF Mono", "Courier New", monospace; letter-spacing: 4px; color: var(--text, #ff2d2d); }
+  body[data-design="interactive"] .head b, body[data-design="interactive"] .rate { color: var(--text, #ff2d2d); }
 
   /* Compacto: pastilla translúcida */
-  body[data-design="tikfinity"] .box { background: var(--bg, rgba(20,20,22,.55)); border-radius: 12px; padding: 4px 20px; }
+  body[data-design="tikfinity"] .box { background: var(--bg, transparent); border-radius: 12px; padding: 4px 20px; }
   body[data-design="tikfinity"] #time { font: 600 56px/1.15 "Segoe UI", system-ui, sans-serif; }
 
   /* StreamTok: tarjeta con borde de color y brillo */
@@ -61,10 +63,15 @@ const TIMER_CSS = `
   body[data-design="streamtok"] .label { display: block; font: 700 14px/1 "Segoe UI", sans-serif; letter-spacing: 6px;
     text-transform: uppercase; color: var(--accent, #ff3d71); margin-bottom: 4px; }
   body[data-design="streamtok"] #time { font: 800 84px/1 "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+
+  /* Tarjeta transparente (activa de fábrica; style.transparent = false la vuelve con fondo): contorno oscuro para leerse sobre el juego */
+  body[data-glass="1"] .box { background: var(--bg, transparent); box-shadow: none; border-color: transparent; }
+  body[data-glass="1"] #time, body[data-glass="1"] .head b, body[data-glass="1"] .rate, body[data-glass="1"] .label {
+    text-shadow: 0 0 2px #000, 0 0 4px #000, 0 2px 6px rgba(0, 0, 0, .9), 0 0 14px rgba(0, 0, 0, .6); }
 `;
 
 const TIMER_BODY = `
-  <div id="root"><div class="box"><span class="label">Tiempo</span><div class="head hidden" id="head"><b id="ttl"></b><span id="rate"></span></div><span id="time">00:00</span></div></div>
+  <div id="root"><div class="box"><span class="label">Tiempo</span><div class="head hidden" id="head"><b id="ttl"></b></div><span id="time">00:00</span><span class="rate hidden" id="rate"></span></div></div>
 `;
 
 /** Copia en JavaScript de `formatTimerMs` (overlays.ts) para la página del overlay. */
@@ -82,7 +89,7 @@ export const RATE_TEXT_JS = `
   function rateText(t) {
     var mult = t.multiplier.active ? t.multiplier.value : 1;
     var seconds = Math.round(t.perType.coin * mult * 100) / 100;
-    return seconds ? "1 coin = " + String(seconds) + " s" : "";
+    return seconds ? "1 moneda = " + String(seconds) + " s" : "";
   }
 `;
 
@@ -103,9 +110,8 @@ const TIMER_JS = `
     var rate = config && config.timer.showRate ? rateText(config.timer) : "";
     ttlEl.textContent = title;
     rateEl.textContent = rate;
-    ttlEl.classList.toggle("hidden", !title);
+    headEl.classList.toggle("hidden", !title);
     rateEl.classList.toggle("hidden", !rate);
-    headEl.classList.toggle("hidden", !title && !rate);
     document.body.classList.toggle("has-title", !!title);
     document.body.classList.toggle("finished", state.timer.status === "finished");
     document.body.classList.toggle("paused", state.timer.status === "paused");
@@ -122,12 +128,12 @@ const WINS_CSS = `
   .pulse .count { animation: pulse .6s ease-out; }
   .title, .bar { display: none; }
 
-  /* Trofeo: pastilla negra con el conteo en casillas */
+  /* Trofeo: pastilla con el conteo en casillas; trofeo un poco más grande y todo centrado en la misma línea */
   body[data-design="interactive"] .box { display: inline-flex; align-items: center; gap: 18px; background: var(--bg, #000);
     border-radius: 30px; padding: 14px 28px; }
-  body[data-design="interactive"] .trophy { font-size: 80px; line-height: 1; }
-  body[data-design="interactive"] .word { font: 800 96px/1 "Segoe UI", system-ui, sans-serif; }
-  body[data-design="interactive"] .count { display: inline-flex; align-items: center; gap: 8px; }
+  body[data-design="interactive"] .trophy { font-size: 104px; line-height: 1; display: block; }
+  body[data-design="interactive"] .word { font: 800 96px/1 "Segoe UI", system-ui, sans-serif; display: block; margin-top: -8px; }
+  body[data-design="interactive"] .count { display: inline-flex; align-items: center; gap: 8px; line-height: 1; }
   body[data-design="interactive"] .count b { display: inline-block; background: #1c1c1c; border-radius: 14px; padding: 0 16px;
     font: 800 84px/1.15 "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
   body[data-design="interactive"] .count i { font-style: normal; font: 800 84px/1 "Segoe UI", sans-serif; }
@@ -146,6 +152,12 @@ const WINS_CSS = `
     border-radius: 0 0 18px 18px; background: rgba(0,0,0,.6); overflow: hidden; }
   body[data-design="streamtok"] #fill { height: 100%; width: 0; background: var(--accent, #ff3d71); }
   body.ready[data-design="streamtok"] #fill { transition: width .4s ease; }
+
+  /* Tarjeta transparente (activa de fábrica; style.transparent = false la vuelve con fondo) */
+  body[data-glass="1"] .box { background: var(--bg, transparent); box-shadow: none; border-color: transparent; }
+  body[data-glass="1"] .bar { background: transparent; border-color: transparent; }
+  body[data-glass="1"] .trophy, body[data-glass="1"] .word, body[data-glass="1"] .title, body[data-glass="1"] .count {
+    text-shadow: 0 0 2px #000, 0 0 4px #000, 0 2px 6px rgba(0, 0, 0, .9), 0 0 14px rgba(0, 0, 0, .6); }
 `;
 
 const WINS_BODY = `
@@ -393,6 +405,7 @@ const COMMON_JS = `
     if (!config) return;
     var style = KIND === "timer" ? config.timerStyle : config.winsStyle;
     document.body.setAttribute("data-design", designOverride || style.designId);
+    document.body.setAttribute("data-glass", style.transparent === false ? "0" : "1");
     var root = document.documentElement.style;
     var vars = { "--text": style.textColor, "--accent": style.accentColor, "--bg": style.backgroundColor };
     for (var k in vars) { if (vars[k]) root.setProperty(k, vars[k]); else root.removeProperty(k); }
