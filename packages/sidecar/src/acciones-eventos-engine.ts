@@ -107,6 +107,9 @@ export interface AppCommandRunner {
   applyAppCommand(id: string, params: Record<string, unknown>): { ok: true } | { ok: false; error: string };
 }
 
+/** Tiempo sin mensajes tras el que un streak de regalos sin cierre se da por terminado. */
+export const STREAK_IDLE_MS = 4000;
+
 export class AccionesEventosEngine extends EventEmitter {
   private acciones: Accion[] = [];
   private eventos: Evento[] = [];
@@ -116,6 +119,9 @@ export class AccionesEventosEngine extends EventEmitter {
    * (clave evento|acción|usuario|regalo → cantidad de regalos cubiertos). Cada
    * mensaje ejecuta solo la diferencia con `repeatCount`; se borra al cerrar. */
   private streakFired = new Map<string, number>();
+  /** Streaks en curso cuyo cierre (`repeatEnd`) aún no llegó: último mensaje y
+   * temporizador. Si TikTok no manda el cierre, se sintetiza (ver STREAK_IDLE_MS). */
+  private pendingStreaks = new Map<string, { evt: LiveEvent; timer: ReturnType<typeof setTimeout> }>();
   /** Monedas acumuladas por handle durante la sesión (ranking de donantes). */
   private gifterCoins = new Map<string, number>();
   /** Cooldowns (ADR 0010): epoch ms hasta el que sigue bloqueada una acción
@@ -166,6 +172,12 @@ export class AccionesEventosEngine extends EventEmitter {
     this.eventos = eventos;
     this.likeCounts.clear();
     this.streakFired.clear();
+    this.clearPendingStreaks();
+  }
+
+  private clearPendingStreaks() {
+    for (const p of this.pendingStreaks.values()) clearTimeout(p.timer);
+    this.pendingStreaks.clear();
   }
 
   getEventos(): Evento[] {
@@ -178,6 +190,7 @@ export class AccionesEventosEngine extends EventEmitter {
     this.gifterCoins.clear();
     this.likeCounts.clear();
     this.streakFired.clear();
+    this.clearPendingStreaks();
     this.cooldownGlobalUntil.clear();
     this.cooldownUserUntil.clear();
   }
@@ -301,6 +314,26 @@ export class AccionesEventosEngine extends EventEmitter {
       evt.event === "gift" && evt.repeatEnd !== undefined
         ? `${normalizeHandle(evt.username)}|${evt.giftId ?? evt.giftName ?? "?"}`
         : undefined;
+
+    // Red de seguridad: TikTok a veces no manda el cierre de un streak (sobre todo
+    // en regalos sueltos). Sin esto, ese regalo y los siguientes del mismo usuario
+    // quedaban "en combo" para siempre y NUNCA disparaban las acciones sin
+    // "repetir con combo". Si no llega el cierre en STREAK_IDLE_MS, se cierra solo.
+    if (streakKey) {
+      const prevPending = this.pendingStreaks.get(streakKey);
+      if (prevPending) {
+        clearTimeout(prevPending.timer);
+        this.pendingStreaks.delete(streakKey);
+      }
+      if (giftInProgress) {
+        const timer = setTimeout(() => {
+          this.pendingStreaks.delete(streakKey);
+          void this.handleEvent({ ...evt, repeatEnd: true });
+        }, STREAK_IDLE_MS);
+        timer.unref?.();
+        this.pendingStreaks.set(streakKey, { evt, timer });
+      }
+    }
 
     let matched = false;
     let fired = false;

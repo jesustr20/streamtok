@@ -1067,3 +1067,36 @@ describe("comandos internos de la app (ADR 0011)", () => {
     expect(entries.some((e) => e.status === "discarded" && e.message.includes("borrada"))).toBe(true);
   });
 });
+
+
+describe("regalo sin cierre de streak (acción sin repetir con combo)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("un regalo repetido dispara cada vez aunque TikTok no mande repeatEnd", async () => {
+    vi.useFakeTimers();
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion({ repetirConComboDeRegalos: false })]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Paracaidas" })]);
+    const gift = () =>
+      engine.handleEvent({ event: "gift", username: "@fan", giftId: 1, giftName: "Paracaidas", coins: 1, repeatCount: 1, repeatEnd: false, timestamp: 0 });
+    await gift();
+    await vi.advanceTimersByTimeAsync(5000);
+    await gift();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect((bridge as unknown as { calls: Call[] }).calls).toHaveLength(2);
+  });
+
+  it("si el cierre sí llega no se duplica", async () => {
+    vi.useFakeTimers();
+    const bridge = makeBridge();
+    const engine = new AccionesEventosEngine(bridge);
+    engine.setAcciones([accion()]);
+    engine.setEventos([evento({ porque: "regaloEspecifico", giftName: "Paracaidas" })]);
+    const base = { event: "gift" as const, username: "@fan", giftId: 1, giftName: "Paracaidas", coins: 1, repeatCount: 1, timestamp: 0 };
+    await engine.handleEvent({ ...base, repeatEnd: false });
+    await engine.handleEvent({ ...base, repeatEnd: true });
+    await vi.advanceTimersByTimeAsync(10000);
+    expect((bridge as unknown as { calls: Call[] }).calls).toHaveLength(1);
+  });
+});
