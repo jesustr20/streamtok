@@ -134,6 +134,16 @@ export function StickersView({ client, catalog }: { client: SidecarClient | null
     setError(null);
   }
 
+  /** Cambia el volumen del audio de una acción sin abrir el modal (ADR 0021). */
+  function setAudioVolume(accionId: string, volume: number) {
+    const next = acciones.map((a) =>
+      a.id !== accionId
+        ? a
+        : { ...a, comandos: a.comandos.map((c) => (c.modActionId === AUDIO_COMMAND_ID ? { ...c, params: { ...c.params, volume } } : c)) },
+    );
+    client?.send("acciones", { kind: "set", acciones: next });
+  }
+
   function saveEvento(evento: Evento) {
     const next = eventos.some((e) => e.id === evento.id)
       ? eventos.map((e) => (e.id === evento.id ? evento : e))
@@ -280,14 +290,20 @@ export function StickersView({ client, catalog }: { client: SidecarClient | null
                     ) : (
                       r.names.map((n, i) => {
                         const a = r.linked[i];
+                        const audioCmd = a?.comandos.find((c) => c.modActionId === AUDIO_COMMAND_ID);
                         return (
-                          <div key={i}>
-                            {a ? (
-                              <button type="button" title="Editar esta acción" onClick={() => setAccionModal({ initial: a })} style={linkButtonStyle}>
-                                {n}
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "2px 0" }}>
+                            <span>{n}</span>
+                            {a && (
+                              <button type="button" title="Editar la acción" onClick={() => setAccionModal({ initial: a })} style={iconButtonStyle}>
+                                ✎
                               </button>
-                            ) : (
-                              n
+                            )}
+                            {a && audioCmd && (
+                              <VolumeInline
+                                value={typeof audioCmd.params.volume === "number" ? audioCmd.params.volume : 50}
+                                onCommit={(v) => setAudioVolume(a.id, v)}
+                              />
                             )}
                           </div>
                         );
@@ -398,4 +414,30 @@ const tdStyle: React.CSSProperties = {
 };
 const emptyStyle: React.CSSProperties = { padding: 22, color: "#5B5D66", fontSize: 12.5, textAlign: "center" };
 const iconButtonStyle: React.CSSProperties = { background: "none", border: "none", color: "#5B7CFA", fontSize: 12, cursor: "pointer", padding: "0 2px" };
-const linkButtonStyle: React.CSSProperties = { background: "none", border: "none", color: "#F4F4F5", fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: 0, textAlign: "left" };
+/** Control de volumen compacto dentro de la fila: se guarda al soltar el control. */
+function VolumeInline({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  const commit = () => {
+    if (v !== value) onCommit(v);
+  };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#9A9CA5", fontSize: 11 }} title="Volumen del audio">
+      <span aria-hidden>🔊</span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={v}
+        onChange={(e) => setV(Number(e.target.value))}
+        onPointerUp={commit}
+        onKeyUp={commit}
+        onBlur={commit}
+        style={{ width: 90, accentColor: ACCENT }}
+        aria-label="Volumen"
+      />
+      <span style={{ width: 28, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{v}%</span>
+    </span>
+  );
+}
+
