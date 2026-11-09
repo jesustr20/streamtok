@@ -66,9 +66,9 @@ describe("título y equivalencia del timer", () => {
   });
 
   it("la equivalencia sale de los segundos por moneda", () => {
-    expect(timerRateText(cfg(3))).toBe("1 coin = 3 s");
-    expect(timerRateText(cfg(0.5))).toBe("1 coin = 0.5 s");
-    expect(timerRateText(cfg(-2))).toBe("1 coin = -2 s");
+    expect(timerRateText(cfg(3))).toBe("1 moneda = 3 s");
+    expect(timerRateText(cfg(0.5))).toBe("1 moneda = 0.5 s");
+    expect(timerRateText(cfg(-2))).toBe("1 moneda = -2 s");
   });
 
   it("sin segundos por moneda no muestra nada", () => {
@@ -76,8 +76,8 @@ describe("título y equivalencia del timer", () => {
   });
 
   it("con multiplicador activo muestra lo que de verdad suma", () => {
-    expect(timerRateText(cfg(2, { active: true, value: 1.5 }))).toBe("1 coin = 3 s");
-    expect(timerRateText(cfg(2, { active: false, value: 1.5 }))).toBe("1 coin = 2 s");
+    expect(timerRateText(cfg(2, { active: true, value: 1.5 }))).toBe("1 moneda = 3 s");
+    expect(timerRateText(cfg(2, { active: false, value: 1.5 }))).toBe("1 moneda = 2 s");
   });
 
   it("la copia en JavaScript de la página da lo mismo que la de TypeScript", () => {

@@ -111,7 +111,7 @@ export function UrlCard({
 
 /** Recuadro de vista previa reservado por tipo: no cambia de tamaño al cargar ni al volver a la vista. */
 const PREVIEW_RESERVE: Record<OverlayKind, { w: number; h: number }> = {
-  timer: { w: 490, h: 190 },
+  timer: { w: 640, h: 240 },
   wins: { w: 560, h: 150 },
   meta: { w: 560, h: 150 },
   nivel: { w: 560, h: 150 },
@@ -211,10 +211,10 @@ export function DesignCard({
         </>
       )}
 
-      {(kind === "top" || kind === "agente") && (
+      {(kind === "top" || kind === "agente" || kind === "timer" || kind === "wins") && (
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
           <input type="checkbox" checked={style.transparent !== false} onChange={(e) => onChange({ ...style, transparent: e.target.checked })} />
-          Tarjeta transparente (se ve el juego a través; los nombres llevan contorno oscuro)
+          Tarjeta transparente (se ve el juego a través; los textos llevan contorno oscuro)
         </label>
       )}
 

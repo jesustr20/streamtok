@@ -43,7 +43,7 @@ export const TimerConfigSchema = z.object({
   perType: TimerPerTypeSchema.default({}),
   /** título que se muestra sobre el temporizador (p. ej. "EXTENSIBLE"); vacío = sin título */
   title: z.string().max(60).default(""),
-  /** muestra bajo el título cuánto suma cada moneda (p. ej. "1 coin = 3 s"); solo aparece si suma o resta */
+  /** muestra bajo el título cuánto suma cada moneda (p. ej. "1 moneda = 3 s"); solo aparece si suma o resta */
   showRate: z.boolean().default(true),
   /** si está activo, todos los segundos por tipo se multiplican por `value` */
   multiplier: z
@@ -61,7 +61,7 @@ export const OverlayStyleSchema = z.object({
   backgroundColor: z.string().optional(),
   /** factor de tamaño (1 = normal) */
   scale: z.number().positive().default(1),
-  /** Tops: tarjeta sin relleno (se ve el juego a través); activa por defecto, false = tarjeta con fondo. Los textos llevan contorno oscuro */
+  /** Tops/Timer/Wins/Agente: tarjeta sin relleno (se ve el juego a través); activa por defecto, false = tarjeta con fondo. Los textos llevan contorno oscuro */
   transparent: z.boolean().optional(),
 });
 export type OverlayStyle = z.infer<typeof OverlayStyleSchema>;
@@ -174,7 +174,7 @@ export function formatTimerMs(ms: number): string {
 }
 
 /**
- * Texto de equivalencia por moneda que va bajo el título ("1 coin = 3 s"), con el
+ * Texto de equivalencia por moneda que va bajo el título ("1 moneda = 3 s"), con el
  * multiplicador ya aplicado (lo que de verdad suma). Vacío si las monedas no
  * afectan al timer. Tiene una copia en JavaScript (`RATE_TEXT_JS`, overlay-pages.ts);
  * un test las compara.
@@ -185,7 +185,7 @@ export function timerRateText(t: {
 }): string {
   const mult = t.multiplier.active ? t.multiplier.value : 1;
   const seconds = Math.round(t.perType.coin * mult * 100) / 100;
-  return seconds ? "1 coin = " + String(seconds) + " s" : "";
+  return seconds ? "1 moneda = " + String(seconds) + " s" : "";
 }
 
 /** Puerto por defecto del servidor HTTP de overlays del sidecar (127.0.0.1). */
