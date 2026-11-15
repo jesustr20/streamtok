@@ -2,6 +2,7 @@ import { AGENT_PROVIDERS, ANIMO_LEVEL_NAMES, GEMINI_VOICES, TRIVIA_DIFFICULTY_NA
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { AgenteMemoria } from "./AgenteMemoria";
+import { AgenteMicrofono } from "./AgenteMicrofono";
 import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
 import { Btn, Card, ColorField, DesignCard, Field, NumberField, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
@@ -105,6 +106,8 @@ function Block({ config, state, keys, api, client }: { config: AgentConfig; stat
       <Modelo config={config} keys={keys} api={api} patch={patch} />
 
       <AgenteMemoria client={client} />
+
+      <AgenteMicrofono />
 
       <Voz config={config} patch={patch} api={api} hasGeminiKey={keys.gemini} />
 
