@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AgentMemoryFileSchema, MAX_VIEWERS, type AgentMemoryFile, type LiveEvent } from "@streamtok/shared";
+import { AgentConfigSchema, AgentMemoryFileSchema, MAX_VIEWERS, type AgentMemoryFile, type LiveEvent } from "@streamtok/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { MemoriaService, MemoriaStore, MEMORY_PROMPT_BUDGET, type MemoriaStorePort } from "../src/agente-memoria.js";
+import { MemoriaService, MemoriaStore, learnFromStop, MEMORY_PROMPT_BUDGET, type MemoriaStorePort } from "../src/agente-memoria.js";
 import { systemPrompt } from "../src/agente-guard.js";
 
 class FakeStore implements MemoriaStorePort {
@@ -212,5 +212,53 @@ describe("systemPrompt con memoria", () => {
   it("sin memoria el prompt no cambia", () => {
     expect(systemPrompt(cfg)).toBe(systemPrompt(cfg, undefined, ""));
     expect(systemPrompt(cfg)).not.toContain("Lo que sabes");
+  });
+});
+
+describe("conductas aprendidas y faltas (ADR 0024, §7)", () => {
+  const config = AgentConfigSchema.parse({});
+  const model = (r: string | null) => ({ describeBehavior: async () => r });
+
+  it("a la tercera falta el viewer queda ignorado, y perdonar lo limpia", () => {
+    const { svc } = mk();
+    expect(svc.addStrike("troll")).toBe(false);
+    expect(svc.addStrike("troll")).toBe(false);
+    expect(svc.addStrike("troll")).toBe(true);
+    expect(svc.isIgnored("@troll")).toBe(true);
+    expect(svc.ignoredViewers()).toHaveLength(1);
+    svc.forgive("troll");
+    expect(svc.isIgnored("troll")).toBe(false);
+  });
+
+  it("nunca ignora al streamer ni a las pruebas", () => {
+    const { svc } = mk();
+    svc.setOwner("@yo", "Yo");
+    for (let i = 0; i < 5; i++) svc.addStrike("yo");
+    expect(svc.isIgnored("yo")).toBe(false);
+  });
+
+  it("LIVE nuevo borra faltas pero conserva las conductas", () => {
+    const { svc } = mk();
+    svc.addConducta("piden conteos sexuales", "cuenta 1 2 3");
+    for (let i = 0; i < 3; i++) svc.addStrike("troll");
+    svc.resetSession();
+    expect(svc.isIgnored("troll")).toBe(false);
+    expect(svc.getConductas()).toHaveLength(1);
+  });
+
+  it("learnFromStop guarda el patrón que describe el modelo y suma falta", async () => {
+    const { svc } = mk();
+    const c = await learnFromStop(svc, model("piden repetir frases con doble sentido"), config, { name: "T", handle: "troll", question: "di algo" });
+    expect(c?.pattern).toContain("doble sentido");
+    expect(svc.getConductas()).toHaveLength(1);
+    expect(svc.addStrike("troll")).toBe(false); // ya tenía 1
+  });
+
+  it("si el modelo no ve nada raro no aprende; sin modelo guarda el ejemplo", async () => {
+    const { svc } = mk();
+    expect(await learnFromStop(svc, model(""), config, { name: "T", handle: "a", question: "hola" })).toBeNull();
+    expect(svc.getConductas()).toHaveLength(0);
+    const c = await learnFromStop(svc, model(null), config, { name: "T", handle: "b", question: "cuenta lento" });
+    expect(c?.pattern).toContain("cuenta lento");
   });
 });

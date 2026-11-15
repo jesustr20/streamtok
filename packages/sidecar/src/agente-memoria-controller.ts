@@ -12,7 +12,13 @@ export class MemoriaController {
   }
 
   private statePayload() {
-    return { kind: "state" as const, streamer: this.memoria.getStreamer(), viewerCount: this.memoria.viewerCount() };
+    return {
+      kind: "state" as const,
+      streamer: this.memoria.getStreamer(),
+      viewerCount: this.memoria.viewerCount(),
+      conductas: this.memoria.getConductas(),
+      ignored: this.memoria.ignoredViewers(),
+    };
   }
 
   private sendStateTo(socket: WebSocket) {
@@ -43,6 +49,12 @@ export class MemoriaController {
         break;
       case "clear-viewers":
         this.memoria.clearViewers();
+        break;
+      case "remove-conducta":
+        this.memoria.removeConducta(msg.id);
+        break;
+      case "forgive-viewer":
+        this.memoria.forgive(msg.handle);
         break;
       default:
         break;

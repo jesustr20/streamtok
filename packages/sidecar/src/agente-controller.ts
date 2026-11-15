@@ -146,6 +146,13 @@ export class AgenteController extends EventEmitter {
       case "reset":
         this.agente.reset();
         return;
+      case "stop": {
+        // «Parar IA» (ADR 0024, §7): calla la voz de todos los overlays, vacía respuesta y cola, y avisa para aprender de lo ocurrido
+        const stopped = this.agente.stop();
+        this.server.broadcast("agente", { kind: "silence" });
+        this.emit("stopped", stopped);
+        return;
+      }
       case "trivia-start":
         if (!this.trivia?.start(msg.sample)) this.server.sendTo(socket, "agente", { kind: "error", message: "Ya hay una trivia en curso." });
         return;
