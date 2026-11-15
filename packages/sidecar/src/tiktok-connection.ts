@@ -39,6 +39,8 @@ export interface TiktokConnectionDeps {
    * (cola de preguntas, regalos acreditados, Tops, metas...) y no debe empezar de cero.
    */
   onConnected(info?: { resumed: boolean }): void;
+  /** Quién es el dueño del LIVE (cuenta conectada y su nombre visible); lo usa la memoria del agente (ADR 0024). */
+  onHost?(host: { username: string; nickname?: string }): void;
 }
 
 const STATE_REFRESH_MS = 1000;
@@ -175,6 +177,7 @@ export class TiktokConnectionController extends EventEmitter {
     } catch {
       host = null; // el perfil es decorativo: nunca debe tumbar la conexión
     }
+    this.deps.onHost?.({ username, ...(host?.nickname ? { nickname: host.nickname } : {}) });
     this.setState({
       status: "connected",
       username,

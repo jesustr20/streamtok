@@ -29,6 +29,8 @@ import { AgenteEngine, AgenteStore, defaultAgenteFilePath } from "./agente.js";
 import { AgenteController } from "./agente-controller.js";
 import { KeysStore, defaultKeysFilePath } from "./agente-keys.js";
 import { ModelService } from "./agente-model.js";
+import { MemoriaController } from "./agente-memoria-controller.js";
+import { MemoriaService, MemoriaStore, defaultMemoriaFilePath } from "./agente-memoria.js";
 import { LiveMoodEngine } from "./agente-animo.js";
 import { VoiceService } from "./agente-voz.js";
 import { TriviaEngine } from "./agente-trivia.js";
@@ -221,6 +223,19 @@ tops.on("log", (entry) => {
 });
 new TopsController(server, tops);
 
+// Memoria del agente (ADR 0024): ficha del streamer y viewers vistos, en agente-memoria.json.
+const agenteMemoria = new MemoriaService({
+  store: new MemoriaStore(defaultMemoriaFilePath(), (message) =>
+    // eslint-disable-next-line no-console
+    console.warn("[agente-memoria:warn]", message),
+  ),
+});
+agenteMemoria.on("log", (entry) => {
+  // eslint-disable-next-line no-console
+  console.log(`[agente-memoria:${entry.level}]`, entry.message);
+});
+new MemoriaController(server, agenteMemoria);
+
 // Agente IA (ADR 0016): cola de preguntas con prioridad para /overlay/agente. Las respuestas las da el modelo que elijas (DeepSeek, OpenAI, Gemini o Claude) con tu clave.
 const agenteModel = new ModelService({
   keys: new KeysStore(defaultKeysFilePath(), (message) =>
@@ -228,6 +243,7 @@ const agenteModel = new ModelService({
     console.warn("[agente:warn]", message),
   ),
   liveContext: () => agenteAnimo.contextLine(),
+  memory: (question, handle) => agenteMemoria.contextFor(question, handle),
 });
 // Ánimo del LIVE: mide cuánto movimiento hay (monedas, comentarios, likes...) y decide el tono de voz y de texto del agente.
 const agenteAnimo: LiveMoodEngine = new LiveMoodEngine({ getConfig: () => agente.getConfig().animo });
@@ -240,6 +256,7 @@ const agente: AgenteEngine = new AgenteEngine({
   canShowTip: () => agenteTrivia.getState().phase === "idle",
   // durante la trivia (preparándose, abierta o enseñando la respuesta) el agente no atiende la cola
   paused: () => agenteTrivia.getState().phase !== "idle",
+  onQuestion: (handle, name, question) => agenteMemoria.noteQuestion(handle, name, question),
 });
 agenteModel.on("log", (entry) => {
   // eslint-disable-next-line no-console
@@ -339,6 +356,7 @@ server.onChannel("live-event", (payload) => {
   duelos.handleLiveEvent(evt);
   tops.handleLiveEvent(evt);
   agente.handleLiveEvent(evt);
+  agenteMemoria.handleLiveEvent(evt);
   agenteAnimo.handleLiveEvent(evt);
   agenteTrivia.handleLiveEvent(evt);
   engine.handleEvent(evt).catch((err) => {
@@ -375,6 +393,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     duelos.handleLiveEvent(evt);
     tops.handleLiveEvent(evt);
     agente.handleLiveEvent(evt);
+    agenteMemoria.handleLiveEvent(evt);
     agenteAnimo.handleLiveEvent(evt);
     agenteTrivia.handleLiveEvent(evt);
     engine.handleEvent(evt).catch((err) => {
@@ -389,6 +408,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     else if (kind === "battleArmies") room.ingestBattleArmies(raw);
     else room.ingestBattleHosts(raw);
   },
+  onHost: (host) => agenteMemoria.setOwner(host.username, host.nickname),
   onConnected: (info) => {
     if (info?.resumed) {
       // reconexión tras un corte del mismo LIVE: se conserva todo (cola del agente, regalos acreditados, trivia, Tops, metas...)
