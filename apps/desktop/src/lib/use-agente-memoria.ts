@@ -1,8 +1,9 @@
-import type { AgentMemoryMessage, StreamerMemory } from "@streamtok/shared";
+import type { AgentMemoryMessage, Conducta, StreamerMemory } from "@streamtok/shared";
 import { useCallback, useEffect, useState } from "react";
 import type { SidecarClient } from "./ws-client";
 
-type Cached = { streamer: StreamerMemory; viewerCount: number };
+type Ignored = { handle: string; name: string; strikes: number };
+type Cached = { streamer: StreamerMemory; viewerCount: number; conductas: Conducta[]; ignored: Ignored[] };
 // Último estado recibido: al volver a la vista aparece al instante.
 let last: Cached | null = null;
 
@@ -17,7 +18,7 @@ export function useAgenteMemoria(client: SidecarClient | null) {
       if (evt.channel !== "agente-memoria") return;
       const msg = evt.payload as AgentMemoryMessage;
       if (msg.kind === "state") {
-        last = { streamer: msg.streamer, viewerCount: msg.viewerCount };
+        last = { streamer: msg.streamer, viewerCount: msg.viewerCount, conductas: msg.conductas ?? [], ignored: msg.ignored ?? [] };
         setData(last);
         setError(null);
       } else if (msg.kind === "error") {
@@ -32,10 +33,14 @@ export function useAgenteMemoria(client: SidecarClient | null) {
   return {
     streamer: data?.streamer ?? null,
     viewerCount: data?.viewerCount ?? 0,
+    conductas: data?.conductas ?? [],
+    ignored: data?.ignored ?? [],
     error,
     saveStreamer: (name: string, aliases: string[]) => send({ kind: "save-streamer", name, aliases }),
     addFact: (text: string) => send({ kind: "add-fact", text }),
     removeFact: (id: string) => send({ kind: "remove-fact", id }),
     clearViewers: () => send({ kind: "clear-viewers" }),
+    removeConducta: (id: string) => send({ kind: "remove-conducta", id }),
+    forgive: (handle: string) => send({ kind: "forgive-viewer", handle }),
   };
 }

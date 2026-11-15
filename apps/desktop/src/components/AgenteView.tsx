@@ -938,8 +938,20 @@ function Queue({ config, state, api }: { config: AgentConfig; state: AgentState;
         </Btn>
         <Btn onClick={testGift}>Testear (con regalo)</Btn>
         <Btn onClick={askReset}>{confirm ? "¿Seguro? Pulsa otra vez" : "Vaciar cola"}</Btn>
+        <button
+          type="button"
+          onClick={() => {
+            stop();
+            api.stop();
+          }}
+          title="Calla a la IA ya, vacía la cola y le enseña que lo que pasó estaba mal"
+          style={{ padding: "7px 14px", borderRadius: 10, border: "1px solid #E5484D", background: "#E5484D", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+        >
+          ■ Parar IA
+        </button>
         <span style={{ fontSize: 11.5, color: "#9A9CA5" }}>
           Las preguntas de prueba no piden seguir, compartir ni regalar de verdad, ni activan Acciones. En el chat real: {config.command} y tu pregunta.
+          <b> Parar IA</b> la calla al instante y vacía la cola; úsalo cuando el chat se pase de la raya: la IA aprende ese patrón (míralo en «Memoria del agente») y a quien atendía le suma una falta; a la tercera se le ignora el resto del LIVE.
         </span>
       </div>
     </Card>

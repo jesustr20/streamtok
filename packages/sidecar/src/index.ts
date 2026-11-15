@@ -30,7 +30,7 @@ import { AgenteController } from "./agente-controller.js";
 import { KeysStore, defaultKeysFilePath } from "./agente-keys.js";
 import { ModelService } from "./agente-model.js";
 import { MemoriaController } from "./agente-memoria-controller.js";
-import { MemoriaService, MemoriaStore, defaultMemoriaFilePath } from "./agente-memoria.js";
+import { MemoriaService, MemoriaStore, defaultMemoriaFilePath, learnFromStop } from "./agente-memoria.js";
 import { LiveMoodEngine } from "./agente-animo.js";
 import { VoiceService } from "./agente-voz.js";
 import { TriviaEngine } from "./agente-trivia.js";
@@ -244,6 +244,10 @@ const agenteModel = new ModelService({
   ),
   liveContext: () => agenteAnimo.contextLine(),
   memory: (question, handle) => agenteMemoria.contextFor(question, handle),
+  // intento de provocar o manipular al agente: suma una falta (a la tercera se ignora al viewer el resto del LIVE)
+  onIntent: (handle) => {
+    if (handle) agenteMemoria.addStrike(handle);
+  },
 });
 // Ánimo del LIVE: mide cuánto movimiento hay (monedas, comentarios, likes...) y decide el tono de voz y de texto del agente.
 const agenteAnimo: LiveMoodEngine = new LiveMoodEngine({ getConfig: () => agente.getConfig().animo });
@@ -257,6 +261,7 @@ const agente: AgenteEngine = new AgenteEngine({
   // durante la trivia (preparándose, abierta o enseñando la respuesta) el agente no atiende la cola
   paused: () => agenteTrivia.getState().phase !== "idle",
   onQuestion: (handle, name, question) => agenteMemoria.noteQuestion(handle, name, question),
+  isIgnored: (handle) => agenteMemoria.isIgnored(handle),
 });
 agenteModel.on("log", (entry) => {
   // eslint-disable-next-line no-console
@@ -287,7 +292,14 @@ agenteVoz.on("log", (entry) => {
   // eslint-disable-next-line no-console
   console.log(`[agente:${entry.level}]`, entry.message);
 });
-new AgenteController(server, agente, agenteModel, agenteTrivia, agenteVoz, agenteAnimo);
+const agenteController = new AgenteController(server, agente, agenteModel, agenteTrivia, agenteVoz, agenteAnimo);
+// «Parar IA» (ADR 0024, §7): a quien se atendía se le suma una falta y el modelo describe el patrón para recordarlo como conducta a evitar
+agenteController.on("stopped", (stopped?: { name: string; handle: string; question: string }) => {
+  void learnFromStop(agenteMemoria, agenteModel, agente.getConfig(), stopped).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.warn("[agente-memoria:warn] no se pudo aprender de «Parar IA»:", (err as Error).message);
+  });
+});
 
 // Estado de la sala (ADR 0013): espectadores y marcador de batalla. Alimenta las metas de espectadores.
 const room = new RoomStateEngine();
@@ -418,6 +430,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
       return;
     }
     engine.resetSession();
+    agenteMemoria.resetSession();
     overlayCounters.resetSession();
     goals.resetSession();
     alertas.resetSession();

@@ -62,6 +62,8 @@ export function useAgente(client: SidecarClient | null) {
 
   const save = useCallback((config: AgentConfig) => client?.send("agente", { kind: "save", config }), [client]);
   const reset = useCallback(() => client?.send("agente", { kind: "reset" }), [client]);
+  /** «Parar IA» (ADR 0024, §7): calla la voz, vacía respuesta y cola, y enseña al agente que lo ocurrido estaba mal. */
+  const stop = useCallback(() => client?.send("agente", { kind: "stop" }), [client]);
   const ask = useCallback(
     (name: string, question: string, coins = 0) => client?.send("agente", { kind: "ask", name, question, coins }),
     [client],
@@ -150,6 +152,7 @@ export function useAgente(client: SidecarClient | null) {
     error,
     save,
     reset,
+    stop,
     ask,
     setKey,
     removeKey,

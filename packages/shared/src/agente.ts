@@ -496,6 +496,10 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
     coins: z.number().int().min(0).max(1_000_000).default(0),
   }),
   z.object({ kind: z.literal("reset") }),
+  /** UI → sidecar: «Parar IA»: corta la voz, vacía respuesta y cola, y marca lo ocurrido como conducta a evitar (ADR 0024, §7) */
+  z.object({ kind: z.literal("stop") }),
+  /** sidecar → overlays: callarse ya */
+  z.object({ kind: z.literal("silence") }),
   // `sample`: usa una pregunta de ejemplo en vez de pedirla al modelo (para probar sin clave ni gasto)
   z.object({ kind: z.literal("trivia-start"), sample: z.boolean().default(false) }),
   z.object({ kind: z.literal("trivia-cancel") }),

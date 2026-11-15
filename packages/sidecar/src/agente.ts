@@ -157,6 +157,8 @@ export interface AgenteEngineOptions {
   paused?: () => boolean;
   /** una persona entró a la fila con una pregunta (la memoria del agente anota al viewer; ADR 0024) */
   onQuestion?: (handle: string, name: string, question: string) => void;
+  /** ¿este viewer está ignorado en este LIVE? (tres intentos de manipular al agente; ADR 0024, §7): su pregunta no entra a la fila */
+  isIgnored?: (handle: string) => boolean;
   /** reloj en ms (para pruebas) */
   now?: () => number;
   /** azar en [0,1) (para pruebas) */
@@ -249,6 +251,22 @@ export class AgenteEngine extends EventEmitter {
     this.current = undefined;
     this.nextFreeAt = 0;
     this.emit("state");
+  }
+
+  /**
+   * «Parar IA» (ADR 0024, §7): corta lo que se está respondiendo y vacía la cola. Devuelve a quien se atendía
+   * (para sumarle una falta y aprender de su pregunta), o undefined si el agente estaba libre.
+   */
+  stop(): { name: string; handle: string; question: string } | undefined {
+    const cur = this.current;
+    const src = this.currentSrc;
+    this.queue = [];
+    this.current = undefined;
+    this.currentSrc = undefined;
+    this.notices = [];
+    this.nextFreeAt = 0;
+    this.emit("state");
+    return cur && src ? { name: cur.name, handle: src.handle, question: cur.question } : undefined;
   }
 
   /** Nuevo LIVE: se olvida quién siguió, compartió o regaló, y la cola. */
@@ -468,6 +486,7 @@ export class AgenteEngine extends EventEmitter {
   }
 
   private enqueue(handle: string, name: string, avatarUrl: string | undefined, question: string, coins: number): boolean {
+    if (this.opts.isIgnored?.(handle)) return false;
     if (this.queue.some((w) => w.handle === handle)) return false;
     if (this.queue.length >= this.config.maxQueue) return false;
     this.seq++;

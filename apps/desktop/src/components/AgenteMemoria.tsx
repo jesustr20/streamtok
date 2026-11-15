@@ -87,6 +87,36 @@ export function AgenteMemoria({ client }: { client: SidecarClient | null }) {
         {m.error && <div style={{ color: "#E5484D", fontSize: 12 }}>{m.error}</div>}
       </div>
 
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600 }}>Conductas que aprendió a evitar ({m.conductas.length})</div>
+        <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.5 }}>
+          Se guardan solas cuando pulsas «Parar IA». Si ve algo parecido, responde con su personalidad sin seguir el juego. Borra las que estén mal para que no deje de contestar a gente normal.
+        </div>
+        {m.conductas.length === 0 && <div style={{ fontSize: 12, color: "#7C7E88" }}>Todavía no ha aprendido ninguna.</div>}
+        {m.conductas.map((c) => (
+          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+            <span style={{ flex: 1, minWidth: 0 }}>{c.pattern}</span>
+            <button type="button" title="Olvidar esta conducta" onClick={() => m.removeConducta(c.id)} style={{ background: "none", border: "none", color: "#E5484D", cursor: "pointer", fontSize: 14 }}>
+              🗑
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {m.ignored.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600 }}>Ignorados en este LIVE ({m.ignored.length})</div>
+          {m.ignored.map((v) => (
+            <div key={v.handle} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b>{v.name}</b> <span style={{ color: "#9A9CA5" }}>@{v.handle} · {v.strikes} intentos</span>
+              </span>
+              <Btn onClick={() => m.forgive(v.handle)}>Perdonar</Btn>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", paddingTop: 4 }}>
         <span style={{ fontSize: 12.5, color: "#C9CBD2" }}>
           Viewers que recuerda: <b>{m.viewerCount}</b> (nombre, cuándo los vio y cuántas preguntas hicieron).

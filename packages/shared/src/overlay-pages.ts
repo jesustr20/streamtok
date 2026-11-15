@@ -1648,6 +1648,13 @@ const AGENTE_JS = `
           if (waiter) { delete ttsWait[m.payload.id]; waiter(m.payload); }
           return;
         }
+        if (m.channel === "agente" && m.payload && m.payload.kind === "silence") {
+          // «Parar IA»: se calla ya y se olvida lo que esperaba turno
+          speechQ = [];
+          stopSpeech();
+          if (curFin) { var f = curFin; curFin = null; f(); }
+          return;
+        }
         if (m.channel !== "agente" || !m.payload || m.payload.kind !== "state") return;
         config = m.payload.config;
         state = DEMO ? DEMO_STATE : m.payload.state;
