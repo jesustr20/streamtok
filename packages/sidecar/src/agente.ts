@@ -83,7 +83,7 @@ export class AgenteStore implements AgenteStorePort {
 }
 
 /** Quien da las respuestas. La pieza 2 pone aquí el modelo (DeepSeek, OpenAI, Claude...). */
-export type Responder = (question: string, ctx: { name: string; config: AgentConfig }) => Promise<string | AgentExpression>;
+export type Responder = (question: string, ctx: { name: string; handle?: string; config: AgentConfig }) => Promise<string | AgentExpression>;
 
 /** Tope de seguridad de una respuesta (el modelo recibe la orden de ser breve; esto solo evita un texto enorme). */
 export const MAX_ANSWER_CHARS = 600;
@@ -155,6 +155,8 @@ export interface AgenteEngineOptions {
   canShowTip?: () => boolean;
   /** ¿está en pausa? (mientras hay una trivia en curso no se atienden preguntas: esperan en la cola) */
   paused?: () => boolean;
+  /** una persona entró a la fila con una pregunta (la memoria del agente anota al viewer; ADR 0024) */
+  onQuestion?: (handle: string, name: string, question: string) => void;
   /** reloj en ms (para pruebas) */
   now?: () => number;
   /** azar en [0,1) (para pruebas) */
@@ -402,7 +404,7 @@ export class AgenteEngine extends EventEmitter {
   private async answer(cur: AgentCurrent & { answerAt?: number }): Promise<void> {
     let reply: string | AgentExpression;
     try {
-      reply = await this.responder(cur.question, { name: cur.name, config: this.config });
+      reply = await this.responder(cur.question, { name: cur.name, ...(this.currentSrc?.handle ? { handle: this.currentSrc.handle } : {}), config: this.config });
     } catch (err) {
       const message = (err as Error).message;
       this.emit("log", { level: "error", message: `El agente no pudo responder: ${message}` });
@@ -480,6 +482,7 @@ export class AgenteEngine extends EventEmitter {
       at: this.now(),
     });
     this.noticeQueued(handle, name, coins);
+    this.opts.onQuestion?.(handle, name, question);
     this.emit("state");
     return true;
   }

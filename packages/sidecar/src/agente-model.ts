@@ -164,6 +164,8 @@ export interface ModelServiceOptions {
   fetchImpl?: FetchLike;
   /** línea sobre cómo va el LIVE (ánimo) que se suma a las reglas del modelo; el sidecar la arma, no los espectadores */
   liveContext?: () => string | undefined;
+  /** lo que el agente sabe del streamer y de quien pregunta (ADR 0024), ya recortado a su presupuesto */
+  memory?: (question: string, askerHandle?: string) => string | undefined;
 }
 
 /**
@@ -223,7 +225,7 @@ export class ModelService extends EventEmitter {
     return this.idle;
   }
 
-  readonly respond: Responder = async (rawQuestion, { config }) => {
+  readonly respond: Responder = async (rawQuestion, { config, handle: askerHandle }) => {
     const question = sanitizeQuestion(rawQuestion);
     if (!question || looksLikeInjection(question)) return REFUSAL;
     const key = this.keys[config.provider];
@@ -238,7 +240,7 @@ export class ModelService extends EventEmitter {
     }
     this.calls++;
     this.emit("state");
-    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt(config, this.opts.liveContext?.()), user: userPrompt(question) };
+    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt(config, this.opts.liveContext?.(), this.opts.memory?.(question, askerHandle)), user: userPrompt(question) };
     let text: string;
     try {
       text = await callModel(this.fetchImpl, { ...request, maxTokens: MAX_TOKENS });

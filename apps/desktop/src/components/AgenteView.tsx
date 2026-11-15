@@ -1,6 +1,7 @@
 import { AGENT_PROVIDERS, ANIMO_LEVEL_NAMES, GEMINI_VOICES, TRIVIA_DIFFICULTY_NAMES, TTS_MOODS, type TtsMood, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentAnimo, type AgentCharacter, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
+import { AgenteMemoria } from "./AgenteMemoria";
 import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
 import { Btn, Card, ColorField, DesignCard, Field, NumberField, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
@@ -29,13 +30,13 @@ export function AgenteView({ client }: { client: SidecarClient | null }) {
       {!api.config || !api.state ? (
         <div style={{ ...cardStyle, color: "#9A9CA5", fontSize: 13 }}>Conectando con el sidecar…</div>
       ) : (
-        <Block config={api.config} state={api.state} keys={api.keys ?? { deepseek: false, openai: false, gemini: false, claude: false }} api={api} />
+        <Block config={api.config} state={api.state} keys={api.keys ?? { deepseek: false, openai: false, gemini: false, claude: false }} api={api} client={client} />
       )}
     </div>
   );
 }
 
-function Block({ config, state, keys, api }: { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; api: Api }) {
+function Block({ config, state, keys, api, client }: { config: AgentConfig; state: AgentState; keys: AgentKeyStatus; api: Api; client: SidecarClient | null }) {
   const [open, setOpen] = useState(false);
   const patch = (p: Partial<AgentConfig>) => api.save({ ...config, ...p });
   return (
@@ -102,6 +103,8 @@ function Block({ config, state, keys, api }: { config: AgentConfig; state: Agent
       </Card>
 
       <Modelo config={config} keys={keys} api={api} patch={patch} />
+
+      <AgenteMemoria client={client} />
 
       <Voz config={config} patch={patch} api={api} hasGeminiKey={keys.gemini} />
 

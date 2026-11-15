@@ -1,5 +1,6 @@
 export * from "./action.js";
 export * from "./agente.js";
+export * from "./agente-memoria.js";
 export * from "./audio.js";
 export * from "./media.js";
 export * from "./overlay-media.js";
