@@ -107,7 +107,7 @@ function Block({ config, state, keys, api, client }: { config: AgentConfig; stat
 
       <AgenteMemoria client={client} />
 
-      <AgenteMicrofono />
+      <AgenteMicrofono client={client} name={config.name} />
 
       <Voz config={config} patch={patch} api={api} hasGeminiKey={keys.gemini} />
 

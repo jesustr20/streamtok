@@ -81,6 +81,10 @@ export const AgentVoiceSchema = z.object({
   style: z.string().max(200).default("cálida, serena y cercana, con acento latino neutro"),
   /** tope de audios generados por LIVE (protege tu saldo); al llegar, vuelve a la voz del equipo */
   maxCloudCalls: z.number().int().min(1).max(5000).default(400),
+  /** modelo de Gemini que entiende lo que le dices por el micrófono (ADR 0024, §8) */
+  listenModel: z.string().max(60).default("gemini-2.5-flash"),
+  /** tope de frases escuchadas por LIVE (protege tu saldo) */
+  maxListenCalls: z.number().int().min(1).max(5000).default(600),
 });
 export type AgentVoice = z.infer<typeof AgentVoiceSchema>;
 
@@ -523,6 +527,17 @@ export const AgentMessageSchema = z.discriminatedUnion("kind", [
     voice: z.string().max(40).optional(),
     style: z.string().max(200).optional(),
     model: z.string().max(60).optional(),
+  }),
+  // UI → sidecar: un trozo de voz del streamer (WAV 16 kHz mono en base64) para entender si habla con la IA (ADR 0024, §8)
+  z.object({ kind: z.literal("listen-audio"), id: z.string().min(1).max(80), data: z.string().min(1).max(2_500_000) }),
+  // sidecar → quien envió el audio: qué se entendió. `intent`: stop = que pare, ask = una pregunta o petición, none = no era para la IA
+  z.object({
+    kind: z.literal("heard"),
+    id: z.string(),
+    ok: z.boolean(),
+    message: z.string(),
+    text: z.string(),
+    intent: z.enum(["stop", "ask", "none"]),
   }),
   // prueba: sube el ánimo del LIVE un rato (para ver y oír cómo reacciona el agente sin esperar un regalo grande)
   z.object({ kind: z.literal("animo-test") }),
