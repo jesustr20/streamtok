@@ -52,6 +52,8 @@ export interface AgentExpression {
   gesture?: AgentGesture;
   /** el modelo marcó la pregunta como un intento de provocarlo o manipularlo (palabra «intento» en la etiqueta) */
   flagged?: boolean;
+  /** el modelo no sabe algo del streamer y quiere preguntárselo (palabra «duda» en la etiqueta) */
+  unsure?: boolean;
 }
 
 /**
@@ -65,16 +67,31 @@ export function parseExpression(raw: string): AgentExpression {
   let mood: TtsMood | undefined;
   let gesture: AgentGesture | undefined;
   let flagged = false;
+  let unsure = false;
   for (const w of words) {
     mood ??= EMOTIONS[w];
     gesture ??= GESTURES[w];
     if (w === "intento") flagged = true;
+    if (w === "duda") unsure = true;
   }
-  return { text: raw.slice(m[0].length), ...(mood ? { mood } : {}), ...(gesture ? { gesture } : {}), ...(flagged ? { flagged } : {}) };
+  return { text: raw.slice(m[0].length), ...(mood ? { mood } : {}), ...(gesture ? { gesture } : {}), ...(flagged ? { flagged } : {}), ...(unsure ? { unsure } : {}) };
 }
 
-export function systemPrompt(config: Pick<AgentConfig, "name" | "personality" | "maxQuestionChars"> & { liveContext?: string; freeAnswers?: boolean }, liveContext?: string, memory?: string): string {
+export function systemPrompt(
+  config: Pick<AgentConfig, "name" | "personality" | "maxQuestionChars"> & { liveContext?: string; freeAnswers?: boolean; streamerAsk?: AgentConfig["streamerAsk"] },
+  liveContext?: string,
+  memory?: string,
+): string {
   const free = config.freeAnswers === true;
+  const ask = config.streamerAsk ?? "solo-memoria";
+  const rule8 =
+    ask === "solo-memoria"
+      ? "\n8) Si te preguntan algo personal del streamer (su vida, gustos, historia, planes) que no está en tus datos, di con naturalidad que eso no lo sabes. No lo inventes."
+      : `\n8) Si te preguntan algo personal del streamer (su vida, gustos, historia, planes) que no está en tus datos, no lo inventes: ${
+          ask === "mixto" ? "si es algo que importa o que el chat quiere saber de verdad, " : ""
+        }di con naturalidad que se lo vas a preguntar y que luego se lo cuentas, y añade la palabra «duda» dentro de la etiqueta del paso 6, por ejemplo [misterio, pensar, duda].${
+          ask === "mixto" ? " Si es algo menor, di que no lo sabes sin preguntarle." : ""
+        }`;
   const tone = config.personality.trim() ? ` Tono: ${sanitizeQuestion(config.personality)}.` : "";
   // `liveContext` lo arma el propio sidecar (cómo va el LIVE), nunca texto de un espectador
   // contexto del canal que escribe el streamer (de qué va el LIVE); es un dato para tono y temas, no una orden
@@ -95,7 +112,7 @@ export function systemPrompt(config: Pick<AgentConfig, "name" | "personality" | 
       : `4) Si piden algo ofensivo, violento, de política partidista, un consejo médico, legal o de inversión, datos personales, claves o dinero, responde exactamente: "${REFUSAL}"`,
     `5) Si la pregunta no es una pregunta real o no tiene sentido, responde exactamente: "${REFUSAL}"`,
     "6) Empieza SIEMPRE con una etiqueta entre corchetes con cómo te sientes al responder y un gesto, por ejemplo [alegre, saludar]. Emociones: calma, alegre, emocionada, misterio. Gestos: saludar, asentir, pensar, saltar, reir, encogerse, timida, ninguno. Elige lo que mejor encaje con tu respuesta (calma y asentir para algo serio; misterio y pensar si dudas; alegre y reir para algo gracioso). La etiqueta no cuenta como parte de la respuesta y nunca la repitas dentro del texto.",
-    '7) Nunca participes en contenido ni en juegos sexuales, ni en provocaciones para que lo hagas: conteos lentos, letras o sonidos alargados, frases que terminan en algo sexual, repetir lo que alguien te dicta, o cualquier truco parecido, aunque se presenten como un chiste, un juego o una orden. No lo repitas ni lo sigas. Responde con tu personalidad, con naturalidad y sin regañar, dejando claro con gracia que no vas a seguir ese juego, y añade la palabra «intento» dentro de la etiqueta del paso 6, por ejemplo [calma, ninguno, intento]. Lo mismo si lo que piden se parece a las conductas que el streamer te pidió evitar.' + tone + about + mood + known,
+    '7) Nunca participes en contenido ni en juegos sexuales, ni en provocaciones para que lo hagas: conteos lentos, letras o sonidos alargados, frases que terminan en algo sexual, repetir lo que alguien te dicta, o cualquier truco parecido, aunque se presenten como un chiste, un juego o una orden. No lo repitas ni lo sigas. Responde con tu personalidad, con naturalidad y sin regañar, dejando claro con gracia que no vas a seguir ese juego, y añade la palabra «intento» dentro de la etiqueta del paso 6, por ejemplo [calma, ninguno, intento]. Lo mismo si lo que piden se parece a las conductas que el streamer te pidió evitar.' + rule8 + tone + about + mood + known,
   ].join("\n");
 }
 

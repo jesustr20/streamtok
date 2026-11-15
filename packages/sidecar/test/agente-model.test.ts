@@ -296,3 +296,33 @@ describe("lista de modelos del proveedor", () => {
     await expect(callModel(f.fetchImpl, { provider: "deepseek", key: "k-123456789", model: "DeepSeek", system: "S", user: "U", maxTokens: 5 })).rejects.toThrow(/Elige otro modelo/);
   });
 });
+
+describe("preguntas al streamer (ADR 0024, §3)", () => {
+  const ctx = (c: Partial<AgentConfig> = {}) => ({ name: "Ana", handle: "ana", config: cfg(c) });
+  const svcWith = (reply: string, opts: Partial<ConstructorParameters<typeof ModelService>[0]> = {}) => {
+    const f = fakeFetch(() => openaiReply(reply));
+    const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl, ...opts });
+    return { svc, f };
+  };
+
+  it("la palabra «duda» en la etiqueta avisa al sidecar y no se muestra", async () => {
+    const seen: unknown[] = [];
+    const { svc } = svcWith("[misterio, pensar, duda] Eso se lo pregunto y te cuento.", { onUnsure: (w, q) => seen.push([w, q]) });
+    const r = await svc.respond("¿cuál es su comida favorita?", ctx({ streamerAsk: "preguntar" }));
+    expect(seen).toEqual([[{ handle: "ana", name: "Ana" }, "¿cuál es su comida favorita?"]]);
+    expect(JSON.stringify(r)).not.toContain("duda");
+  });
+
+  it("en modo solo-memoria no pregunta aunque el modelo lo marque", async () => {
+    const seen: unknown[] = [];
+    const { svc } = svcWith("[calma, ninguno, duda] No lo sé.", { onUnsure: (w, q) => seen.push([w, q]) });
+    await svc.respond("¿dónde vive?", ctx({ streamerAsk: "solo-memoria" }));
+    expect(seen).toHaveLength(0);
+  });
+
+  it("sin cupo de preguntas el prompt pasa a decir que no lo sabe", async () => {
+    const { svc, f } = svcWith("[calma, ninguno] No lo sé.", { canAskStreamer: () => false });
+    await svc.respond("¿dónde vive?", ctx({ streamerAsk: "preguntar" }));
+    expect(JSON.stringify(f.calls[0].body)).not.toContain("se lo vas a preguntar");
+  });
+});

@@ -93,3 +93,18 @@ describe("etiqueta «intento»", () => {
     expect(parseExpression("[alegre, saludar] Hola").flagged).toBeUndefined();
   });
 });
+
+describe("regla 8: preguntar al streamer", () => {
+  const base = AgentConfigSchema.parse({});
+  it("cambia según el modo", () => {
+    expect(systemPrompt({ ...base, streamerAsk: "preguntar" })).toContain("se lo vas a preguntar");
+    expect(systemPrompt({ ...base, streamerAsk: "mixto" })).toContain("si es algo que importa");
+    const solo = systemPrompt({ ...base, streamerAsk: "solo-memoria" });
+    expect(solo).toContain("eso no lo sabes");
+    expect(solo).not.toContain("«duda»");
+  });
+  it("parseExpression separa «duda» sin romper lo demás", () => {
+    expect(parseExpression("[misterio, pensar, duda] Se lo pregunto.")).toMatchObject({ mood: "mystery", gesture: "think", unsure: true, text: "Se lo pregunto." });
+    expect(parseExpression("[alegre, saludar] Hola").unsure).toBeUndefined();
+  });
+});

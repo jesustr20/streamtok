@@ -369,6 +369,12 @@ export const AgentConfigSchema = z.object({
   personality: z.string().max(300).default(""),
   /** qué es tu canal (nombre, de qué trata, qué es la app...): el agente lo usa para responder sobre ti */
   liveContext: z.string().max(500).default(""),
+  /** qué hace cuando le preguntan algo tuyo que no sabe (ADR 0024, §3): `preguntar` = te lo pregunta siempre, `solo-memoria` = dice que no lo sabe, `mixto` = te pregunta solo si parece importante */
+  streamerAsk: z.enum(["preguntar", "solo-memoria", "mixto"]).default("mixto"),
+  /** cuánto espera tu respuesta antes de dejarla anotada como pendiente */
+  streamerAskTimeoutSec: z.number().int().min(5).max(300).default(30),
+  /** tope de preguntas que te hace por LIVE */
+  maxStreamerAsks: z.number().int().min(1).max(100).default(10),
   /** respuestas libres: contesta de cualquier tema, también opiniones y dudas (con «creo que…»), y da información general de política, salud, leyes o inversión; los filtros de seguridad siguen */
   freeAnswers: z.boolean().default(true),
   voice: AgentVoiceSchema.default({}),

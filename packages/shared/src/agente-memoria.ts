@@ -59,11 +59,24 @@ export const ConductaSchema = z.object({
 });
 export type Conducta = z.infer<typeof ConductaSchema>;
 
+export const MAX_PENDIENTES = 30;
+
+/** Algo del streamer que el agente no supo contestar y le quiere preguntar (ADR 0024, §3). Se borra al contestar o descartar. */
+export const PendienteSchema = z.object({
+  id: z.string().min(1).max(40),
+  question: z.string().trim().min(1).max(300),
+  /** quién lo preguntó en el chat (nombre visible) */
+  asker: z.string().trim().max(60).default(""),
+  at: z.number().int().nonnegative().default(0),
+});
+export type Pendiente = z.infer<typeof PendienteSchema>;
+
 export const AgentMemoryFileSchema = z.object({
   version: z.literal(MEMORIA_VERSION).default(MEMORIA_VERSION),
   streamer: StreamerMemorySchema.default({}),
   viewers: z.record(ViewerMemorySchema).default({}),
   conductas: z.array(ConductaSchema).max(MAX_CONDUCTAS).default([]),
+  pendientes: z.array(PendienteSchema).max(MAX_PENDIENTES).default([]),
 });
 export type AgentMemoryFile = z.infer<typeof AgentMemoryFileSchema>;
 
@@ -75,6 +88,8 @@ export const AgentMemoryMessageSchema = z.discriminatedUnion("kind", [
     streamer: StreamerMemorySchema,
     viewerCount: z.number().int().nonnegative(),
     conductas: z.array(ConductaSchema).default([]),
+    /** preguntas de viewers sobre el streamer que el agente no supo contestar y espera que él responda */
+    pendientes: z.array(PendienteSchema).default([]),
     /** viewers que el agente ignora en este LIVE */
     ignored: z.array(z.object({ handle: z.string(), name: z.string(), strikes: z.number().int().nonnegative() })).default([]),
   }),
@@ -88,6 +103,10 @@ export const AgentMemoryMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("clear-viewers") }),
   z.object({ kind: z.literal("remove-conducta"), id: z.string().min(1) }),
   z.object({ kind: z.literal("forgive-viewer"), handle: z.string().min(1) }),
+  /** el streamer contesta una pregunta pendiente: se guarda como hecho suyo y el agente responde a quien preguntó */
+  z.object({ kind: z.literal("answer-pending"), id: z.string().min(1), text: z.string().trim().min(1).max(250) }),
+  /** descartar una pregunta pendiente; `decline` = «No quiero contestar» (el agente lo dice con naturalidad) */
+  z.object({ kind: z.literal("dismiss-pending"), id: z.string().min(1), decline: z.boolean().default(false) }),
   z.object({ kind: z.literal("error"), message: z.string() }),
 ]);
 export type AgentMemoryMessage = z.infer<typeof AgentMemoryMessageSchema>;

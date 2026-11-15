@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
 import { AgenteMemoria } from "./AgenteMemoria";
 import { AgenteMicrofono } from "./AgenteMicrofono";
+import { AgentePreguntas } from "./AgentePreguntas";
 import { useTestRunner } from "../lib/use-test-runner";
 import type { SidecarClient } from "../lib/ws-client";
 import { Btn, Card, ColorField, DesignCard, Field, NumberField, UrlCard, cardStyle, inputStyle } from "./overlays-ui";
@@ -106,6 +107,8 @@ function Block({ config, state, keys, api, client }: { config: AgentConfig; stat
       <Modelo config={config} keys={keys} api={api} patch={patch} />
 
       <AgenteMemoria client={client} />
+
+      <AgentePreguntas client={client} config={config} patch={patch} />
 
       <AgenteMicrofono client={client} name={config.name} />
 

@@ -262,3 +262,47 @@ describe("conductas aprendidas y faltas (ADR 0024, §7)", () => {
     expect(c?.pattern).toContain("cuenta lento");
   });
 });
+
+describe("preguntas pendientes al streamer (ADR 0024, §3)", () => {
+  it("anota, no repite la misma y cuenta el cupo del LIVE", () => {
+    const { svc } = mk();
+    expect(svc.asksLeft(2)).toBe(true);
+    expect(svc.addPending("¿Cuál es su comida favorita?", "Ana")).not.toBeNull();
+    expect(svc.addPending("¿cuál es su comida favorita?", "Luis")).toBeNull();
+    svc.addPending("¿Dónde vive?", "Luis");
+    expect(svc.getPendientes()).toHaveLength(2);
+    expect(svc.asksLeft(2)).toBe(false);
+    svc.resetSession();
+    expect(svc.asksLeft(2)).toBe(true);
+    expect(svc.getPendientes()).toHaveLength(2); // los pendientes sobreviven al LIVE
+  });
+
+  it("al responder se guarda como hecho del streamer y avisa a quien preguntó", () => {
+    const { svc } = mk();
+    const p = svc.addPending("¿Cuál es su comida favorita?", "Ana")!;
+    const got: unknown[] = [];
+    svc.on("answered", (x) => got.push(x));
+    expect(svc.answerPending(p.id, "El ceviche")).toBe(true);
+    expect(svc.getPendientes()).toHaveLength(0);
+    expect(svc.getStreamer().facts.map((f) => f.text).join(" ")).toContain("El ceviche");
+    expect(got).toHaveLength(1);
+    expect(svc.answerPending(p.id, "otra")).toBe(false);
+  });
+
+  it("descartar y «no quiero contestar» cierran la pregunta sin guardar nada", () => {
+    const { svc } = mk();
+    const a = svc.addPending("¿Cuánto gana?", "Ana")!;
+    const b = svc.addPending("¿Dónde vive?", "Luis")!;
+    const seen: boolean[] = [];
+    svc.on("dismissed", (_p, decline) => seen.push(decline));
+    svc.dismissPending(a.id, true);
+    svc.dismissPending(b.id, false);
+    expect(seen).toEqual([true, false]);
+    expect(svc.getPendientes()).toHaveLength(0);
+    expect(svc.getStreamer().facts).toHaveLength(0);
+  });
+
+  it("el archivo viejo sin pendientes sigue cargando", () => {
+    expect(AgentMemoryFileSchema.parse({ streamer: {} }).pendientes).toEqual([]);
+  });
+});
