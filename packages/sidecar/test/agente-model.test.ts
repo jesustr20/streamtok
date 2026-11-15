@@ -326,3 +326,32 @@ describe("preguntas al streamer (ADR 0024, §3)", () => {
     expect(JSON.stringify(f.calls[0].body)).not.toContain("se lo vas a preguntar");
   });
 });
+
+describe("aprendizaje de viewers (ADR 0024, §4)", () => {
+  const batch = [
+    { handle: "ana", name: "Ana", lines: ["me encanta Minecraft"] },
+    { handle: "luis", name: "Luis", lines: ["hola"] },
+  ];
+  it("una sola llamada para varios viewers y devuelve sus datos por @usuario", async () => {
+    const f = fakeFetch(() => openaiReply('{"viewers":[{"id":"ana","datos":["le gusta Minecraft"]},{"id":"luis","datos":[]},{"id":"inventado","datos":["x"]}]}'));
+    const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
+    const r = await svc.extractViewerFacts(batch, cfg());
+    expect(r).toEqual({ ana: ["le gusta Minecraft"], luis: [] });
+    expect(f.calls).toHaveLength(1);
+    expect(JSON.stringify(f.calls[0].body)).toContain("NUNCA anotes");
+    expect(svc.viewerLearnCalls).toBe(1);
+  });
+  it("respeta el tope de aprendizaje y no llama sin clave", async () => {
+    const f = fakeFetch(() => openaiReply('{"viewers":[]}'));
+    const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
+    expect(await svc.extractViewerFacts(batch, cfg({ maxLearnCalls: 1 }))).toEqual({});
+    expect(await svc.extractViewerFacts(batch, cfg({ maxLearnCalls: 1 }))).toBeNull();
+    const none = new ModelService({ keys: memKeys(), fetchImpl: f.fetchImpl });
+    expect(await none.extractViewerFacts(batch, cfg())).toBeNull();
+  });
+  it("una respuesta que no es JSON no rompe nada", async () => {
+    const f = fakeFetch(() => openaiReply("no puedo"));
+    const svc = new ModelService({ keys: memKeys({ deepseek: "k-123456789" }), fetchImpl: f.fetchImpl });
+    expect(await svc.extractViewerFacts(batch, cfg())).toBeNull();
+  });
+});

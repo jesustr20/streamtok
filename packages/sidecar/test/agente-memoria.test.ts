@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentConfigSchema, AgentMemoryFileSchema, MAX_VIEWERS, type AgentMemoryFile, type LiveEvent } from "@streamtok/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { MemoriaService, MemoriaStore, learnFromStop, MEMORY_PROMPT_BUDGET, type MemoriaStorePort } from "../src/agente-memoria.js";
+import { MemoriaService, MemoriaStore, isSensitiveFact, learnFromStop, MEMORY_PROMPT_BUDGET, type MemoriaStorePort } from "../src/agente-memoria.js";
 import { systemPrompt } from "../src/agente-guard.js";
 
 class FakeStore implements MemoriaStorePort {
@@ -304,5 +304,75 @@ describe("preguntas pendientes al streamer (ADR 0024, §3)", () => {
 
   it("el archivo viejo sin pendientes sigue cargando", () => {
     expect(AgentMemoryFileSchema.parse({ streamer: {} }).pendientes).toEqual([]);
+  });
+});
+
+describe("aprender de los viewers (ADR 0024, §4)", () => {
+  it("el filtro local descarta lo sensible y deja lo inofensivo", () => {
+    for (const bad of ["tiene 14 años", "sufre de depresión", "vota por el partido X", "es cristiano", "vive en la calle Los Pinos 123", "su teléfono es 987654321", "gana 5000 al mes", "escribe a ana@mail.com", "estudia en el colegio San Juan"]) {
+      expect(isSensitiveFact(bad), bad).toBe(true);
+    }
+    for (const ok of ["le gusta Minecraft", "dice ser de Lima", "juega en el móvil", "quiere que lo llamen Pepe"]) {
+      expect(isSensitiveFact(ok), ok).toBe(false);
+    }
+  });
+
+  it("solo aprende de lo que dijo al agente y manda lotes cuando hay 3 viewers o pasó el tiempo", () => {
+    const { svc, tick } = mk();
+    svc.noteQuestion("ana", "Ana", "me encanta Minecraft, ¿qué opinas?");
+    expect(svc.learnReady()).toBe(false);
+    svc.noteQuestion("luis", "Luis", "hola");
+    svc.noteQuestion("eva", "Eva", "hola");
+    expect(svc.learnReady()).toBe(true);
+    const batch = svc.takeLearnBatch();
+    expect(batch.map((b) => b.handle).sort()).toEqual(["ana", "eva", "luis"]);
+    expect(svc.learnReady()).toBe(false);
+    svc.noteQuestion("ana", "Ana", "otra cosa");
+    tick(6 * 60_000);
+    expect(svc.learnReady()).toBe(true);
+  });
+
+  it("guarda datos sin repetir ni sensibles, con tope por viewer, y se usan en el prompt", () => {
+    const { svc } = mk();
+    svc.noteQuestion("ana", "Ana", "hola");
+    expect(svc.addViewerFacts("ana", ["le gusta Minecraft", "LE GUSTA minecraft", "tiene 15 años", "es de Lima"])).toBe(2);
+    for (let i = 0; i < 10; i++) svc.addViewerFacts("ana", [`le gusta el juego ${i}`]);
+    expect(svc.getViewer("ana")!.facts.length).toBeLessThanOrEqual(8);
+    expect(svc.contextFor("¿qué juego me recomiendas?", "ana")).toContain("contado de sí misma");
+  });
+
+  it("se pueden borrar datos sueltos o el viewer completo", () => {
+    const { svc } = mk();
+    svc.noteQuestion("ana", "Ana", "hola");
+    svc.addViewerFacts("ana", ["le gusta el rock"]);
+    const id = svc.getViewer("ana")!.facts[0]!.id;
+    expect(svc.viewersWithFacts()).toHaveLength(1);
+    expect(svc.removeViewerFact("ana", id)).toBe(true);
+    expect(svc.viewersWithFacts()).toHaveLength(0);
+    expect(svc.removeViewer("ana")).toBe(true);
+    expect(svc.getViewer("ana")).toBeUndefined();
+  });
+
+  it("«!olvidame» borra todo y no se vuelve a aprender nada de esa persona", () => {
+    const { svc } = mk();
+    const got: string[] = [];
+    svc.on("forgotten", (n) => got.push(n));
+    svc.noteQuestion("ana", "Ana", "me gusta el rock");
+    svc.addViewerFacts("ana", ["le gusta el rock"]);
+    svc.handleLiveEvent({ event: "comment", username: "ana", nickname: "Ana", text: " !Olvídame ", timestamp: 0 } as LiveEvent);
+    expect(got).toEqual(["Ana"]);
+    expect(svc.getViewer("ana")).toBeUndefined();
+    svc.noteQuestion("ana", "Ana", "hola otra vez");
+    svc.handleLiveEvent(chat("ana", "Ana"));
+    expect(svc.getViewer("ana")).toBeUndefined();
+    expect(svc.addViewerFacts("ana", ["le gusta el pop"])).toBe(0);
+    expect(svc.learnReady()).toBe(false);
+  });
+
+  it("olvida a los viewers que llevan más de 60 días sin aparecer", () => {
+    const old = AgentMemoryFileSchema.parse({ viewers: { vieja: { handle: "vieja", firstSeen: 1, lastSeen: 1 }, nueva: { handle: "nueva", firstSeen: 1, lastSeen: 100 * 86_400_000 } } });
+    const svc = new MemoriaService({ store: new FakeStore(old), now: () => 100 * 86_400_000 + 10 });
+    expect(svc.getViewer("vieja")).toBeUndefined();
+    expect(svc.getViewer("nueva")).toBeDefined();
   });
 });

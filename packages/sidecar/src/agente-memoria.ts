@@ -9,6 +9,10 @@ import {
   MAX_PENDIENTES,
   type Pendiente,
   MAX_VIEWERS,
+  MAX_VIEWER_FACTS,
+  MAX_OPTOUT,
+  VIEWER_TTL_DAYS,
+  type ViewerFact,
   STRIKE_LIMIT,
   type AgentMemoryFile,
   type Conducta,
@@ -81,6 +85,31 @@ const FACTS_PREFIX = "Datos del streamer (los escribió él): ";
 /** Tope de caracteres de la memoria dentro del prompt (ADR 0024, §6). */
 export const MEMORY_PROMPT_BUDGET = 900;
 
+/** Raíces de lo que NUNCA se guarda de una persona (ADR 0024, §4): salud, política, religión, orientación, dinero, domicilio, edad... Red de seguridad local por si el modelo se pasa. */
+const SENSITIVE = [
+  /\d{6,}/, // teléfonos y números largos
+  /\S+@\S+|https?:\/\/|www\./,
+  /\b\d{1,2}\s*anos?\b|\banos de edad\b|\bmenor de edad\b|\bcolegio\b|\bescuela\b|\bsecundaria\b|\bprimaria\b/, // edad y escolaridad (posibles menores)
+  /enferm|diagnost|depres|ansied|cancer|suicid|terapia|psicolog|psiquiatr|medicament|discapac|embaraz|adicci|trastorno|tdah|autis/,
+  /politic|president|partido|votar|voto\b|izquierd|derecha|elecci|gobierno|ideolog/,
+  /religi|cristian|catolic|evangel|musulm|judio|ateo|biblia|\bdios\b|iglesia/,
+  /\bgay\b|lesbi|bisexual|\btrans\b|transgener|orientacion|sexual|virgen|novi[ao]s? sexual|pareja sexual/,
+  /sueldo|salario|gana\s+\d|deuda|dinero|ahorr|pobre|\bricos?\b|prestamo|credito/,
+  /direccion|domicilio|\bcalle\b|avenida|jiron|\bmz\b|\blote\b|urbanizacion|vive en el (piso|depa)/,
+  /raza|etnia|racial|inmigra|nacionalidad|ciudadan|\bvisa\b|carcel|prision|denunci|delito|policia|arrest/,
+];
+
+/** ¿Este dato es de los que no se guardan? (sin tildes ni mayúsculas) */
+export function isSensitiveFact(text: string): boolean {
+  const t = text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return SENSITIVE.some((re) => re.test(t));
+}
+
+/** Ventana de aprendizaje: con tantos viewers con algo nuevo, o pasado este tiempo desde el primero, se manda un lote. */
+const LEARN_MIN_VIEWERS = 3;
+const LEARN_MAX_WAIT_MS = 5 * 60_000;
+const LEARN_LINES = 4;
+
 const handleKey = (username: string | undefined): string => (username ?? "").trim().replace(/^@/, "").toLowerCase();
 
 /** Palabras útiles de una pregunta (sin tildes, sin palabras cortas) para elegir qué hechos del streamer mostrar. */
@@ -106,6 +135,15 @@ export class MemoriaService extends EventEmitter {
   constructor(private opts: { store: MemoriaStorePort; now?: () => number }) {
     super();
     this.data = opts.store.load();
+    this.pruneInactive();
+  }
+
+  /** Olvido automático: los viewers que no se ven en VIEWER_TTL_DAYS días se borran (con sus datos). */
+  private pruneInactive(): void {
+    const limit = this.now() - VIEWER_TTL_DAYS * 86_400_000;
+    for (const [h, v] of Object.entries(this.data.viewers)) {
+      if (v.lastSeen > 0 && v.lastSeen < limit) delete this.data.viewers[h];
+    }
   }
 
   private now(): number {
@@ -175,6 +213,11 @@ export class MemoriaService extends EventEmitter {
     const handle = handleKey(evt.username);
     if (!handle || handle === this.data.streamer.handle) return;
     const name = (evt.nickname?.trim() || handle).slice(0, 60);
+    if (evt.event === "comment" && /^!olv[ií]dame$/i.test((evt.text ?? "").trim())) {
+      this.forgetViewer(handle, name);
+      return;
+    }
+    if (this.optedOut(handle)) return;
     if (evt.event === "comment" && evt.text?.trim()) {
       this.recent.push({ handle, name, text: sanitizeQuestion(evt.text).slice(0, 160) });
       while (this.recent.length > RECENT_CHAT) this.recent.shift();
@@ -187,6 +230,94 @@ export class MemoriaService extends EventEmitter {
   /** Últimos comentarios del chat, del más viejo al más nuevo (contexto reciente; no se guarda). */
   recentChat(n = 10): { name: string; text: string }[] {
     return this.recent.slice(-n).map(({ name, text }) => ({ name, text }));
+  }
+
+  // ---- datos de los viewers aprendidos con el modelo (ADR 0024, §4) ----------------------
+
+  /** lo que dijo cada viewer al agente desde el último lote (solo en memoria) */
+  private learnBuffer = new Map<string, { name: string; lines: string[]; since: number }>();
+
+  private optedOut(key: string): boolean {
+    return this.data.optOut.includes(key);
+  }
+
+  /** ¿Toca mandar un lote al modelo? */
+  learnReady(): boolean {
+    if (this.learnBuffer.size === 0) return false;
+    if (this.learnBuffer.size >= LEARN_MIN_VIEWERS) return true;
+    const oldest = Math.min(...[...this.learnBuffer.values()].map((x) => x.since));
+    return this.now() - oldest >= LEARN_MAX_WAIT_MS;
+  }
+
+  /** Saca (y vacía) lo pendiente de aprender, como mucho `max` viewers. */
+  takeLearnBatch(max = 8): { handle: string; name: string; lines: string[] }[] {
+    const out: { handle: string; name: string; lines: string[] }[] = [];
+    for (const [handle, x] of this.learnBuffer) {
+      if (out.length >= max) break;
+      out.push({ handle, name: x.name, lines: x.lines });
+      this.learnBuffer.delete(handle);
+    }
+    return out;
+  }
+
+  /** Guarda lo que el modelo aprendió de un viewer: sin lo sensible, sin repetidos y con tope (el más viejo cede el sitio). */
+  addViewerFacts(handle: string, facts: string[]): number {
+    const key = handleKey(handle);
+    const v = this.data.viewers[key];
+    if (!v || this.optedOut(key)) return 0;
+    let added = 0;
+    for (const raw of facts) {
+      const text = sanitizeQuestion(raw).slice(0, 120);
+      if (!text || isSensitiveFact(text)) continue;
+      if (v.facts.some((f) => f.text.toLowerCase() === text.toLowerCase())) continue;
+      const fact: ViewerFact = { id: `v${this.now().toString(36)}${(++this.seq).toString(36)}`, text, at: this.now() };
+      v.facts.push(fact);
+      while (v.facts.length > MAX_VIEWER_FACTS) v.facts.shift();
+      added++;
+    }
+    if (added > 0) this.changed();
+    return added;
+  }
+
+  viewersWithFacts(limit = 30): { handle: string; name: string; facts: ViewerFact[] }[] {
+    return Object.values(this.data.viewers)
+      .filter((v) => v.facts.length > 0)
+      .sort((a, b) => b.lastSeen - a.lastSeen)
+      .slice(0, limit)
+      .map((v) => ({ handle: v.handle, name: v.name || v.handle, facts: v.facts }));
+  }
+
+  removeViewerFact(handle: string, id: string): boolean {
+    const v = this.data.viewers[handleKey(handle)];
+    if (!v) return false;
+    const before = v.facts.length;
+    v.facts = v.facts.filter((f) => f.id !== id);
+    if (v.facts.length === before) return false;
+    this.changed();
+    return true;
+  }
+
+  removeViewer(handle: string): boolean {
+    const key = handleKey(handle);
+    if (!this.data.viewers[key]) return false;
+    delete this.data.viewers[key];
+    this.learnBuffer.delete(key);
+    this.changed();
+    return true;
+  }
+
+  /** «!olvidame»: se borra todo lo del viewer y no se vuelve a aprender nada de él. Emite `forgotten` con su nombre. */
+  forgetViewer(handle: string, name: string): void {
+    const key = handleKey(handle);
+    if (!key) return;
+    delete this.data.viewers[key];
+    this.learnBuffer.delete(key);
+    if (!this.optedOut(key)) {
+      this.data.optOut.push(key);
+      while (this.data.optOut.length > MAX_OPTOUT) this.data.optOut.shift();
+    }
+    this.changed();
+    this.emit("forgotten", name);
   }
 
   // ---- preguntas al streamer (ADR 0024, §3) -----------------------------------------------
@@ -313,6 +444,7 @@ export class MemoriaService extends EventEmitter {
     }
     this.recent = [];
     this.asksThisLive = 0;
+    this.pruneInactive();
     if (any) this.changed();
   }
 
@@ -320,7 +452,13 @@ export class MemoriaService extends EventEmitter {
   noteQuestion(handle: string, name: string, question: string): void {
     const key = handleKey(handle);
     if (!key || key.startsWith("prueba-") || key.startsWith("@prueba-")) return;
+    if (this.optedOut(key)) return;
     const v = this.touch(key, name.slice(0, 60));
+    // lo que el viewer le dice al agente es lo único de lo que aprende (nunca todo el chat)
+    const buf = this.learnBuffer.get(key) ?? { name: name.slice(0, 60), lines: [], since: this.now() };
+    buf.lines.push(sanitizeQuestion(question).slice(0, 200));
+    while (buf.lines.length > LEARN_LINES) buf.lines.shift();
+    this.learnBuffer.set(key, buf);
     v.questions++;
     v.lastQuestion = sanitizeQuestion(question).slice(0, 200);
     v.lastSeen = this.now();
@@ -332,7 +470,7 @@ export class MemoriaService extends EventEmitter {
     if (!v) {
       if (this.viewerCount() >= MAX_VIEWERS) this.evictOldest();
       const t = this.now();
-      v = { handle, name, firstSeen: t, lastSeen: t, questions: 0, lastQuestion: "", strikes: 0, ignored: false };
+      v = { handle, name, firstSeen: t, lastSeen: t, questions: 0, lastQuestion: "", strikes: 0, ignored: false, facts: [] };
       this.data.viewers[handle] = v;
     } else if (name && name !== handle) {
       v.name = name;
@@ -394,6 +532,10 @@ export class MemoriaService extends EventEmitter {
       parts.push(`Quien pregunta: ${sanitizeQuestion(v.name || v.handle)}, ya ha hecho ${v.questions} pregunta${v.questions === 1 ? "" : "s"}.`);
     } else if (v?.name) {
       parts.push(`Quien pregunta: ${sanitizeQuestion(v.name)}.`);
+    }
+    if (v && v.facts.length > 0) {
+      // lo que esa persona contó de sí misma: dato para tratarla con cercanía, no para sacarlo a relucir sin venir a cuento
+      parts.push(`Lo que esa persona ha contado de sí misma: ${v.facts.slice(-3).map((f) => sanitizeQuestion(f.text)).join(" | ")}.`);
     }
     return parts.join(" ").slice(0, budget);
   }

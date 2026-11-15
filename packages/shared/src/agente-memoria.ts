@@ -28,6 +28,18 @@ export const StreamerMemorySchema = z.object({
 });
 export type StreamerMemory = z.infer<typeof StreamerMemorySchema>;
 
+/** Un dato de un viewer, aprendido de lo que él mismo dijo al agente. Nunca sensible (ADR 0024, §4). */
+export const ViewerFactSchema = z.object({
+  id: z.string().min(1).max(40),
+  text: z.string().trim().min(1).max(120),
+  at: z.number().int().nonnegative().default(0),
+});
+export type ViewerFact = z.infer<typeof ViewerFactSchema>;
+export const MAX_VIEWER_FACTS = 8;
+/** días sin verlo tras los que se olvida a un viewer */
+export const VIEWER_TTL_DAYS = 60;
+export const MAX_OPTOUT = 500;
+
 /** Un viewer que el agente ya vio. Solo datos básicos (sin modelo, siempre). */
 export const ViewerMemorySchema = z.object({
   handle: z.string().min(1).max(60),
@@ -40,6 +52,8 @@ export const ViewerMemorySchema = z.object({
   strikes: z.number().int().nonnegative().default(0),
   /** el agente ya no atiende a este viewer el resto del LIVE (al llegar a STRIKE_LIMIT, o a mano) */
   ignored: z.boolean().default(false),
+  /** datos que el agente aprendió de él (con el modelo, en lotes) */
+  facts: z.array(ViewerFactSchema).max(MAX_VIEWER_FACTS).default([]),
 });
 export type ViewerMemory = z.infer<typeof ViewerMemorySchema>;
 
@@ -77,6 +91,8 @@ export const AgentMemoryFileSchema = z.object({
   viewers: z.record(ViewerMemorySchema).default({}),
   conductas: z.array(ConductaSchema).max(MAX_CONDUCTAS).default([]),
   pendientes: z.array(PendienteSchema).max(MAX_PENDIENTES).default([]),
+  /** viewers que escribieron «!olvidame»: no se aprende nada más de ellos */
+  optOut: z.array(z.string().max(60)).max(MAX_OPTOUT).default([]),
 });
 export type AgentMemoryFile = z.infer<typeof AgentMemoryFileSchema>;
 
@@ -90,6 +106,8 @@ export const AgentMemoryMessageSchema = z.discriminatedUnion("kind", [
     conductas: z.array(ConductaSchema).default([]),
     /** preguntas de viewers sobre el streamer que el agente no supo contestar y espera que él responda */
     pendientes: z.array(PendienteSchema).default([]),
+    /** viewers con datos aprendidos, los más recientes primero (para revisarlos y borrarlos) */
+    viewersConDatos: z.array(z.object({ handle: z.string(), name: z.string(), facts: z.array(ViewerFactSchema) })).default([]),
     /** viewers que el agente ignora en este LIVE */
     ignored: z.array(z.object({ handle: z.string(), name: z.string(), strikes: z.number().int().nonnegative() })).default([]),
   }),
@@ -104,6 +122,8 @@ export const AgentMemoryMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("remove-conducta"), id: z.string().min(1) }),
   z.object({ kind: z.literal("forgive-viewer"), handle: z.string().min(1) }),
   /** el streamer contesta una pregunta pendiente: se guarda como hecho suyo y el agente responde a quien preguntó */
+  z.object({ kind: z.literal("remove-viewer-fact"), handle: z.string().min(1), id: z.string().min(1) }),
+  z.object({ kind: z.literal("remove-viewer"), handle: z.string().min(1) }),
   z.object({ kind: z.literal("answer-pending"), id: z.string().min(1), text: z.string().trim().min(1).max(250) }),
   /** descartar una pregunta pendiente; `decline` = «No quiero contestar» (el agente lo dice con naturalidad) */
   z.object({ kind: z.literal("dismiss-pending"), id: z.string().min(1), decline: z.boolean().default(false) }),

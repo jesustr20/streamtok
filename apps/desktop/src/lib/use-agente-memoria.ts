@@ -1,9 +1,9 @@
-import type { AgentMemoryMessage, Conducta, Pendiente, StreamerMemory } from "@streamtok/shared";
+import type { AgentMemoryMessage, Conducta, Pendiente, StreamerMemory, ViewerFact } from "@streamtok/shared";
 import { useCallback, useEffect, useState } from "react";
 import type { SidecarClient } from "./ws-client";
 
 type Ignored = { handle: string; name: string; strikes: number };
-type Cached = { streamer: StreamerMemory; viewerCount: number; conductas: Conducta[]; ignored: Ignored[]; pendientes: Pendiente[] };
+type Cached = { streamer: StreamerMemory; viewerCount: number; conductas: Conducta[]; ignored: Ignored[]; pendientes: Pendiente[]; viewersConDatos: { handle: string; name: string; facts: ViewerFact[] }[] };
 // Último estado recibido: al volver a la vista aparece al instante.
 let last: Cached | null = null;
 
@@ -18,7 +18,7 @@ export function useAgenteMemoria(client: SidecarClient | null) {
       if (evt.channel !== "agente-memoria") return;
       const msg = evt.payload as AgentMemoryMessage;
       if (msg.kind === "state") {
-        last = { streamer: msg.streamer, viewerCount: msg.viewerCount, conductas: msg.conductas ?? [], ignored: msg.ignored ?? [], pendientes: msg.pendientes ?? [] };
+        last = { streamer: msg.streamer, viewerCount: msg.viewerCount, conductas: msg.conductas ?? [], ignored: msg.ignored ?? [], pendientes: msg.pendientes ?? [], viewersConDatos: msg.viewersConDatos ?? [] };
         setData(last);
         setError(null);
       } else if (msg.kind === "error") {
@@ -36,6 +36,7 @@ export function useAgenteMemoria(client: SidecarClient | null) {
     conductas: data?.conductas ?? [],
     ignored: data?.ignored ?? [],
     pendientes: data?.pendientes ?? [],
+    viewersConDatos: data?.viewersConDatos ?? [],
     error,
     saveStreamer: (name: string, aliases: string[]) => send({ kind: "save-streamer", name, aliases }),
     addFact: (text: string) => send({ kind: "add-fact", text }),
@@ -43,6 +44,8 @@ export function useAgenteMemoria(client: SidecarClient | null) {
     clearViewers: () => send({ kind: "clear-viewers" }),
     removeConducta: (id: string) => send({ kind: "remove-conducta", id }),
     forgive: (handle: string) => send({ kind: "forgive-viewer", handle }),
+    removeViewerFact: (handle: string, id: string) => send({ kind: "remove-viewer-fact", handle, id }),
+    removeViewer: (handle: string) => send({ kind: "remove-viewer", handle }),
     answerPending: (id: string, text: string) => send({ kind: "answer-pending", id, text }),
     dismissPending: (id: string, decline: boolean) => send({ kind: "dismiss-pending", id, decline }),
   };

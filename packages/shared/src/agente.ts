@@ -375,6 +375,10 @@ export const AgentConfigSchema = z.object({
   streamerAskTimeoutSec: z.number().int().min(5).max(300).default(30),
   /** tope de preguntas que te hace por LIVE */
   maxStreamerAsks: z.number().int().min(1).max(100).default(10),
+  /** el agente aprende datos de los viewers que le preguntan (en lotes, con el modelo) para responderles mejor (ADR 0024, §4) */
+  learnViewers: z.boolean().default(true),
+  /** tope de llamadas de aprendizaje por LIVE (cada una cubre varios viewers) */
+  maxLearnCalls: z.number().int().min(1).max(200).default(20),
   /** respuestas libres: contesta de cualquier tema, también opiniones y dudas (con «creo que…»), y da información general de política, salud, leyes o inversión; los filtros de seguridad siguen */
   freeAnswers: z.boolean().default(true),
   voice: AgentVoiceSchema.default({}),
