@@ -27,6 +27,7 @@ import { DuelosEngine, DuelosStore, defaultDuelosFilePath } from "./duelos.js";
 import { DuelosController } from "./duelos-controller.js";
 import { AgenteEngine, AgenteStore, defaultAgenteFilePath } from "./agente.js";
 import { AgenteController } from "./agente-controller.js";
+import { ListenService } from "./agente-escucha.js";
 import { KeysStore, defaultKeysFilePath } from "./agente-keys.js";
 import { ModelService } from "./agente-model.js";
 import { MemoriaController } from "./agente-memoria-controller.js";
@@ -292,7 +293,8 @@ agenteVoz.on("log", (entry) => {
   // eslint-disable-next-line no-console
   console.log(`[agente:${entry.level}]`, entry.message);
 });
-const agenteController = new AgenteController(server, agente, agenteModel, agenteTrivia, agenteVoz, agenteAnimo);
+const agenteEscucha = new ListenService({ getKey: () => agenteModel.keyFor("gemini") });
+const agenteController = new AgenteController(server, agente, agenteModel, agenteTrivia, agenteVoz, agenteAnimo, agenteEscucha, () => agenteMemoria.getStreamer().name || "Streamer");
 // «Parar IA» (ADR 0024, §7): a quien se atendía se le suma una falta y el modelo describe el patrón para recordarlo como conducta a evitar
 agenteController.on("stopped", (stopped?: { name: string; handle: string; question: string }) => {
   void learnFromStop(agenteMemoria, agenteModel, agente.getConfig(), stopped).catch((err) => {
@@ -439,6 +441,7 @@ const tiktokConnection = new TiktokConnectionController(server, {
     agente.resetSession();
     agenteModel.resetSession();
     agenteVoz.resetSession();
+    agenteEscucha.resetSession();
     agenteAnimo.reset();
     agenteTrivia.resetSession();
     room.reset();

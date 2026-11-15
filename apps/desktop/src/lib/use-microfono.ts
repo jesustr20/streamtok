@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SpeechSegmenter } from "./audio-wav";
 
 const KEY = "streamtok.agente.micId";
 
@@ -21,7 +22,9 @@ export type MicStatus = "idle" | "starting" | "listening" | "denied" | "error";
  * Micrófono del streamer (ADR 0024, §8, fase 6): lista de entradas, elegida (se recuerda en este equipo),
  * nivel de volumen en vivo y una prueba de grabación de 3 s. La misma captura servirá para la voz (fase 7).
  */
-export function useMicrofono() {
+export function useMicrofono(onSegment?: (wavBase64: string) => void) {
+  const segCb = useRef(onSegment);
+  segCb.current = onSegment;
   const [devices, setDevices] = useState<MicDevice[]>([]);
   const [deviceId, setDeviceIdState] = useState<string>(readSaved);
   const [status, setStatus] = useState<MicStatus>("idle");
@@ -31,6 +34,7 @@ export function useMicrofono() {
   const stream = useRef<MediaStream | null>(null);
   const ctx = useRef<AudioContext | null>(null);
   const raf = useRef(0);
+  const proc = useRef<ScriptProcessorNode | null>(null);
 
   const refreshDevices = useCallback(async () => {
     try {
@@ -47,6 +51,8 @@ export function useMicrofono() {
 
   const stop = useCallback(() => {
     cancelAnimationFrame(raf.current);
+    proc.current?.disconnect();
+    proc.current = null;
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
     void ctx.current?.close().catch(() => undefined);
@@ -74,7 +80,20 @@ export function useMicrofono() {
         ctx.current = ac;
         const analyser = ac.createAnalyser();
         analyser.fftSize = 1024;
-        ac.createMediaStreamSource(s).connect(analyser);
+        const src = ac.createMediaStreamSource(s);
+        src.connect(analyser);
+        // trozos de voz para la escucha: el detector corta por silencios y solo entrega lo que suena
+        const seg = new SpeechSegmenter(ac.sampleRate, (wav) => segCb.current?.(wav));
+        const sp = ac.createScriptProcessor(4096, 1, 1);
+        sp.onaudioprocess = (e) => {
+          if (segCb.current) seg.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+          else seg.reset();
+        };
+        const mute = ac.createGain();
+        mute.gain.value = 0;
+        src.connect(sp);
+        sp.connect(mute).connect(ac.destination);
+        proc.current = sp;
         const buf = new Uint8Array(analyser.fftSize);
         const tick = () => {
           analyser.getByteTimeDomainData(buf);

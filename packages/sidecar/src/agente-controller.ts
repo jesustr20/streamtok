@@ -5,6 +5,7 @@ import type { AgenteEngine } from "./agente.js";
 import type { ModelService } from "./agente-model.js";
 import type { LiveMoodEngine } from "./agente-animo.js";
 import type { VoiceService } from "./agente-voz.js";
+import type { ListenService } from "./agente-escucha.js";
 import type { TriviaEngine } from "./agente-trivia.js";
 import { formatZodError } from "./mapping-rules.js";
 import type { StreamTokWsServer } from "./ws-server.js";
@@ -32,6 +33,8 @@ export class AgenteController extends EventEmitter {
     private trivia?: TriviaEngine,
     private voice?: VoiceService,
     private animo?: LiveMoodEngine,
+    private listener?: ListenService,
+    private streamerName: () => string = () => "Streamer",
   ) {
     super();
     this.server.on("client-connected", (socket) => this.sendStateTo(socket));
@@ -123,6 +126,25 @@ export class AgenteController extends EventEmitter {
     );
   }
 
+  /** «Parar IA» (ADR 0024, §7), con el botón o con la voz: calla a todos los overlays, vacía respuesta y cola, y avisa para aprender de lo ocurrido. */
+  private stopNow() {
+    const stopped = this.agente.stop();
+    this.server.broadcast("agente", { kind: "silence" });
+    this.emit("stopped", stopped);
+  }
+
+  /** Voz del streamer (ADR 0024, §8): «para» corta a la IA; una pregunta suya entra a la cola como las del chat. */
+  private async listen(msg: { id: string; data: string }, socket: WebSocket) {
+    const r = this.listener ? await this.listener.hear(msg.data, this.agente.getConfig()) : ({ ok: false, message: "La escucha no está disponible." } as const);
+    if (!r.ok) {
+      this.server.sendTo(socket, "agente", { kind: "heard", id: msg.id, ok: false, message: r.message, text: "", intent: "none" });
+      return;
+    }
+    if (r.intent === "stop") this.stopNow();
+    else if (r.intent === "ask") this.agente.ask(this.streamerName(), r.question);
+    this.server.sendTo(socket, "agente", { kind: "heard", id: msg.id, ok: true, message: "", text: r.text, intent: r.intent });
+  }
+
   private handle(payload: unknown, socket: WebSocket) {
     const parsed = AgentMessageSchema.safeParse(payload);
     if (!parsed.success) {
@@ -146,13 +168,12 @@ export class AgenteController extends EventEmitter {
       case "reset":
         this.agente.reset();
         return;
-      case "stop": {
-        // «Parar IA» (ADR 0024, §7): calla la voz de todos los overlays, vacía respuesta y cola, y avisa para aprender de lo ocurrido
-        const stopped = this.agente.stop();
-        this.server.broadcast("agente", { kind: "silence" });
-        this.emit("stopped", stopped);
+      case "stop":
+        this.stopNow();
         return;
-      }
+      case "listen-audio":
+        void this.listen(msg, socket);
+        return;
       case "trivia-start":
         if (!this.trivia?.start(msg.sample)) this.server.sendTo(socket, "agente", { kind: "error", message: "Ya hay una trivia en curso." });
         return;
