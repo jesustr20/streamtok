@@ -249,6 +249,23 @@ const agenteModel = new ModelService({
   onIntent: (handle) => {
     if (handle) agenteMemoria.addStrike(handle);
   },
+  // algo del streamer que no sabe (ADR 0024, §3): queda como pendiente para que él responda; si no lo hace a tiempo, avisa que lo dejó anotado
+  canAskStreamer: () => agenteMemoria.asksLeft(agente.getConfig().maxStreamerAsks),
+  onUnsure: (who, question) => {
+    const p = agenteMemoria.addPending(question, who.name);
+    if (!p) return;
+    const t = setTimeout(() => {
+      if (agenteMemoria.hasPending(p.id)) agente.announce(`Dejé anotado lo que preguntó ${who.name} para que ${agenteMemoria.getStreamer().name || "el streamer"} lo responda luego.`);
+    }, agente.getConfig().streamerAskTimeoutSec * 1000);
+    t.unref?.();
+  },
+});
+// el streamer contestó (o no quiso): el agente responde a quien preguntó con lo que ahora sabe, o lo dice con naturalidad
+agenteMemoria.on("answered", (p: { question: string; asker: string }) => {
+  agente.ask(p.asker || "Alguien", p.question);
+});
+agenteMemoria.on("dismissed", (p: { asker: string }, decline: boolean) => {
+  if (decline) agente.announce(`${agenteMemoria.getStreamer().name || "El streamer"} prefiere no contestar eso${p.asker ? `, ${p.asker}` : ""}.`);
 });
 // Ánimo del LIVE: mide cuánto movimiento hay (monedas, comentarios, likes...) y decide el tono de voz y de texto del agente.
 const agenteAnimo: LiveMoodEngine = new LiveMoodEngine({ getConfig: () => agente.getConfig().animo });

@@ -6,6 +6,8 @@ import {
   type AgentConfig,
   AgentMemoryFileSchema,
   MAX_CONDUCTAS,
+  MAX_PENDIENTES,
+  type Pendiente,
   MAX_VIEWERS,
   STRIKE_LIMIT,
   type AgentMemoryFile,
@@ -187,6 +189,58 @@ export class MemoriaService extends EventEmitter {
     return this.recent.slice(-n).map(({ name, text }) => ({ name, text }));
   }
 
+  // ---- preguntas al streamer (ADR 0024, §3) -----------------------------------------------
+
+  /** preguntas hechas al streamer en este LIVE (solo en memoria; cuenta contra `maxStreamerAsks`) */
+  private asksThisLive = 0;
+
+  getPendientes(): Pendiente[] {
+    return this.data.pendientes;
+  }
+
+  asksLeft(max: number): boolean {
+    return this.asksThisLive < max;
+  }
+
+  /** Anota lo que el agente no supo del streamer. Una misma pregunta no se repite. Devuelve null si ya estaba. */
+  addPending(question: string, asker: string): Pendiente | null {
+    const q = sanitizeQuestion(question).slice(0, 300);
+    if (!q) return null;
+    if (this.data.pendientes.some((p) => p.question.toLowerCase() === q.toLowerCase())) return null;
+    const p: Pendiente = { id: `p${this.now().toString(36)}${(++this.seq).toString(36)}`, question: q, asker: sanitizeQuestion(asker).slice(0, 60), at: this.now() };
+    this.data.pendientes.push(p);
+    while (this.data.pendientes.length > MAX_PENDIENTES) this.data.pendientes.shift();
+    this.asksThisLive++;
+    this.changed();
+    return p;
+  }
+
+  hasPending(id: string): boolean {
+    return this.data.pendientes.some((p) => p.id === id);
+  }
+
+  /** El streamer contesta: la respuesta pasa a ser un hecho suyo y la pregunta se cierra. Emite `answered` con la pregunta. */
+  answerPending(id: string, text: string): boolean {
+    const p = this.data.pendientes.find((x) => x.id === id);
+    const answer = text.trim().slice(0, 250);
+    if (!p || !answer) return false;
+    this.data.pendientes = this.data.pendientes.filter((x) => x.id !== id);
+    this.addFact(`Sobre «${p.question.slice(0, 120)}»: ${answer}`.slice(0, 300));
+    this.changed();
+    this.emit("answered", p);
+    return true;
+  }
+
+  /** Se descarta (o «No quiero contestar»). Emite `dismissed` con la pregunta y si fue una negativa. */
+  dismissPending(id: string, decline: boolean): boolean {
+    const p = this.data.pendientes.find((x) => x.id === id);
+    if (!p) return false;
+    this.data.pendientes = this.data.pendientes.filter((x) => x.id !== id);
+    this.changed();
+    this.emit("dismissed", p, decline);
+    return true;
+  }
+
   // ---- conductas aprendidas y faltas (ADR 0024, §7) --------------------------------------
 
   getConductas(): Conducta[] {
@@ -258,6 +312,7 @@ export class MemoriaService extends EventEmitter {
       }
     }
     this.recent = [];
+    this.asksThisLive = 0;
     if (any) this.changed();
   }
 

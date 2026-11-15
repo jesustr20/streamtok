@@ -168,6 +168,10 @@ export interface ModelServiceOptions {
   memory?: (question: string, askerHandle?: string) => string | undefined;
   /** una pregunta fue un intento de manipular o provocar al agente (lo marcó el modelo o la defensa contra inyección); el sidecar suma una falta */
   onIntent?: (askerHandle: string | undefined, question: string) => void;
+  /** ¿quedan preguntas por hacerle al streamer en este LIVE? (si no, el modelo dice que no lo sabe en vez de preguntar) */
+  canAskStreamer?: () => boolean;
+  /** el modelo no sabe algo del streamer y quiere preguntárselo (ADR 0024, §3) */
+  onUnsure?: (who: { handle?: string; name: string }, question: string) => void;
 }
 
 /**
@@ -227,7 +231,7 @@ export class ModelService extends EventEmitter {
     return this.idle;
   }
 
-  readonly respond: Responder = async (rawQuestion, { config, handle: askerHandle }) => {
+  readonly respond: Responder = async (rawQuestion, { config, handle: askerHandle, name: askerName }) => {
     const question = sanitizeQuestion(rawQuestion);
     if (!question) return REFUSAL;
     if (looksLikeInjection(question)) {
@@ -246,7 +250,7 @@ export class ModelService extends EventEmitter {
     }
     this.calls++;
     this.emit("state");
-    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt(config, this.opts.liveContext?.(), this.opts.memory?.(question, askerHandle)), user: userPrompt(question) };
+    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt({ ...config, streamerAsk: this.opts.canAskStreamer?.() === false ? "solo-memoria" : config.streamerAsk }, this.opts.liveContext?.(), this.opts.memory?.(question, askerHandle)), user: userPrompt(question) };
     let text: string;
     try {
       text = await callModel(this.fetchImpl, { ...request, maxTokens: MAX_TOKENS });
@@ -260,8 +264,11 @@ export class ModelService extends EventEmitter {
     // la etiqueta [emoción, gesto] se separa antes de limpiar (la limpieza quita barras y otros signos); si no hay, texto solo
     const expr = parseExpression(text);
     if (expr.flagged) this.opts.onIntent?.(askerHandle, question);
+    if (expr.unsure && config.streamerAsk !== "solo-memoria" && this.opts.canAskStreamer?.() !== false) {
+      this.opts.onUnsure?.({ ...(askerHandle ? { handle: askerHandle } : {}), name: askerName }, question);
+    }
     const clean = cleanAnswer(expr.text);
-    const { flagged: _flagged, ...shown } = expr;
+    const { flagged: _flagged, unsure: _unsure, ...shown } = expr;
     return expr.mood || expr.gesture ? { ...shown, text: clean } : clean;
   };
 

@@ -17,6 +17,7 @@ export class MemoriaController {
       streamer: this.memoria.getStreamer(),
       viewerCount: this.memoria.viewerCount(),
       conductas: this.memoria.getConductas(),
+      pendientes: this.memoria.getPendientes(),
       ignored: this.memoria.ignoredViewers(),
     };
   }
@@ -55,6 +56,12 @@ export class MemoriaController {
         break;
       case "forgive-viewer":
         this.memoria.forgive(msg.handle);
+        break;
+      case "answer-pending":
+        if (!this.memoria.answerPending(msg.id, msg.text)) this.server.sendTo(socket, "agente-memoria", { kind: "error", message: "Esa pregunta ya no está pendiente." });
+        break;
+      case "dismiss-pending":
+        this.memoria.dismissPending(msg.id, msg.decline);
         break;
       default:
         break;

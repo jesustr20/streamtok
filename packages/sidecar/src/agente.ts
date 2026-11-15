@@ -508,6 +508,12 @@ export class AgenteEngine extends EventEmitter {
 
   // ---- avisos a cada persona ----------------------------------------------
 
+  /** Aviso del propio agente (p. ej. «lo dejé anotado para preguntárselo»): sale en la barra y se lee en voz alta. */
+  announce(text: string): void {
+    this.pushNotice("queue", text.slice(0, 200), true, "calm");
+    this.emit("state");
+  }
+
   /** Pone un aviso a la vista unos segundos. `speak` pide leerlo en voz alta (si está permitido y no hay otro leído hace poco). */
   private pushNotice(kind: AgentNotice["kind"], text: string, speak: boolean, mood: AgentNotice["mood"] = "happy"): void {
     if (!this.config.tips.personal) return;
