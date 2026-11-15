@@ -1,3 +1,4 @@
+import type { AgentConfig } from "@streamtok/shared";
 import { useEffect, useState } from "react";
 import { useAgenteMemoria } from "../lib/use-agente-memoria";
 import type { SidecarClient } from "../lib/ws-client";
@@ -7,7 +8,7 @@ import { Btn, Card, Field, inputStyle } from "./overlays-ui";
  * «Memoria del agente» (ADR 0024, fase 1): lo que el agente sabe del streamer (nombre, apodos y datos que tú escribes)
  * y cuántos viewers recuerda. Todo se guarda en agente-memoria.json, en tu equipo.
  */
-export function AgenteMemoria({ client }: { client: SidecarClient | null }) {
+export function AgenteMemoria({ client, config, patch }: { client: SidecarClient | null; config: AgentConfig; patch: (p: Partial<AgentConfig>) => void }) {
   const m = useAgenteMemoria(client);
   const [confirmClear, setConfirmClear] = useState(false);
   const [name, setName] = useState("");
@@ -99,6 +100,37 @@ export function AgenteMemoria({ client }: { client: SidecarClient | null }) {
             <button type="button" title="Olvidar esta conducta" onClick={() => m.removeConducta(c.id)} style={{ background: "none", border: "none", color: "#E5484D", cursor: "pointer", fontSize: 14 }}>
               🗑
             </button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600 }}>Lo que sabe de tus viewers ({m.viewersConDatos.length})</div>
+        <div style={{ fontSize: 12, color: "#9A9CA5", lineHeight: 1.5 }}>
+          Aprende de lo que cada viewer le cuenta de sí mismo al preguntarle (gustos, ciudad, a qué juega), en lotes y con tu clave del modelo. Nunca guarda salud, política, religión, dinero, edad ni direcciones.
+          Cualquiera puede escribir <b>!olvidame</b> en el chat y se borra todo lo suyo. Quien no aparece en 60 días se olvida solo.
+        </div>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5 }}>
+          <input type="checkbox" checked={config.learnViewers} onChange={(e) => patch({ learnViewers: e.target.checked })} />
+          Aprender de los viewers (usa el modelo: una llamada por lote, hasta {config.maxLearnCalls} por LIVE)
+        </label>
+        {m.viewersConDatos.length === 0 && <div style={{ fontSize: 12, color: "#7C7E88" }}>Todavía no ha aprendido nada de nadie.</div>}
+        {m.viewersConDatos.map((v) => (
+          <div key={v.handle} style={{ borderTop: "1px solid #24252C", paddingTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b>{v.name}</b> <span style={{ color: "#9A9CA5" }}>@{v.handle}</span>
+              </span>
+              <Btn onClick={() => m.removeViewer(v.handle)}>Olvidar a este viewer</Btn>
+            </div>
+            {v.facts.map((f) => (
+              <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#C9CBD2" }}>
+                <span style={{ flex: 1, minWidth: 0 }}>{f.text}</span>
+                <button type="button" title="Borrar este dato" onClick={() => m.removeViewerFact(v.handle, f.id)} style={{ background: "none", border: "none", color: "#E5484D", cursor: "pointer", fontSize: 14 }}>
+                  🗑
+                </button>
+              </div>
+            ))}
           </div>
         ))}
       </div>

@@ -18,6 +18,7 @@ export class MemoriaController {
       viewerCount: this.memoria.viewerCount(),
       conductas: this.memoria.getConductas(),
       pendientes: this.memoria.getPendientes(),
+      viewersConDatos: this.memoria.viewersWithFacts(),
       ignored: this.memoria.ignoredViewers(),
     };
   }
@@ -56,6 +57,12 @@ export class MemoriaController {
         break;
       case "forgive-viewer":
         this.memoria.forgive(msg.handle);
+        break;
+      case "remove-viewer-fact":
+        this.memoria.removeViewerFact(msg.handle, msg.id);
+        break;
+      case "remove-viewer":
+        this.memoria.removeViewer(msg.handle);
         break;
       case "answer-pending":
         if (!this.memoria.answerPending(msg.id, msg.text)) this.server.sendTo(socket, "agente-memoria", { kind: "error", message: "Esa pregunta ya no está pendiente." });

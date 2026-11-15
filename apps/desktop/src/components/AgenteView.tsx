@@ -106,7 +106,7 @@ function Block({ config, state, keys, api, client }: { config: AgentConfig; stat
 
       <Modelo config={config} keys={keys} api={api} patch={patch} />
 
-      <AgenteMemoria client={client} />
+      <AgenteMemoria client={client} config={config} patch={patch} />
 
       <AgentePreguntas client={client} config={config} patch={patch} />
 

@@ -260,6 +260,21 @@ const agenteModel = new ModelService({
     t.unref?.();
   },
 });
+// aprender de los viewers (ADR 0024, §4): cada minuto mira si hay un lote listo y manda UNA llamada para varios viewers
+const learnTimer = setInterval(() => {
+  const cfg = agente.getConfig();
+  if (!cfg.learnViewers || !agenteMemoria.learnReady()) return;
+  const batch = agenteMemoria.takeLearnBatch();
+  void agenteModel
+    .extractViewerFacts(batch, cfg)
+    .then((r) => {
+      if (r) for (const [handle, facts] of Object.entries(r)) agenteMemoria.addViewerFacts(handle, facts);
+    })
+    .catch(() => undefined);
+}, 60_000);
+learnTimer.unref?.();
+// «!olvidame»: el viewer pide que se borre todo lo suyo
+agenteMemoria.on("forgotten", (name: string) => agente.announce(`Listo ${name}, ya no recuerdo nada de ti.`));
 // el streamer contestó (o no quiso): el agente responde a quien preguntó con lo que ahora sabe, o lo dice con naturalidad
 agenteMemoria.on("answered", (p: { question: string; asker: string }) => {
   agente.ask(p.asker || "Alguien", p.question);
