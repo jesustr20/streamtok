@@ -83,7 +83,7 @@ export class AgenteStore implements AgenteStorePort {
 }
 
 /** Quien da las respuestas. La pieza 2 pone aquí el modelo (DeepSeek, OpenAI, Claude...). */
-export type Responder = (question: string, ctx: { name: string; handle?: string; config: AgentConfig }) => Promise<string | AgentExpression>;
+export type Responder = (question: string, ctx: { name: string; handle?: string; config: AgentConfig; chat?: boolean }) => Promise<string | AgentExpression>;
 
 /** Tope de seguridad de una respuesta (el modelo recibe la orden de ser breve; esto solo evita un texto enorme). */
 export const MAX_ANSWER_CHARS = 600;
@@ -109,6 +109,24 @@ export const NOTICE_MS = 7_000;
 const MAX_NOTICES = 3;
 /** Los seguidores nuevos se juntan este rato para darles un solo gracias... */
 const FOLLOW_BATCH_MS = 6_000;
+/** conversación natural: tras responderle a alguien, lo que escriba en este tiempo se toma como respuesta suya */
+const FOLLOWUP_MS = 60_000;
+/** conversación natural: máximo de elementos en la fila para que entre charla */
+const CHAT_MAX_QUEUE = 2;
+/** conversación natural: la charla que espera más que esto se descarta */
+const CHAT_STALE_MS = 60_000;
+
+const plain = (s: string): string => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** ¿El mensaje nombra al agente? Palabra completa, sin tildes ni mayúsculas; vale su nombre entero o la primera palabra si es larga. */
+export function mentions(text: string, agentName: string): boolean {
+  const name = plain(agentName).replace(/[^a-z0-9ñ ]/g, " ").trim();
+  if (!name) return false;
+  const first = name.split(/\s+/)[0] ?? "";
+  const candidates = [name, ...(first.length >= 4 && first !== name ? [first] : [])];
+  const t = ` ${plain(text).replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ")} `;
+  return candidates.some((c) => t.includes(` ${c} `));
+}
 /** ...y entre un gracias de seguidores y el siguiente pasa al menos esto. */
 const THANKS_GAP_MS = 15_000;
 /** Entre dos avisos leídos en voz alta pasa al menos esto (el resto se ven pero no se leen). */
@@ -141,6 +159,8 @@ interface Waiting extends AgentQueueItem {
   seq: number;
   /** veces que ya se intentó responder y falló el modelo (una pregunta se reintenta una vez antes de retirarse) */
   tries?: number;
+  /** charla del chat sin comando (ADR 0024, §5): va después de las preguntas y de los regalos */
+  casual?: boolean;
 }
 
 interface Credit {
@@ -192,6 +212,11 @@ export class AgenteEngine extends EventEmitter {
   private fanClub = new Set<string>();
   private credits = new Map<string, Credit>();
   private lastAsk = new Map<string, number>();
+  /** conversación natural: cuándo se le respondió a cada viewer, cuándo se le atendió charla, y los límites */
+  private lastReplyTo = new Map<string, number>();
+  private lastChatAt = new Map<string, number>();
+  private chatTimes: number[] = [];
+  private chatCount = 0;
   private prizes = new Map<string, Credit>();
   private coinStreaks = new Map<string, number>();
   private saving = false;
@@ -278,6 +303,10 @@ export class AgenteEngine extends EventEmitter {
     this.prizes.clear();
     this.nextTipAt = this.now() + this.config.tips.everySec * 1000;
     this.lastAsk.clear();
+    this.lastReplyTo.clear();
+    this.lastChatAt.clear();
+    this.chatTimes = [];
+    this.chatCount = 0;
     this.coinStreaks.clear();
     this.notices = [];
     this.pendingFollows = [];
@@ -339,7 +368,10 @@ export class AgenteEngine extends EventEmitter {
 
     if (evt.event !== "comment" || !this.config.enabled) return;
     const question = parseAgentCommand(this.config.command, evt.text);
-    if (question === undefined) return;
+    if (question === undefined) {
+      this.maybeChat(handle, name, evt);
+      return;
+    }
     const text = clamp(question, this.config.maxQuestionChars);
     if (!text) return;
     const prize = this.activePrize(handle);
@@ -352,6 +384,32 @@ export class AgenteEngine extends EventEmitter {
       this.prizes.delete(handle);
       this.lastAsk.set(handle, this.now());
     }
+  }
+
+  /**
+   * Conversación natural (ADR 0024, §5): charla sin comando. Un filtro local, sin modelo, decide si vale la pena: solo si lo nombran
+   * o si quien habla acaba de recibir respuesta suya (hace menos de un minuto). Respeta quién puede preguntar, la espera por viewer,
+   * el tope por minuto y por LIVE, y nunca llena la fila (las preguntas de verdad van antes).
+   */
+  private maybeChat(handle: string, name: string, evt: LiveEvent): void {
+    const c = this.config.conversation;
+    if (!c.enabled || !this.config.enabled || this.opts.isIgnored?.(handle)) return;
+    const text = clamp((evt.text ?? "").trim(), this.config.maxQuestionChars);
+    if (text.length < 3) return;
+    const t = this.now();
+    const replied = this.lastReplyTo.get(handle);
+    const followUp = replied !== undefined && t - replied < FOLLOWUP_MS;
+    if (!followUp && !mentions(text, this.config.name)) return;
+    if (!this.eligible(handle, this.activeCredit(handle) + this.activePrize(handle))) return;
+    const last = this.lastChatAt.get(handle);
+    if (last !== undefined && t - last < c.viewerCooldownSec * 1000) return;
+    this.chatTimes = this.chatTimes.filter((x) => t - x < 60_000);
+    if (this.chatTimes.length >= c.perMinute || this.chatCount >= c.maxCalls) return;
+    if (this.queue.length >= CHAT_MAX_QUEUE) return; // la charla espera: no llena la fila
+    if (!this.enqueue(handle, name, evt.avatarUrl, text, 0, true)) return;
+    this.chatTimes.push(t);
+    this.chatCount++;
+    this.lastChatAt.set(handle, t);
   }
 
   /** Avanza el agente: saca la respuesta de pantalla cuando se cumple su tiempo y atiende la siguiente pregunta. Se llama cada segundo. */
@@ -371,6 +429,11 @@ export class AgenteEngine extends EventEmitter {
       this.emit("state");
     }
     this.flushFollows(t);
+    // la charla que lleva mucho esperando ya no viene a cuento
+    if (this.queue.some((w) => w.casual && t - w.at > CHAT_STALE_MS)) {
+      this.queue = this.queue.filter((w) => !(w.casual && t - w.at > CHAT_STALE_MS));
+      this.emit("state");
+    }
     if (this.current || !this.config.enabled) return;
     if (this.opts.paused?.()) return; // trivia en curso: la cola espera y se retoma al terminar
     if (!this.tip && this.config.tips.enabled && t >= this.nextTipAt && this.queue.length === 0 && (this.opts.canShowTip?.() ?? true)) {
@@ -422,7 +485,7 @@ export class AgenteEngine extends EventEmitter {
   private async answer(cur: AgentCurrent & { answerAt?: number }): Promise<void> {
     let reply: string | AgentExpression;
     try {
-      reply = await this.responder(cur.question, { name: cur.name, ...(this.currentSrc?.handle ? { handle: this.currentSrc.handle } : {}), config: this.config });
+      reply = await this.responder(cur.question, { name: cur.name, ...(this.currentSrc?.handle ? { handle: this.currentSrc.handle } : {}), config: this.config, ...(this.currentSrc?.casual ? { chat: true } : {}) });
     } catch (err) {
       const message = (err as Error).message;
       this.emit("log", { level: "error", message: `El agente no pudo responder: ${message}` });
@@ -450,6 +513,7 @@ export class AgenteEngine extends EventEmitter {
     if (expr.gesture) cur.gesture = expr.gesture;
     cur.showMs = showMsFor(cur.answer);
     cur.answerAt = this.now();
+    if (this.currentSrc?.handle) this.lastReplyTo.set(this.currentSrc.handle, this.now());
     this.emit("state");
   }
 
@@ -457,7 +521,9 @@ export class AgenteEngine extends EventEmitter {
     const paid = this.ordered().find((w) => w.coins > 0);
     if (paid) return paid;
     if (t < this.nextFreeAt || this.queue.length === 0) return undefined;
-    return this.queue[Math.min(this.queue.length - 1, Math.floor(this.random() * this.queue.length))];
+    // primero las preguntas con comando; la charla del chat solo cuando no hay otra cosa
+    const pool = this.queue.some((w) => !w.casual) ? this.queue.filter((w) => !w.casual) : this.queue;
+    return pool[Math.min(pool.length - 1, Math.floor(this.random() * pool.length))];
   }
 
   /** Orden en que se atenderán: primero las de regalo (más monedas antes), luego las gratis por llegada. */
@@ -485,7 +551,7 @@ export class AgenteEngine extends EventEmitter {
     );
   }
 
-  private enqueue(handle: string, name: string, avatarUrl: string | undefined, question: string, coins: number): boolean {
+  private enqueue(handle: string, name: string, avatarUrl: string | undefined, question: string, coins: number, casual = false): boolean {
     if (this.opts.isIgnored?.(handle)) return false;
     if (this.queue.some((w) => w.handle === handle)) return false;
     if (this.queue.length >= this.config.maxQueue) return false;
@@ -499,8 +565,9 @@ export class AgenteEngine extends EventEmitter {
       question,
       coins,
       at: this.now(),
+      ...(casual ? { casual: true } : {}),
     });
-    this.noticeQueued(handle, name, coins);
+    if (!casual) this.noticeQueued(handle, name, coins);
     this.opts.onQuestion?.(handle, name, question);
     this.emit("state");
     return true;

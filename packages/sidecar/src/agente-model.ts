@@ -232,7 +232,7 @@ export class ModelService extends EventEmitter {
     return this.idle;
   }
 
-  readonly respond: Responder = async (rawQuestion, { config, handle: askerHandle, name: askerName }) => {
+  readonly respond: Responder = async (rawQuestion, { config, handle: askerHandle, name: askerName, chat: casual }) => {
     const question = sanitizeQuestion(rawQuestion);
     if (!question) return REFUSAL;
     if (looksLikeInjection(question)) {
@@ -251,7 +251,7 @@ export class ModelService extends EventEmitter {
     }
     this.calls++;
     this.emit("state");
-    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt({ ...config, streamerAsk: this.opts.canAskStreamer?.() === false ? "solo-memoria" : config.streamerAsk }, this.opts.liveContext?.(), this.opts.memory?.(question, askerHandle)), user: userPrompt(question) };
+    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt({ ...config, streamerAsk: this.opts.canAskStreamer?.() === false ? "solo-memoria" : config.streamerAsk, casual: casual === true }, this.opts.liveContext?.(), this.opts.memory?.(question, askerHandle)), user: userPrompt(question) };
     let text: string;
     try {
       text = await callModel(this.fetchImpl, { ...request, maxTokens: MAX_TOKENS });

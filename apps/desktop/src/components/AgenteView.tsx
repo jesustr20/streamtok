@@ -1,6 +1,7 @@
 import { AGENT_PROVIDERS, ANIMO_LEVEL_NAMES, GEMINI_VOICES, TRIVIA_DIFFICULTY_NAMES, TTS_MOODS, type TtsMood, buildTips, type AgentTipsConfig, pickVoice, type AgentTriviaConfig, providerInfo, type AgentAnimo, type AgentCharacter, type AgentVoice, type AgentConfig, type AgentEligibility, type AgentKeyStatus, type AgentProviderId, type AgentState } from "@streamtok/shared";
 import { useEffect, useRef, useState } from "react";
 import { useAgente } from "../lib/use-agente";
+import { AgenteConversacion } from "./AgenteConversacion";
 import { AgenteMemoria } from "./AgenteMemoria";
 import { AgenteMicrofono } from "./AgenteMicrofono";
 import { AgentePreguntas } from "./AgentePreguntas";
@@ -105,6 +106,8 @@ function Block({ config, state, keys, api, client }: { config: AgentConfig; stat
       </Card>
 
       <Modelo config={config} keys={keys} api={api} patch={patch} />
+
+      <AgenteConversacion config={config} patch={patch} />
 
       <AgenteMemoria client={client} config={config} patch={patch} />
 
