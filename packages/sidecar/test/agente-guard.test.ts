@@ -108,3 +108,11 @@ describe("regla 8: preguntar al streamer", () => {
     expect(parseExpression("[alegre, saludar] Hola").unsure).toBeUndefined();
   });
 });
+
+describe("regla 9: charla casual", () => {
+  const base = AgentConfigSchema.parse({});
+  it("solo aparece en modo casual", () => {
+    expect(systemPrompt({ ...base, casual: true })).toContain("NO uses la respuesta de rechazo");
+    expect(systemPrompt(base)).not.toContain("NO uses la respuesta de rechazo");
+  });
+});

@@ -88,6 +88,21 @@ export const AgentVoiceSchema = z.object({
 });
 export type AgentVoice = z.infer<typeof AgentVoiceSchema>;
 
+/**
+ * Conversación natural (ADR 0024, §5): el agente atiende charla del chat sin `!comando`, pero solo si lo nombran o si
+ * quien habla acaba de recibir respuesta suya. Va después de las preguntas y de los regalos, y está apagada por defecto.
+ */
+export const AgentConversationSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** intervenciones como máximo por minuto */
+  perMinute: z.number().int().min(1).max(20).default(3),
+  /** cada viewer espera esto entre una intervención y otra */
+  viewerCooldownSec: z.number().int().min(10).max(600).default(60),
+  /** tope de intervenciones por LIVE (protege tu saldo) */
+  maxCalls: z.number().int().min(1).max(2000).default(100),
+});
+export type AgentConversation = z.infer<typeof AgentConversationSchema>;
+
 /** Voces de Gemini (nombres de Google) con su carácter, para elegir al oído. Se muestran en "Probar voces". */
 export const GEMINI_VOICES: { id: string; trait: string; female: boolean }[] = [
   { id: "Sulafat", trait: "cálida", female: true },
@@ -382,6 +397,7 @@ export const AgentConfigSchema = z.object({
   /** respuestas libres: contesta de cualquier tema, también opiniones y dudas (con «creo que…»), y da información general de política, salud, leyes o inversión; los filtros de seguridad siguen */
   freeAnswers: z.boolean().default(true),
   voice: AgentVoiceSchema.default({}),
+  conversation: AgentConversationSchema.default({}),
   animo: AgentAnimoSchema.default({}),
   trivia: AgentTriviaConfigSchema.default({}),
   tips: AgentTipsConfigSchema.default({}),

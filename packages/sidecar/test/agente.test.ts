@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AgentConfigSchema, parseAgentCommand, type AgentConfig, type LiveEvent } from "@streamtok/shared";
-import { AgenteEngine, MAX_ANSWER_CHARS, clampAnswer, showMsFor, type Responder } from "../src/agente.js";
+import { AgenteEngine, MAX_ANSWER_CHARS, clampAnswer, mentions, showMsFor, type Responder } from "../src/agente.js";
 
 const memStore = (config: Partial<AgentConfig> = {}) => {
   const saved: unknown[] = [];
@@ -319,5 +319,91 @@ describe("clampAnswer", () => {
     const r = clampAnswer("y".repeat(900));
     expect(r.length).toBe(MAX_ANSWER_CHARS);
     expect(r.endsWith("…")).toBe(true);
+  });
+});
+
+describe("conversación natural (ADR 0024, §5)", () => {
+  const on = (extra: Partial<AgentConfig["conversation"]> = {}, cfg: Partial<AgentConfig> = {}) =>
+    setup({ name: "Nova", freeEverySec: 5, ...cfg, conversation: { enabled: true, perMinute: 3, viewerCooldownSec: 60, maxCalls: 100, ...extra } });
+  const fan = { isFollower: true } as const;
+
+  it("mentions: palabra completa, sin tildes ni mayúsculas", () => {
+    expect(mentions("oye NOVA, ¿qué tal?", "Nova")).toBe(true);
+    expect(mentions("la supernova explotó", "Nova")).toBe(false);
+    expect(mentions("hola Asistente", "Asistente IA")).toBe(true);
+    expect(mentions("hola", "")).toBe(false);
+  });
+
+  it("apagada por defecto: nombrarla no hace nada", () => {
+    const { engine } = setup({ name: "Nova" });
+    engine.handleLiveEvent(comment("@ana", "Nova, hola", fan));
+    expect(engine.getState().queueSize).toBe(0);
+  });
+
+  it("entra solo si la nombran y respeta quién puede preguntar", async () => {
+    const { engine } = on();
+    engine.handleLiveEvent(comment("@ana", "qué buen live", fan));
+    engine.handleLiveEvent(comment("@luis", "Nova, hola", {})); // no sigue al canal
+    expect(engine.getState().queueSize).toBe(0);
+    engine.handleLiveEvent(comment("@ana", "Nova, ¿cómo estás?", fan));
+    engine.tick();
+    await settle();
+    expect(engine.getState().current?.answer).toContain("R:Nova, ¿cómo estás?");
+  });
+
+  it("la charla recibe la bandera chat y las preguntas con comando van antes", async () => {
+    const seen: (boolean | undefined)[] = [];
+    const { engine } = on({}, {});
+    engine.setResponder(async (q, ctx) => {
+      seen.push(ctx.chat);
+      return `R:${q}`;
+    });
+    engine.handleLiveEvent(comment("@ana", "Nova, hola", fan));
+    engine.handleLiveEvent(comment("@eva", "!ia ¿cuántos planetas hay?", fan));
+    engine.tick();
+    await settle();
+    expect(engine.getState().current?.question).toBe("¿cuántos planetas hay?");
+    expect(seen).toEqual([undefined]);
+  });
+
+  it("tras una respuesta, lo que escribe esa persona en el minuto siguiente cuenta como respuesta suya", async () => {
+    const { engine, advance } = on({ viewerCooldownSec: 10 });
+    engine.handleLiveEvent(comment("@ana", "!ia hola", fan));
+    engine.tick();
+    await settle();
+    advance(30_000);
+    engine.tick();
+    engine.handleLiveEvent(comment("@ana", "jaja qué gracioso", fan));
+    expect(engine.getState().queueSize).toBe(1);
+    advance(120_000);
+    engine.tick();
+    await settle();
+    advance(120_000);
+    engine.handleLiveEvent(comment("@ana", "jaja otra vez", fan)); // ya pasó el minuto y no la nombró
+    expect(engine.getState().queueSize).toBe(0);
+  });
+
+  it("frena por viewer, por minuto y por LIVE", () => {
+    const a = on({ perMinute: 2, viewerCooldownSec: 60 });
+    a.engine.handleLiveEvent(comment("@ana", "Nova hola", fan));
+    a.engine.handleLiveEvent(comment("@ana", "Nova hola otra vez", fan)); // espera por viewer
+    expect(a.engine.getState().queueSize).toBe(1);
+    a.engine.handleLiveEvent(comment("@eva", "Nova hola", fan));
+    expect(a.engine.getState().queueSize).toBe(2);
+    a.engine.handleLiveEvent(comment("@leo", "Nova hola", fan)); // tope por minuto (y fila llena para charla)
+    expect(a.engine.getState().queueSize).toBe(2);
+    const b = on({ maxCalls: 1 });
+    b.engine.handleLiveEvent(comment("@ana", "Nova hola", fan));
+    b.engine.handleLiveEvent(comment("@eva", "Nova hola", fan));
+    expect(b.engine.getState().queueSize).toBe(1);
+  });
+
+  it("la charla vieja se descarta y nunca avisa «estás en la fila»", () => {
+    const { engine, advance } = on();
+    engine.handleLiveEvent(comment("@ana", "Nova hola", fan));
+    expect(engine.getState().notices ?? []).toHaveLength(0);
+    advance(70_000);
+    engine.tick();
+    expect(engine.getState().queueSize).toBe(0);
   });
 });
