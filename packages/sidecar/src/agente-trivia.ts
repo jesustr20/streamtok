@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
+import { dirname } from "node:path";
 import { parseTriviaAnswer, type AgentConfig, type AgentTriviaState, type LiveEvent } from "@streamtok/shared";
 import { looksLikeInjection } from "./agente-guard.js";
 
@@ -31,6 +34,8 @@ export interface TriviaWinner {
 export const REVEAL_MS = 15_000;
 /** Si el modelo falla, espera tanto antes de reintentar solo. */
 const RETRY_AFTER_MS = 60_000;
+/** Cuántas preguntas recientes se le dicen al modelo para que no las repita (el resto se filtra aquí). */
+const RECENT_FOR_PROMPT = 15;
 
 const handleKey = (username: string) => username.trim().replace(/^@/, "").toLowerCase();
 
@@ -78,8 +83,104 @@ export function parseTrivia(raw: string, optionCount: number): TriviaQuestion | 
   return { question, options: list, correct };
 }
 
+const plain = (s: string): string =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9ñ ]/g, " ");
+const words = (s: string): Set<string> => new Set(plain(s).split(/\s+/).filter((w) => w.length >= 4));
+
+/** ¿Dos preguntas son la misma o casi? (mismo texto, o comparten la mayoría de sus palabras importantes). */
+export function similarQuestion(a: string, b: string): boolean {
+  if (plain(a).trim() === plain(b).trim()) return true;
+  const x = words(a);
+  const y = words(b);
+  if (x.size < 3 || y.size < 3) return false;
+  let shared = 0;
+  for (const w of x) if (y.has(w)) shared++;
+  return shared / (x.size + y.size - shared) >= 0.6;
+}
+
+/** Lee un lote de preguntas: `{"preguntas":[...]}` o una lista; descarta las que no cumplen el formato. */
+export function parseTriviaBatch(raw: string, optionCount: number): TriviaQuestion[] {
+  const start = raw.search(/[\[{]/);
+  if (start === -1) return [];
+  let json: unknown;
+  for (let end = raw.length; end > start; end = Math.max(raw.lastIndexOf("}", end - 1), raw.lastIndexOf("]", end - 1)) + 1) {
+    try {
+      json = JSON.parse(raw.slice(start, end));
+      break;
+    } catch {
+      /* se recorta hasta el siguiente cierre */
+    }
+    if (end <= start + 1) break;
+  }
+  const list = Array.isArray(json) ? json : Array.isArray((json as { preguntas?: unknown })?.preguntas) ? (json as { preguntas: unknown[] }).preguntas : json ? [json] : [];
+  const out: TriviaQuestion[] = [];
+  for (const item of list) {
+    const q = parseTrivia(JSON.stringify(item), optionCount);
+    if (q) out.push(q);
+  }
+  return out;
+}
+
+/** Cuántas preguntas se recuerdan entre LIVEs para no repetirlas (ADR 0024, fase 8). */
+export const TRIVIA_HISTORY_MAX = 200;
+
+/** Historial de preguntas ya lanzadas, en `agente-trivia.json` (escritura atómica y diferida). */
+export class TriviaHistory {
+  private list: string[] = [];
+  private timer: NodeJS.Timeout | undefined;
+  private saving: Promise<void> = Promise.resolve();
+
+  constructor(private filePath: string, private onWarn?: (message: string) => void, private delayMs = 2000) {
+    try {
+      const json = JSON.parse(readFileSync(filePath, "utf8")) as { history?: unknown };
+      if (Array.isArray(json.history)) this.list = json.history.filter((x): x is string => typeof x === "string").slice(-TRIVIA_HISTORY_MAX);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") onWarn?.(`No se pudo leer ${filePath}; se empieza sin historial.`);
+    }
+  }
+
+  all(): string[] {
+    return [...this.list];
+  }
+
+  add(question: string): void {
+    this.list.push(question.slice(0, 200));
+    while (this.list.length > TRIVIA_HISTORY_MAX) this.list.shift();
+    if (this.timer) return;
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.flush();
+    }, this.delayMs);
+    this.timer.unref?.();
+  }
+
+  flush(): Promise<void> {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+    this.saving = this.saving.then(async () => {
+      try {
+        await mkdir(dirname(this.filePath), { recursive: true });
+        const tmp = `${this.filePath}.tmp`;
+        await writeFile(tmp, JSON.stringify({ history: this.list }), "utf8");
+        await rename(tmp, this.filePath);
+      } catch (err) {
+        this.onWarn?.(`No se pudo guardar ${this.filePath}: ${(err as Error).message}`);
+      }
+    });
+    return this.saving;
+  }
+}
+
 export interface TriviaEngineOptions {
   generator: TriviaGenerator;
+  /** preguntas ya lanzadas, guardadas entre LIVEs (si falta, solo se recuerdan las de esta sesión) */
+  history?: TriviaHistory;
   getConfig: () => AgentConfig;
   /** ¿el agente está ocupado respondiendo? Entonces la trivia espera */
   busy?: () => boolean;
@@ -113,6 +214,7 @@ export class TriviaEngine extends EventEmitter {
     this.now = opts.now ?? (() => Date.now());
     this.random = opts.random ?? Math.random;
     this.lastActivity = this.now();
+    this.recent = opts.history?.all() ?? [];
   }
 
   getState(): AgentTriviaState {
@@ -214,7 +316,7 @@ export class TriviaEngine extends EventEmitter {
     const cfg = this.opts.getConfig();
     let q: TriviaQuestion | null = null;
     try {
-      q = sample ? this.sample() : await this.opts.generator(cfg, this.recent);
+      q = sample ? this.sample() : await this.opts.generator(cfg, this.recent.slice(-RECENT_FOR_PROMPT));
     } catch (err) {
       this.emit("log", { level: "error", message: `No se pudo preparar la trivia: ${(err as Error).message}` });
     }
@@ -226,7 +328,8 @@ export class TriviaEngine extends EventEmitter {
     }
     const order = shuffle(q.options.map((_, i) => i), this.random);
     this.q = { question: q.question, options: order.map((i) => q!.options[i]), correct: order.indexOf(q.correct) };
-    this.recent = [...this.recent, q.question].slice(-20);
+    this.recent = [...this.recent, q.question].slice(-TRIVIA_HISTORY_MAX);
+    this.opts.history?.add(q.question);
     this.starts.push(this.now());
     this.startedAt = this.now();
     this.deadline = this.now() + cfg.trivia.answerSec * 1000;
@@ -235,7 +338,7 @@ export class TriviaEngine extends EventEmitter {
   }
 
   private sample(): TriviaQuestion {
-    const fresh = SAMPLE_TRIVIA.filter((s) => !this.recent.includes(s.question));
+    const fresh = SAMPLE_TRIVIA.filter((s) => !this.recent.some((r) => similarQuestion(r, s.question)));
     const pool = fresh.length > 0 ? fresh : SAMPLE_TRIVIA;
     const q = pool[Math.floor(this.random() * pool.length)];
     const n = this.opts.getConfig().trivia.options;

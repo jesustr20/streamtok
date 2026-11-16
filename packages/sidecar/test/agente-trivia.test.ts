@@ -1,8 +1,11 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AgentConfigSchema, TOP_PRESETS, parseTriviaAnswer, type AgentConfig, type LiveEvent } from "@streamtok/shared";
 import { AgenteEngine } from "../src/agente.js";
 import { ModelService, type FetchLike } from "../src/agente-model.js";
-import { REVEAL_MS, SAMPLE_TRIVIA, TriviaEngine, parseTrivia, type TriviaQuestion } from "../src/agente-trivia.js";
+import { REVEAL_MS, SAMPLE_TRIVIA, TRIVIA_HISTORY_MAX, TriviaEngine, TriviaHistory, parseTrivia, parseTriviaBatch, similarQuestion, type TriviaQuestion } from "../src/agente-trivia.js";
 import { TopsEngine } from "../src/tops.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -366,7 +369,7 @@ describe("ModelService.generateTrivia", () => {
     expect(svc.modelCalls).toBe(1);
     expect(body.messages[0].content).toContain("SOLO con un JSON");
     expect(body.messages[1].content).toContain("¿Pregunta anterior?");
-    expect(body.messages[1].content).toContain("Opciones: 4");
+    expect(body.messages[1].content).toContain("Opciones por pregunta: 4");
   });
 
   it("si el modelo devuelve vacío (gastó los tokens razonando), reintenta una vez con más margen", async () => {
@@ -408,5 +411,94 @@ describe("ModelService.generateTrivia", () => {
   it("una respuesta mal formada da null", async () => {
     const svc = new ModelService({ keys, fetchImpl: reply("no sé") });
     expect(await svc.generateTrivia(AgentConfigSchema.parse({}), [])).toBeNull();
+  });
+});
+
+describe("trivia sin repetir (ADR 0024, fase 8)", () => {
+  const reply = (content: string): FetchLike => async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content } }] }) });
+  const keys = { load: () => ({ keys: { deepseek: "k-123456789" } }), save: async () => {} };
+  const QS = [
+    "¿Cuál es el río más largo de Sudamérica?",
+    "¿Quién pintó la Mona Lisa en Florencia?",
+    "¿Cuántos huesos tiene el cuerpo humano adulto?",
+    "¿En qué año llegó el hombre a la Luna?",
+    "¿Qué elemento químico tiene el símbolo Fe?",
+    "¿Cuál es el océano más grande del planeta?",
+  ];
+  const mk = (n: number) =>
+    JSON.stringify({ preguntas: QS.slice(0, n).map((pregunta, i) => ({ pregunta, opciones: ["Alfa", "Beta", "Gamma", "Delta"], correcta: i % 4 })) });
+
+  it("similarQuestion detecta la misma pregunta aunque cambien tildes o signos", () => {
+    expect(similarQuestion("¿Cuál es la capital de Perú?", "cual es la capital de peru")).toBe(true);
+    expect(similarQuestion("¿Cuál es la capital de Francia?", "¿Cuál es la capital de Perú?")).toBe(false);
+    expect(similarQuestion("¿Cuál es el río más largo de Sudamérica?", "Cual es el rio mas largo de Sudamerica")).toBe(true);
+    expect(similarQuestion("Hola", "Adiós")).toBe(false);
+  });
+
+  it("parseTriviaBatch lee un lote, descarta las mal formadas y acepta una lista", () => {
+    expect(parseTriviaBatch(mk(6), 4)).toHaveLength(6);
+    expect(parseTriviaBatch('texto {"preguntas":[{"pregunta":"corta"},{"pregunta":"¿Cuál es el río más largo de Sudamérica?","opciones":["Amazonas","Orinoco","Paraná","Magdalena"],"correcta":0}]} fin', 4)).toHaveLength(1);
+    expect(parseTriviaBatch("nada", 4)).toEqual([]);
+  });
+
+  it("una llamada trae varias preguntas y las siguientes salen sin gastar otra", async () => {
+    let calls = 0;
+    const svc = new ModelService({ keys, fetchImpl: (u, i) => (calls++, reply(mk(6))(u, i)) });
+    const cfg = AgentConfigSchema.parse({});
+    const seen: string[] = [];
+    for (let i = 0; i < 6; i++) seen.push((await svc.generateTrivia(cfg, seen))!.question);
+    expect(new Set(seen).size).toBe(6);
+    expect(calls).toBe(1);
+    expect(svc.modelCalls).toBe(1);
+  });
+
+  it("descarta del lote lo que se parece a una pregunta ya lanzada, aunque venga de un LIVE anterior", async () => {
+    const svc = new ModelService({ keys, fetchImpl: reply(mk(3)) });
+    const q = await svc.generateTrivia(AgentConfigSchema.parse({}), [QS[0]!]);
+    expect(q?.question).toBe(QS[1]);
+  });
+
+  it("si todo el lote ya se hizo, da null en vez de repetir", async () => {
+    const svc = new ModelService({ keys, fetchImpl: reply(mk(2)) });
+    expect(await svc.generateTrivia(AgentConfigSchema.parse({}), [QS[0]!, QS[1]!])).toBeNull();
+  });
+
+  it("el historial se guarda en disco y vuelve al reiniciar, con tope", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "trivia-"));
+    try {
+      const file = join(dir, "agente-trivia.json");
+      const h = new TriviaHistory(file, undefined, 10);
+      for (let i = 0; i < TRIVIA_HISTORY_MAX + 5; i++) h.add(`pregunta ${i}`);
+      await h.flush();
+      expect(JSON.parse(readFileSync(file, "utf8")).history).toHaveLength(TRIVIA_HISTORY_MAX);
+      const again = new TriviaHistory(file);
+      expect(again.all().at(-1)).toBe(`pregunta ${TRIVIA_HISTORY_MAX + 4}`);
+      expect(new TriviaHistory(join(dir, "no-existe.json")).all()).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("el motor guarda cada pregunta lanzada en el historial y arranca con lo anterior", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "trivia-"));
+    try {
+      const h = new TriviaHistory(join(dir, "t.json"), undefined, 10);
+      h.add("¿Vieja pregunta de otro LIVE?");
+      let received: string[] = [];
+      const engine = new TriviaEngine({
+        history: h,
+        getConfig: () => AgentConfigSchema.parse({}),
+        generator: async (_c, recent) => {
+          received = recent;
+          return { question: "¿Cuántos huesos tiene un adulto?", options: ["206", "300", "150", "250"], correct: 0 };
+        },
+      });
+      engine.start();
+      await settle();
+      expect(received).toContain("¿Vieja pregunta de otro LIVE?");
+      expect(h.all()).toContain("¿Cuántos huesos tiene un adulto?");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

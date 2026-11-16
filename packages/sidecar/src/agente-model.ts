@@ -3,12 +3,14 @@ import { AGENT_PROVIDERS, providerInfo, type AgentConfig, type AgentKeyStatus, t
 import type { Responder } from "./agente.js";
 import { REFUSAL, cleanAnswer, looksLikeInjection, parseExpression, sanitizeQuestion, systemPrompt, userPrompt } from "./agente-guard.js";
 import type { KeysStorePort } from "./agente-keys.js";
-import { parseTrivia, type TriviaQuestion } from "./agente-trivia.js";
+import { parseTriviaBatch, similarQuestion, type TriviaQuestion } from "./agente-trivia.js";
 
 /** Cuánto esperamos al modelo antes de rendirnos. */
 const TIMEOUT_MS = 20_000;
 /** Tokens de salida: unas tres frases (≤400 caracteres) caben de sobra y así una respuesta nunca sale cara. */
 const MAX_TOKENS = 300;
+/** preguntas de trivia que se piden por llamada */
+const TRIVIA_BATCH = 6;
 /** Espera máxima para pedir la lista de modelos. */
 const LIST_TIMEOUT_MS = 10_000;
 
@@ -361,9 +363,13 @@ export class ModelService extends EventEmitter {
     }
   }
 
+  /** preguntas ya generadas y sin usar (una llamada trae varias; ADR 0024, fase 8) */
+  private triviaBuffer: { key: string; list: TriviaQuestion[] } = { key: "", list: [] };
+
   /**
-   * Pide al modelo una pregunta de trivia (JSON con pregunta, opciones y correcta). Cuenta para el tope
-   * de llamadas. Devuelve null si no hay clave, se llegó al tope o la respuesta no cuadra.
+   * Da una pregunta de trivia. Una sola llamada al modelo pide un LOTE de preguntas de temas y subtemas distintos y se van
+   * entregando una por una (más barato y más variado); las que se parecen a una ya lanzada se descartan. Cuenta para el tope
+   * de llamadas. Devuelve null si no hay clave, se llegó al tope o la respuesta no sirve.
    */
   async generateTrivia(config: AgentConfig, recent: string[]): Promise<TriviaQuestion | null> {
     const key = this.keys[config.provider];
@@ -371,40 +377,56 @@ export class ModelService extends EventEmitter {
       this.emit("log", { level: "warn", message: "La trivia necesita una clave de modelo guardada." });
       return null;
     }
+    const t = config.trivia;
+    const sig = JSON.stringify([t.options, t.difficulty, t.topics]);
+    if (this.triviaBuffer.key !== sig) this.triviaBuffer = { key: sig, list: [] };
+    const fresh = (q: TriviaQuestion) => !recent.some((r) => similarQuestion(r, q.question));
+    this.triviaBuffer.list = this.triviaBuffer.list.filter(fresh);
+    const ready = this.triviaBuffer.list.shift();
+    if (ready) return ready;
     if (this.calls >= config.maxModelCalls) return null;
     this.calls++;
     this.emit("state");
-    const t = config.trivia;
     const topics = t.topics.split(",").map((x) => sanitizeQuestion(x)).filter(Boolean);
-    const topic = topics.length > 0 ? topics[Math.floor(Math.random() * topics.length)] : "cultura general";
-    const avoid = recent.slice(-8).map((q) => `- ${sanitizeQuestion(q)}`).join("\n");
+    const pool = topics.length > 0 ? topics : ["cultura general"];
+    const picked = Array.from({ length: TRIVIA_BATCH }, (_, i) => pool[(i + Math.floor(Math.random() * pool.length)) % pool.length]!);
+    const avoid = recent.slice(-15).map((q) => `- ${sanitizeQuestion(q)}`).join("\n");
     const request = {
       provider: config.provider,
       key,
       model: modelFor(config),
       system: [
         "Eres un creador de preguntas de trivia para el chat de un LIVE de TikTok.",
-        "Responde SOLO con un JSON, sin texto antes ni después, con esta forma exacta:",
-        `{"pregunta": "...", "opciones": [${Array.from({ length: t.options }, () => '"..."').join(", ")}], "correcta": 0}`,
+        `Responde SOLO con un JSON, sin texto antes ni después, con esta forma exacta: {"preguntas": [ ${TRIVIA_BATCH} objetos así ]}`,
+        `Cada objeto: {"pregunta": "...", "opciones": [${Array.from({ length: t.options }, () => '"..."').join(", ")}], "correcta": 0}`,
         '"correcta" es la posición (empezando en 0) de la opción correcta.',
         "Reglas: en español; la pregunta de máximo 110 caracteres y cada opción de máximo 30; un solo dato verificable y sin ambigüedad; una sola opción correcta y las demás claramente falsas; nada ofensivo, sexual, violento ni de política partidista; sin enlaces.",
-        "Si no estás completamente seguro de la respuesta, elige otra pregunta.",
+        "Variedad: cada pregunta de un subtema distinto, con datos poco obvios; evita los datos más famosos y típicos de cada tema. Que ninguna se parezca a otra del lote.",
+        "Si no estás completamente seguro de la respuesta de una pregunta, cámbiala por otra.",
       ].join("\n"),
-      user: `Tema: ${topic}. Dificultad: ${t.difficulty}. Opciones: ${t.options}.${avoid ? `\nNo repitas estas preguntas:\n${avoid}` : ""}`,
+      user: `Dificultad: ${t.difficulty}. Opciones por pregunta: ${t.options}.\nUna pregunta por cada tema, en este orden:\n${picked.map((p, i) => `${i + 1}) ${p}`).join("\n")}${avoid ? `\nNo repitas estas preguntas ya hechas:\n${avoid}` : ""}`,
     };
     let text: string;
     try {
-      text = await callModel(this.fetchImpl, { ...request, maxTokens: 250 });
+      text = await callModel(this.fetchImpl, { ...request, maxTokens: 900 });
     } catch (err) {
       // Los modelos que «piensan» a veces gastan todos los tokens razonando y devuelven vacío: un reintento con más margen.
       if (!/respuesta vacía/.test((err as Error).message) || this.calls >= config.maxModelCalls) throw err;
       this.calls++;
       this.emit("state");
-      text = await callModel(this.fetchImpl, { ...request, maxTokens: 250 * 6 });
+      text = await callModel(this.fetchImpl, { ...request, maxTokens: 900 * 4 });
     }
-    const q = parseTrivia(text, t.options);
-    if (!q) this.emit("log", { level: "warn", message: "El modelo devolvió una pregunta de trivia que no cumple el formato; se descarta." });
-    return q;
+    const batch: TriviaQuestion[] = [];
+    for (const q of parseTriviaBatch(text, t.options)) {
+      if (fresh(q) && !batch.some((b) => similarQuestion(b.question, q.question))) batch.push(q);
+    }
+    if (batch.length === 0) {
+      this.emit("log", { level: "warn", message: "El modelo no devolvió preguntas de trivia válidas y distintas; se descarta." });
+      return null;
+    }
+    const first = batch.shift()!;
+    this.triviaBuffer.list.push(...batch);
+    return first;
   }
 
   /** Lista de modelos del proveedor (con su clave). Se guarda la última por proveedor para no repetir la consulta. */

@@ -34,7 +34,7 @@ import { MemoriaController } from "./agente-memoria-controller.js";
 import { MemoriaService, MemoriaStore, defaultMemoriaFilePath, learnFromStop } from "./agente-memoria.js";
 import { LiveMoodEngine } from "./agente-animo.js";
 import { VoiceService } from "./agente-voz.js";
-import { TriviaEngine } from "./agente-trivia.js";
+import { TriviaEngine, TriviaHistory } from "./agente-trivia.js";
 import { TopsEngine, TopsStore, defaultTopsFilePath } from "./tops.js";
 import { TopsController } from "./tops-controller.js";
 import { GoalsEngine, GoalsStore, defaultGoalsFilePath } from "./goals.js";
@@ -305,7 +305,9 @@ agente.on("log", (entry) => {
   console.log(`[agente:${entry.level}]`, entry.message);
 });
 // Trivia del agente: sale sola cuando el chat está tranquilo; quien acierta gana prioridad y suma al Top Trivia.
+const agenteTriviaHistory = new TriviaHistory(join(appDataDir(), "agente-trivia.json"), (m) => console.warn(`[agente:warn] ${m}`));
 const agenteTrivia: TriviaEngine = new TriviaEngine({
+  history: agenteTriviaHistory,
   generator: (config, recent) => agenteModel.generateTrivia(config, recent),
   getConfig: () => agente.getConfig(),
   busy: () => agente.isBusy(),

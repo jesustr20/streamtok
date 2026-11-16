@@ -20,7 +20,7 @@ Es cara de revertir porque define el formato de los datos de los viewers (inform
 
 ### 1. Dos archivos nuevos, por perfil, aparte de `agente.json`
 - `agente-memoria.json`: streamer, viewers, pendientes y conductas aprendidas. Cambia poco y se lee entero.
-- `agente-trivia.json`: banco de preguntas (tema, texto, opciones, correcta, creada, veces usada, último uso). Crece rápido y se rota por uso, por eso va aparte.
+- `agente-trivia.json`: historial de las últimas 200 preguntas lanzadas (solo el texto). Se descartó un banco de preguntas con respuesta: el modelo ya las inventa y lo que faltaba era recordar las usadas. Va aparte porque cambia en cada LIVE.
 - El **contexto reciente del chat** (últimos N mensajes con nombre) vive solo en memoria RAM y no se guarda.
 - Ambos archivos llevan `version`, se escriben de forma atómica (archivo temporal y renombrado), se validan con Zod en `shared` y quedan fuera de los datos que se reparten con la app (cada usuario nuevo empieza en blanco).
 
@@ -73,7 +73,7 @@ Contexto: algunos viewers intentan sexualizar o manipular al agente de forma sut
 5. Conductas aprendidas: botón «Parar IA» como señal, regla base, chequeo previo, faltas por viewer y panel de revisión.
 6. Panel de micrófono (elegir, nivel, probar).
 7. Voz: hablarle al agente y «<nombre>, para».
-8. Banco de trivia en `agente-trivia.json`.
+8. Trivia sin repetir: historial persistente en `agente-trivia.json`, preguntas pedidas en lotes de 6 (temas y subtemas distintos) y filtro local de preguntas parecidas. (Reemplaza al «banco de trivia» previsto: no hace falta guardar preguntas, solo las ya usadas.)
 
 ## Consecuencias
 - El agente responde con más precisión y conoce a la gente del chat.
