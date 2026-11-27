@@ -83,7 +83,7 @@ export class AgenteStore implements AgenteStorePort {
 }
 
 /** Quien da las respuestas. La pieza 2 pone aquí el modelo (DeepSeek, OpenAI, Claude...). */
-export type Responder = (question: string, ctx: { name: string; handle?: string; config: AgentConfig; chat?: boolean }) => Promise<string | AgentExpression>;
+export type Responder = (question: string, ctx: { name: string; handle?: string; config: AgentConfig; chat?: boolean; host?: boolean }) => Promise<string | AgentExpression>;
 
 /** Tope de seguridad de una respuesta (el modelo recibe la orden de ser breve; esto solo evita un texto enorme). */
 export const MAX_ANSWER_CHARS = 600;
@@ -115,6 +115,21 @@ const FOLLOWUP_MS = 60_000;
 const CHAT_MAX_QUEUE = 2;
 /** conversación natural: la charla que espera más que esto se descarta */
 const CHAT_STALE_MS = 60_000;
+/** el dueño del LIVE (ADR 0026): cuánto tras una respuesta suya lo que diga sigue siendo para el agente sin repetir su nombre */
+export const HOST_FOLLOWUP_MS = 20_000;
+/** tras callarla por voz, el agente espera esto antes de seguir con el chat */
+const SOFT_STOP_PAUSE_MS = 3_000;
+/** el dueño del LIVE: cuántas peticiones suyas pueden esperar a la vez */
+const HOST_MAX_QUEUE = 3;
+/** cuántas respuestas recientes recuerda el agente para explicarlas */
+const HISTORY_MAX = 6;
+/** «un momento» del agente cuando el dueño le habla y está ocupado respondiendo al chat */
+const HOST_WAIT_LINES = [
+  "Un momento, {n}, termino con esto y te atiendo.",
+  "Dame un segundo, {n}: acabo esta respuesta y voy contigo.",
+  "{n}, ya casi: termino con el chat y te contesto.",
+  "Te oigo, {n}. Un momento y estoy contigo.",
+];
 
 const plain = (s: string): string => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -161,6 +176,8 @@ interface Waiting extends AgentQueueItem {
   tries?: number;
   /** charla del chat sin comando (ADR 0024, §5): va después de las preguntas y de los regalos */
   casual?: boolean;
+  /** el dueño del LIVE (ADR 0026): pasa antes que todo y no pide requisitos */
+  host?: boolean;
 }
 
 interface Credit {
@@ -179,6 +196,10 @@ export interface AgenteEngineOptions {
   onQuestion?: (handle: string, name: string, question: string) => void;
   /** ¿este viewer está ignorado en este LIVE? (tres intentos de manipular al agente; ADR 0024, §7): su pregunta no entra a la fila */
   isIgnored?: (handle: string) => boolean;
+  /** ¿este usuario es el dueño del LIVE? (ADR 0026): sus mensajes con el nombre del agente o el comando son órdenes, con prioridad */
+  isHost?: (handle: string) => boolean;
+  /** el @ del dueño del LIVE, para anotar sus peticiones por voz */
+  hostHandle?: () => string | undefined;
   /** reloj en ms (para pruebas) */
   now?: () => number;
   /** azar en [0,1) (para pruebas) */
@@ -218,6 +239,9 @@ export class AgenteEngine extends EventEmitter {
   private chatTimes: number[] = [];
   private chatCount = 0;
   private prizes = new Map<string, Credit>();
+  /** lo último que dijo el agente (solo en memoria; ADR 0026) y cuándo le contestó por última vez al dueño */
+  private history: { name: string; question: string; answer: string }[] = [];
+  private lastHostAnswerAt = -Infinity;
   private coinStreaks = new Map<string, number>();
   private saving = false;
   private dirty = false;
@@ -280,18 +304,26 @@ export class AgenteEngine extends EventEmitter {
 
   /**
    * «Parar IA» (ADR 0024, §7): corta lo que se está respondiendo y vacía la cola. Devuelve a quien se atendía
-   * (para sumarle una falta y aprender de su pregunta), o undefined si el agente estaba libre.
+   * (para sumarle una falta y aprender de su pregunta), o undefined si el agente estaba libre o era una pregunta del dueño.
+   *
+   * Con `soft` (la orden por voz, ADR 0026) solo se calla lo que se está diciendo y se saca de la fila a quien lo provocó:
+   * el resto del chat sigue esperando y, tras un respiro, el agente continúa como lo haría una persona.
    */
-  stop(): { name: string; handle: string; question: string } | undefined {
+  stop(opts: { soft?: boolean } = {}): { name: string; handle: string; question: string } | undefined {
     const cur = this.current;
     const src = this.currentSrc;
-    this.queue = [];
+    if (opts.soft) {
+      this.queue = this.queue.filter((w) => w.host || !src || w.handle !== src.handle);
+      this.nextFreeAt = Math.max(this.nextFreeAt, this.now() + SOFT_STOP_PAUSE_MS);
+    } else {
+      this.queue = [];
+      this.nextFreeAt = 0;
+    }
     this.current = undefined;
     this.currentSrc = undefined;
     this.notices = [];
-    this.nextFreeAt = 0;
     this.emit("state");
-    return cur && src ? { name: cur.name, handle: src.handle, question: cur.question } : undefined;
+    return cur && src && !src.host ? { name: cur.name, handle: src.handle, question: cur.question } : undefined;
   }
 
   /** Nuevo LIVE: se olvida quién siguió, compartió o regaló, y la cola. */
@@ -312,6 +344,8 @@ export class AgenteEngine extends EventEmitter {
     this.pendingFollows = [];
     this.lastGiftThanks.clear();
     this.answered = 0;
+    this.history = [];
+    this.lastHostAnswerAt = -Infinity;
     this.lastError = undefined;
     this.reset();
   }
@@ -338,6 +372,56 @@ export class AgenteEngine extends EventEmitter {
     const text = clamp(question.trim(), this.config.maxQuestionChars);
     if (!text) return false;
     return this.enqueue(`@prueba-${name.toLowerCase()}`, name, undefined, text, Math.max(0, Math.trunc(coins)));
+  }
+
+  /**
+   * El dueño del LIVE le habla al agente (voz o chat; ADR 0026): es su mano derecha, así que no pide requisitos, no espera su turno
+   * ni cuenta contra los topes de la charla. Pasa antes que todo lo demás. Si el agente está ocupado con el chat no lo corta:
+   * termina lo que dice, avisa con un «un momento» y lo atiende justo después.
+   */
+  askHost(name: string, question: string): boolean {
+    if (!this.config.enabled) return false;
+    const text = clamp(question.trim(), Math.max(this.config.maxQuestionChars, 300));
+    if (!text) return false;
+    if (this.queue.some((w) => w.host && w.question === text)) return false;
+    if (this.queue.filter((w) => w.host).length >= HOST_MAX_QUEUE) return false;
+    const handle = this.opts.hostHandle?.() || "@anfitrion";
+    const busy = this.current !== undefined || this.opts.paused?.() === true;
+    if (!this.enqueue(handle, name, undefined, text, 0, false, true)) return false;
+    if (busy) this.holdHost(name);
+    return true;
+  }
+
+  /** ¿Le habló el dueño hace poco (o se le acaba de responder)? Entonces lo siguiente que diga suele seguir la conversación. */
+  hostFollowUp(): boolean {
+    return this.now() - this.lastHostAnswerAt < HOST_FOLLOWUP_MS;
+  }
+
+  /** Lo último que dijo el agente, una línea por respuesta, para el prompt (solo en memoria; se borra al empezar otro LIVE). */
+  answersContext(n = 4): string {
+    return this.history
+      .slice(-n)
+      .map((h) => `${h.name} preguntó «${clamp(h.question, 160)}» y dijiste «${clamp(h.answer, 220)}»`)
+      .join("\n");
+  }
+
+  /** «Un momento»: el agente está ocupado y el dueño le habló; se lo dice en pantalla y en voz, sin pasar por el modelo. */
+  private holdHost(name: string): void {
+    const line = HOST_WAIT_LINES[Math.min(HOST_WAIT_LINES.length - 1, Math.floor(this.random() * HOST_WAIT_LINES.length))]!;
+    this.pushNotice("queue", line.replace("{n}", niceName(name) || "jefe"), true, "calm", true);
+    this.emit("state");
+  }
+
+  /** Mensaje del dueño en el chat de TikTok: solo es para el agente si lo nombra, usa el comando o sigue una charla reciente. */
+  private hostComment(name: string, evt: LiveEvent): void {
+    const text = (evt.text ?? "").trim();
+    if (!text) return;
+    const command = parseAgentCommand(this.config.command, text);
+    if (command !== undefined) {
+      if (command) this.askHost(name, command);
+      return;
+    }
+    if (mentions(text, this.config.name) || this.hostFollowUp()) this.askHost(name, text);
   }
 
   handleLiveEvent(evt: LiveEvent): void {
@@ -367,6 +451,10 @@ export class AgenteEngine extends EventEmitter {
     }
 
     if (evt.event !== "comment" || !this.config.enabled) return;
+    if (this.opts.isHost?.(handle)) {
+      this.hostComment(name, evt);
+      return;
+    }
     const question = parseAgentCommand(this.config.command, evt.text);
     if (question === undefined) {
       this.maybeChat(handle, name, evt);
@@ -443,7 +531,7 @@ export class AgenteEngine extends EventEmitter {
     const next = this.pickNext(t);
     if (!next) return;
     this.queue = this.queue.filter((w) => w !== next);
-    if (next.coins === 0) this.nextFreeAt = t + this.config.freeEverySec * 1000;
+    if (next.coins === 0 && !next.host) this.nextFreeAt = t + this.config.freeEverySec * 1000;
     const cur: AgentCurrent & { answerAt?: number } = {
       id: next.id,
       name: next.name,
@@ -485,7 +573,7 @@ export class AgenteEngine extends EventEmitter {
   private async answer(cur: AgentCurrent & { answerAt?: number }): Promise<void> {
     let reply: string | AgentExpression;
     try {
-      reply = await this.responder(cur.question, { name: cur.name, ...(this.currentSrc?.handle ? { handle: this.currentSrc.handle } : {}), config: this.config, ...(this.currentSrc?.casual ? { chat: true } : {}) });
+      reply = await this.responder(cur.question, { name: cur.name, ...(this.currentSrc?.handle ? { handle: this.currentSrc.handle } : {}), config: this.config, ...(this.currentSrc?.casual ? { chat: true } : {}), ...(this.currentSrc?.host ? { host: true } : {}) });
     } catch (err) {
       const message = (err as Error).message;
       this.emit("log", { level: "error", message: `El agente no pudo responder: ${message}` });
@@ -514,10 +602,15 @@ export class AgenteEngine extends EventEmitter {
     cur.showMs = showMsFor(cur.answer);
     cur.answerAt = this.now();
     if (this.currentSrc?.handle) this.lastReplyTo.set(this.currentSrc.handle, this.now());
+    if (this.currentSrc?.host) this.lastHostAnswerAt = this.now();
+    this.history.push({ name: cur.name, question: cur.question, answer: cur.answer });
+    while (this.history.length > HISTORY_MAX) this.history.shift();
     this.emit("state");
   }
 
   private pickNext(t: number): Waiting | undefined {
+    const host = this.queue.find((w) => w.host);
+    if (host) return host; // el dueño del LIVE siempre primero, sin esperar el turno de las gratis
     const paid = this.ordered().find((w) => w.coins > 0);
     if (paid) return paid;
     if (t < this.nextFreeAt || this.queue.length === 0) return undefined;
@@ -528,7 +621,7 @@ export class AgenteEngine extends EventEmitter {
 
   /** Orden en que se atenderán: primero las de regalo (más monedas antes), luego las gratis por llegada. */
   private ordered(): Waiting[] {
-    return [...this.queue].sort((a, b) => b.coins - a.coins || a.seq - b.seq);
+    return [...this.queue].sort((a, b) => Number(b.host === true) - Number(a.host === true) || b.coins - a.coins || a.seq - b.seq);
   }
 
   private activeCredit(handle: string): number {
@@ -551,10 +644,12 @@ export class AgenteEngine extends EventEmitter {
     );
   }
 
-  private enqueue(handle: string, name: string, avatarUrl: string | undefined, question: string, coins: number, casual = false): boolean {
-    if (this.opts.isIgnored?.(handle)) return false;
-    if (this.queue.some((w) => w.handle === handle)) return false;
-    if (this.queue.length >= this.config.maxQueue) return false;
+  private enqueue(handle: string, name: string, avatarUrl: string | undefined, question: string, coins: number, casual = false, host = false): boolean {
+    if (!host) {
+      if (this.opts.isIgnored?.(handle)) return false;
+      if (this.queue.some((w) => w.handle === handle)) return false;
+      if (this.queue.length >= this.config.maxQueue) return false;
+    }
     this.seq++;
     this.queue.push({
       id: `q${this.seq}`,
@@ -566,7 +661,12 @@ export class AgenteEngine extends EventEmitter {
       coins,
       at: this.now(),
       ...(casual ? { casual: true } : {}),
+      ...(host ? { host: true } : {}),
     });
+    if (host) {
+      this.emit("state");
+      return true;
+    }
     if (!casual) this.noticeQueued(handle, name, coins);
     this.opts.onQuestion?.(handle, name, question);
     this.emit("state");
@@ -582,10 +682,10 @@ export class AgenteEngine extends EventEmitter {
   }
 
   /** Pone un aviso a la vista unos segundos. `speak` pide leerlo en voz alta (si está permitido y no hay otro leído hace poco). */
-  private pushNotice(kind: AgentNotice["kind"], text: string, speak: boolean, mood: AgentNotice["mood"] = "happy"): void {
-    if (!this.config.tips.personal) return;
+  private pushNotice(kind: AgentNotice["kind"], text: string, speak: boolean, mood: AgentNotice["mood"] = "happy", force = false): void {
+    if (!force && !this.config.tips.personal) return;
     const t = this.now();
-    const spoken = speak && this.config.tips.speakThanks && t - this.lastSpokenAt >= SPEAK_GAP_MS;
+    const spoken = speak && (force || (this.config.tips.speakThanks && t - this.lastSpokenAt >= SPEAK_GAP_MS));
     if (spoken) this.lastSpokenAt = t;
     this.notices.push({ id: `n${++this.noticeSeq}`, text, kind, speak: spoken, mood, until: t + NOTICE_MS });
     while (this.notices.length > MAX_NOTICES) this.notices.shift();

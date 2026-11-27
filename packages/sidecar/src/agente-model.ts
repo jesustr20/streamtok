@@ -168,6 +168,10 @@ export interface ModelServiceOptions {
   liveContext?: () => string | undefined;
   /** lo que el agente sabe del streamer y de quien pregunta (ADR 0024), ya recortado a su presupuesto */
   memory?: (question: string, askerHandle?: string) => string | undefined;
+  /** la charla del día (chat reciente, una línea por mensaje) para que el agente entienda de qué se habla y pueda traducir (ADR 0026) */
+  chat?: () => string | undefined;
+  /** lo último que dijo el agente, una línea por respuesta (para explicar por qué dijo algo) */
+  answers?: () => string | undefined;
   /** una pregunta fue un intento de manipular o provocar al agente (lo marcó el modelo o la defensa contra inyección); el sidecar suma una falta */
   onIntent?: (askerHandle: string | undefined, question: string) => void;
   /** ¿quedan preguntas por hacerle al streamer en este LIVE? (si no, el modelo dice que no lo sabe en vez de preguntar) */
@@ -234,10 +238,11 @@ export class ModelService extends EventEmitter {
     return this.idle;
   }
 
-  readonly respond: Responder = async (rawQuestion, { config, handle: askerHandle, name: askerName, chat: casual }) => {
+  readonly respond: Responder = async (rawQuestion, { config, handle: askerHandle, name: askerName, chat: casual, host }) => {
     const question = sanitizeQuestion(rawQuestion);
     if (!question) return REFUSAL;
-    if (looksLikeInjection(question)) {
+    // el dueño del LIVE es de confianza (ADR 0026): sus órdenes no pasan por el detector de inyección; las reglas de contenido siguen valiendo
+    if (host !== true && looksLikeInjection(question)) {
       this.opts.onIntent?.(askerHandle, question);
       return REFUSAL;
     }
@@ -253,7 +258,7 @@ export class ModelService extends EventEmitter {
     }
     this.calls++;
     this.emit("state");
-    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt({ ...config, streamerAsk: this.opts.canAskStreamer?.() === false ? "solo-memoria" : config.streamerAsk, casual: casual === true }, this.opts.liveContext?.(), this.opts.memory?.(question, askerHandle)), user: userPrompt(question) };
+    const request = { provider: config.provider, key, model: modelFor(config), system: systemPrompt({ ...config, streamerAsk: this.opts.canAskStreamer?.() === false ? "solo-memoria" : config.streamerAsk, casual: casual === true, host: host === true }, this.opts.liveContext?.(), this.opts.memory?.(question, askerHandle)), user: userPrompt(question, { host: host === true, chat: this.opts.chat?.(), answers: this.opts.answers?.() }) };
     let text: string;
     try {
       text = await callModel(this.fetchImpl, { ...request, maxTokens: MAX_TOKENS });
@@ -266,7 +271,7 @@ export class ModelService extends EventEmitter {
     }
     // la etiqueta [emoción, gesto] se separa antes de limpiar (la limpieza quita barras y otros signos); si no hay, texto solo
     const expr = parseExpression(text);
-    if (expr.flagged) this.opts.onIntent?.(askerHandle, question);
+    if (expr.flagged && host !== true) this.opts.onIntent?.(askerHandle, question);
     if (expr.unsure && config.streamerAsk !== "solo-memoria" && this.opts.canAskStreamer?.() !== false) {
       this.opts.onUnsure?.({ ...(askerHandle ? { handle: askerHandle } : {}), name: askerName }, question);
     }

@@ -245,6 +245,9 @@ const agenteModel = new ModelService({
   ),
   liveContext: () => agenteAnimo.contextLine(),
   memory: (question, handle) => agenteMemoria.contextFor(question, handle),
+  // la charla del día y lo último que dijo (ADR 0026): para entender de qué se habla, traducir y explicar sus respuestas
+  chat: () => agenteMemoria.chatContext(),
+  answers: () => agente.answersContext(),
   // intento de provocar o manipular al agente: suma una falta (a la tercera se ignora al viewer el resto del LIVE)
   onIntent: (handle) => {
     if (handle) agenteMemoria.addStrike(handle);
@@ -295,6 +298,9 @@ const agente: AgenteEngine = new AgenteEngine({
   paused: () => agenteTrivia.getState().phase !== "idle",
   onQuestion: (handle, name, question) => agenteMemoria.noteQuestion(handle, name, question),
   isIgnored: (handle) => agenteMemoria.isIgnored(handle),
+  // el dueño del LIVE (ADR 0026): su @ sale de la cuenta conectada
+  isHost: (handle) => handle !== "" && handle === agenteMemoria.getStreamer().handle,
+  hostHandle: () => agenteMemoria.getStreamer().handle || undefined,
 });
 agenteModel.on("log", (entry) => {
   // eslint-disable-next-line no-console

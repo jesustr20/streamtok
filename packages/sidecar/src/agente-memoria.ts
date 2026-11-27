@@ -79,7 +79,9 @@ export class MemoriaStore implements MemoriaStorePort {
 
 /** Espera antes de escribir el disco tras un cambio, para juntar varios. */
 const SAVE_DELAY_MS = 2000;
-const RECENT_CHAT = 20;
+const RECENT_CHAT = 40;
+/** caracteres de chat reciente que entran al prompt de cada respuesta */
+const CHAT_PROMPT_BUDGET = 1800;
 const FACTS_PREFIX = "Datos del streamer (los escribió él): ";
 
 /** Tope de caracteres de la memoria dentro del prompt (ADR 0024, §6). */
@@ -130,7 +132,7 @@ export class MemoriaService extends EventEmitter {
   private seq = 0;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   /** últimos comentarios del chat (solo en memoria, no se guardan): de aquí sale el ejemplo al aprender con «Parar IA» */
-  private recent: { handle: string; name: string; text: string }[] = [];
+  private recent: { handle: string; name: string; text: string; host?: boolean }[] = [];
 
   constructor(private opts: { store: MemoriaStorePort; now?: () => number }) {
     super();
@@ -211,7 +213,15 @@ export class MemoriaService extends EventEmitter {
   /** Cualquier evento del chat o de regalos pone o actualiza al viewer (nombre y última vez). */
   handleLiveEvent(evt: LiveEvent): void {
     const handle = handleKey(evt.username);
-    if (!handle || handle === this.data.streamer.handle) return;
+    if (!handle) return;
+    if (handle === this.data.streamer.handle) {
+      // el dueño del LIVE no es un viewer (no se le guarda ficha), pero lo que escribe sí es parte de la charla del día
+      if (evt.event === "comment" && evt.text?.trim()) {
+        this.recent.push({ handle, name: (this.data.streamer.name || evt.nickname?.trim() || handle).slice(0, 60), text: sanitizeQuestion(evt.text).slice(0, 160), host: true });
+        while (this.recent.length > RECENT_CHAT) this.recent.shift();
+      }
+      return;
+    }
     const name = (evt.nickname?.trim() || handle).slice(0, 60);
     if (evt.event === "comment" && /^!olv[ií]dame$/i.test((evt.text ?? "").trim())) {
       this.forgetViewer(handle, name);
@@ -225,6 +235,26 @@ export class MemoriaService extends EventEmitter {
     const v = this.touch(handle, name);
     v.lastSeen = this.now();
     this.dirty();
+  }
+
+  /**
+   * La charla del día para el prompt (ADR 0026): los últimos comentarios, del más viejo al más nuevo, una línea por mensaje con
+   * nombre y @usuario, dentro de un presupuesto de caracteres. Solo vive en memoria (se borra al empezar otro LIVE) y no incluye
+   * a quien está ignorado. Todo va ya saneado: es un dato, nunca una orden.
+   */
+  chatContext(maxChars = CHAT_PROMPT_BUDGET, maxLines = 25): string {
+    const lines: string[] = [];
+    let size = 0;
+    for (let i = this.recent.length - 1; i >= 0 && lines.length < maxLines; i--) {
+      const m = this.recent[i]!;
+      if (!m.host && this.isIgnored(m.handle)) continue;
+      const who = sanitizeQuestion(m.name).slice(0, 40);
+      const line = m.host ? `${who} (dueño del LIVE): ${m.text}` : `${who} (@${m.handle}): ${m.text}`;
+      if (size + line.length + 1 > maxChars) break;
+      lines.unshift(line);
+      size += line.length + 1;
+    }
+    return lines.join("\n");
   }
 
   /** Últimos comentarios del chat, del más viejo al más nuevo (contexto reciente; no se guarda). */

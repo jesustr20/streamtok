@@ -127,21 +127,24 @@ export class AgenteController extends EventEmitter {
   }
 
   /** «Parar IA» (ADR 0024, §7), con el botón o con la voz: calla a todos los overlays, vacía respuesta y cola, y avisa para aprender de lo ocurrido. */
-  private stopNow() {
-    const stopped = this.agente.stop();
+  private stopNow(soft = false) {
+    const stopped = this.agente.stop({ soft });
     this.server.broadcast("agente", { kind: "silence" });
     this.emit("stopped", stopped);
   }
 
-  /** Voz del streamer (ADR 0024, §8): «para» corta a la IA; una pregunta suya entra a la cola como las del chat. */
+  /**
+   * Voz del streamer (ADR 0024, §8; ADR 0026): «para» corta lo que dice la IA y ella sigue con el chat; lo que le pregunta o pide
+   * el dueño del LIVE pasa antes que todo (si está ocupada, avisa con un «un momento»). Tras una respuesta suya, un rato sin repetir el nombre.
+   */
   private async listen(msg: { id: string; data: string }, socket: WebSocket) {
-    const r = this.listener ? await this.listener.hear(msg.data, this.agente.getConfig()) : ({ ok: false, message: "La escucha no está disponible." } as const);
+    const r = this.listener ? await this.listener.hear(msg.data, this.agente.getConfig(), { followUp: this.agente.hostFollowUp() }) : ({ ok: false, message: "La escucha no está disponible." } as const);
     if (!r.ok) {
       this.server.sendTo(socket, "agente", { kind: "heard", id: msg.id, ok: false, message: r.message, text: "", intent: "none" });
       return;
     }
-    if (r.intent === "stop") this.stopNow();
-    else if (r.intent === "ask") this.agente.ask(this.streamerName(), r.question);
+    if (r.intent === "stop") this.stopNow(true);
+    else if (r.intent === "ask") this.agente.askHost(this.streamerName(), r.question);
     this.server.sendTo(socket, "agente", { kind: "heard", id: msg.id, ok: true, message: "", text: r.text, intent: r.intent });
   }
 
