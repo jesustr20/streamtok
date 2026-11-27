@@ -25,12 +25,17 @@ export interface ListenServiceOptions {
   now?: () => number;
 }
 
-function prompt(name: string): string {
+function prompt(name: string, followUp = false): string {
   const n = sanitizeQuestion(name);
   return [
     `Escuchas el micrófono del streamer de un LIVE de TikTok. Tu nombre, el de la asistente de IA del canal, es «${n}».`,
     "Transcribe lo que se dice (español) y decide si el streamer se dirige a ti: solo cuenta si te llama por tu nombre o por algo que suene casi igual.",
     "Conversación del streamer con otras personas, el juego, música o ruido NO es para ti.",
+    ...(followUp
+      ? [
+          "Hace unos segundos le respondiste al streamer: si lo que dice sigue esa conversación (una pregunta, una aclaración, una réplica o una orden para ti) cuenta como \"ask\" aunque no diga tu nombre. Si habla con otras personas o del juego, es \"none\".",
+        ]
+      : []),
     'Responde SOLO un JSON: {"text": transcripción, "intent": "stop" | "ask" | "none", "question": texto}.',
     'intent "stop": te pide callarte, parar, dejar de hablar o ya basta. intent "ask": te hace una pregunta o petición. intent "none": no es para ti o no se entiende.',
     '"question": la pregunta o petición sin tu nombre (vacío si no es "ask").',
@@ -74,7 +79,7 @@ export class ListenService extends EventEmitter {
     this.calls = 0;
   }
 
-  async hear(wavBase64: string, config: AgentConfig): Promise<HearResult> {
+  async hear(wavBase64: string, config: AgentConfig, opts: { followUp?: boolean } = {}): Promise<HearResult> {
     const key = this.opts.getKey();
     if (!key) return { ok: false, message: "Falta la clave de Gemini: guárdala en Agente IA → Modelo de IA." };
     if (Math.floor((wavBase64.length * 3) / 4) > MAX_BYTES) return { ok: false, message: "El audio es demasiado largo." };
@@ -91,7 +96,7 @@ export class ListenService extends EventEmitter {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": key },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt(config.name) }, { inlineData: { mimeType: "audio/wav", data: wavBase64 } }] }],
+          contents: [{ parts: [{ text: prompt(config.name, opts.followUp === true) }, { inlineData: { mimeType: "audio/wav", data: wavBase64 } }] }],
           generationConfig: { temperature: 0, responseMimeType: "application/json", maxOutputTokens: 400 },
         }),
         signal: ctrl.signal,
