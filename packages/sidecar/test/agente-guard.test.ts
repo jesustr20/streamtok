@@ -116,3 +116,13 @@ describe("regla 9: charla casual", () => {
     expect(systemPrompt(base)).not.toContain("NO uses la respuesta de rechazo");
   });
 });
+
+describe("regla 10: decirle algo a alguien en otro idioma", () => {
+  it("el idioma pedido es para la IA, no parte del mensaje, sin lista de idiomas", () => {
+    const sys = systemPrompt(AgentConfigSchema.parse({}));
+    expect(sys).toMatch(/el idioma es PARA TI, no parte del mensaje/);
+    expect(sys).toMatch(/sin usar el español y sin mencionar el idioma/);
+    expect(sys).toMatch(/dile a <persona> que <mensaje>, en <idioma>/);
+    expect(sys).not.toMatch(/chino|japonés|portugués/i);
+  });
+});
